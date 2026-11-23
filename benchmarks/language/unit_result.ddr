@@ -7,6 +7,12 @@ fn as_result(code:i32) -> Result<(),string> {
     .Ok
 }
 
+fn rebuild(code:i32) -> Result<(),string> {
+    result := as_result(code)
+    if result.is_err() { return move result }
+    .Ok
+}
+
 fn main() -> i32 {
     if sys.arg_count() != 2 { return 2 }
     mode := sys.arg(1)
@@ -15,8 +21,9 @@ fn main() -> i32 {
     for i in 0..65536 {
         if mode == "bool" {
             if as_bool(i) { passed += 1 } else { failed += 1 }
-        } else if mode == "result" {
-            match as_result(i) {
+        } else if mode == "result" || mode == "rebuild" {
+            result := if mode == "rebuild" { rebuild(i) } else { as_result(i) }
+            match result {
                 .Ok => { passed += 1 },
                 .Err(message) => { assert(message == "deferred"); failed += 1 },
             }
