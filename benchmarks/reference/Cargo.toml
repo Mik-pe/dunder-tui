@@ -9,3 +9,8 @@ ratatui = { version = "=0.30.2", default-features = false, features = ["crosster
 
 [features]
 allocation-counts = []
+style-oracle = ["ratatui/underline-color", "ratatui/palette"]
+
+[[example]]
+name = "styles"
+required-features = ["style-oracle"]

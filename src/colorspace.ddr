@@ -1,0 +1,73 @@
+import std.math as math
+
+fn byte(unit: f64) -> u32 {
+    if unit.is_nan() { return 255 }
+    value := f64(f32(math.clamp(unit, 0.0, 1.0)) * f32(255.0))
+    lower := u32(value.floor())
+    fraction := value - value.floor()
+    if fraction > 0.5 || (fraction == 0.5 && lower.bit_and(1) != 0) { lower + 1 } else { lower }
+}
+
+fn pack(r: f64, g: f64, b: f64) -> u32 { byte(r).shl(16).bit_or(byte(g).shl(8)).bit_or(byte(b)) }
+
+pub fn hsl(hue: f64, saturation: f64, lightness: f64) -> u32 {
+    angle := f32(hue)
+    h := (angle - f32(360.0) * (angle / f32(360.0)).floor()) / f32(60.0)
+    l := f32(math.clamp(lightness, 0.0, 1.0))
+    c := (f32(1.0) - (f32(2.0) * l - f32(1.0)).abs()) * f32(math.clamp(saturation, 0.0, 1.0))
+    m := l - c / f32(2.0)
+    x := f64(c * (f32(1.0) - (h - f32(2.0) * (h / f32(2.0)).floor() - f32(1.0)).abs()) + m)
+    hi := f64(c + m)
+    lo := f64(m)
+    match i32(h) {
+        0 => pack(hi, x, lo), 1 => pack(x, hi, lo), 2 => pack(lo, hi, x),
+        3 => pack(lo, x, hi), 4 => pack(x, lo, hi), _ => pack(hi, lo, x),
+    }
+}
+
+fn gamma(linear: f64) -> f64 {
+    if linear <= 0.0031308 { 12.92 * linear } else { 1.055 * math.pow(linear, 1.0 / 2.4) - 0.055 }
+}
+
+pub fn hsluv(hue: f64, saturation: f64, lightness: f64) -> u32 {
+    l := math.clamp(lightness, 0.0, 100.0)
+    if l < 0.00000001 { return 0 }
+    if l > 99.9999999 { return 0xffffff }
+    angle := (hue - 360.0 * (hue / 360.0).floor()) * math.PI / 180.0
+    cos := math.cos(angle)
+    sin := math.sin(angle)
+    f := (l + 16.0) / 116.0
+    y := if l > 8.0 { f * f * f } else { l * 27.0 / 24389.0 }
+    u0 := 0.19783000664283
+    v0 := 0.46831999493879
+    gamut: [f64; 9] = [3.240969941904521, -1.537383177570093, -0.498610760293,
+        -0.96924363628087, 1.87596750150772, 0.041555057407175,
+        0.055630079696993, -0.20397695888897, 1.056971514242878]
+    mut limit := 1.0e20
+    for i in 0..3 {
+        a := 9.0 * gamut[3 * i] - 3.0 * gamut[3 * i + 2]
+        b := 4.0 * gamut[3 * i + 1] - 20.0 * gamut[3 * i + 2]
+        neutral := a * u0 + b * v0 + 12.0 * gamut[3 * i + 2]
+        slope := a * cos + b * sin
+        for edge in 0..2 {
+            t := f64(edge)
+            divisor := y * slope - 4.0 * t * sin
+            if divisor != 0.0 {
+                d := (4.0 * t * v0 - y * neutral) / divisor
+                if d > 0.0 && d < limit { limit = d }
+            }
+        }
+    }
+    radius := limit * math.clamp(saturation / 100.0, 0.0, 1.0)
+    d65 := 0.95047 + 15.0 + 3.0 * 1.08883
+    u := 4.0 * 0.95047 / d65 + radius * cos
+    v := 9.0 / d65 + radius * sin
+    x := 9.0 * y * u / (4.0 * v)
+    z := y * (12.0 - 3.0 * u - 20.0 * v) / (4.0 * v)
+    srgb: [f64; 9] = [3.2404542, -1.5371385, -0.4985314, -0.9692660, 1.8760108, 0.0415560, 0.0556434, -0.2040259, 1.0572252]
+    mut channels: [f64; 3] = [0.0; 3]
+    for i in 0..3 {
+        channels[i] = gamma(srgb[3 * i] * x + srgb[3 * i + 1] * y + srgb[3 * i + 2] * z)
+    }
+    pack(channels[0], channels[1], channels[2])
+}

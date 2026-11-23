@@ -27,7 +27,7 @@ fn send(fd: i32, data: string) -> bool {
 
 fn draw(frame: &mut tui.Frame, state: &Probe) {
     (heading, body) := frame.area().rows(1)
-    frame.label(heading, "Rubrik")
+    frame.text(heading, "Rubrik", tui.ink(.LightCyan).italic().underlined().underline_color(.Indexed(199)))
     frame.label(body, f"Steg {state.step} med bredd {body.w}")
     if state.timed && state.ticks < 2 { return }
     if state.step == 0 { assert(send(state.master, "\x1b[A")) }
@@ -59,7 +59,8 @@ fn resize(fd: i32) -> bool {
 fn update(state: &mut Probe, key: tui.Key) -> bool {
     rendered := output(state.master)
     if state.step == 0 {
-        state.ok = text.contains(rendered, "\x1b[?1049h") && text.contains(rendered, "Steg 0 med bredd 32")
+        state.ok = text.contains(rendered, "\x1b[?1049h") && text.contains(rendered, "Steg 0 med bredd 32") &&
+        text.contains(rendered, "\x1b[96;58;5;199;3;4mRubrik")
         match key { .Up => {}, _ => { state.ok = false }, }
     } else if state.step == 1 {
         state.ok = rendered == "\x1b[2;6H1" && resize(state.slave)

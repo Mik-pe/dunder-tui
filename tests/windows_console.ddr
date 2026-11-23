@@ -53,7 +53,7 @@ fn tick(probe: &mut Probe, elapsed: i64) -> bool {
 }
 
 fn draw(frame: &mut tui.Frame, probe: &Probe) {
-    if probe.started { frame.text(frame.area(), "Å" + probe.step.str(), tui.ink(.Rgb(0, 255, 255))) }
+    if probe.started { frame.text(frame.area(), "Å" + probe.step.str(), tui.ink(.Rgb(0, 255, 255)).background(.LightBlue).underlined()) }
 }
 
 fn update(probe: &mut Probe, key: tui.Key) -> bool {
@@ -73,7 +73,7 @@ fn update(probe: &mut Probe, key: tui.Key) -> bool {
             probe.failure = 21 + probe.step; return false
         }
         mut attr: u16 = 0
-        if read_attr(out, addr(&mut attr), 1, coord, addr(&mut n)) == 0 || attr.bit_and(7) != 3 { probe.failure = 31; return false }
+        if read_attr(out, addr(&mut attr), 1, coord, addr(&mut n)) == 0 || attr.bit_and(7) != 3 || attr.shr(4).bit_and(15) != 9 { probe.failure = 31; return false }
         if probe.step == 0 {
             mut rect: [i16; 4] = [bounds[5], bounds[6], i16(i32(bounds[7]) - 1), bounds[8]]
             if set_window(out, 1, addr(&rect[0])) == 0 { probe.failure = 32; return false }

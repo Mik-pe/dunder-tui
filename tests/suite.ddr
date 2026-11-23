@@ -142,3 +142,90 @@ import ..src.width
     frame.ansi_diff(&base, &mut out)
     assert(bytes.decode(&out).unwrap() == "\x1b[1;1H\x1b[38;2;255;255;255;48;2;255;255;255m▀\x1b[0m")
 }
+
+@test fn patches_compose_and_preserve_wide_cell_styles() {
+    base := tui.ink(.LightBlue).background(.Gray).bold().dim()
+    overlay := tui.plain().foreground(.Default).italic().without(.Bold).underline_color(.Indexed(0))
+    style := base.patch(overlay)
+    assert(style.get_foreground() == .Some(tui.Color.Default) && style.get_background() == .Some(tui.Color.Gray))
+    assert(!style.has(.Bold) && style.has(.Dim) && style.has(.Italic))
+    assert(style.patch(tui.plain().bold()).has(.Bold))
+    mut frame := tui.Frame::new(4, 1)
+    frame.text(frame.area(), "界ab", base)
+    frame.apply_style(tui.Rect { x: 1, y: 0, w: 1, h: 1 }, overlay)
+    for x in 0..2 {
+        cell := frame.style_at(x, 0).unwrap()
+        assert(cell.get_underline_color() == .Some(tui.Color.Indexed(0)) && cell.has(.Italic) && !cell.has(.Bold))
+    }
+    assert(frame.style_at(2, 0).unwrap().has(.Bold))
+    frame.apply_style(tui.Rect { x: -2147483647, y: 0, w: 1, h: 1 }, tui.Style::reset())
+    assert(frame.line(0) == "界ab")
+    frame.apply_style(tui.Rect { x: 1, y: 0, w: 2147483647, h: 2147483647 }, tui.Style::reset())
+    assert(!frame.style_at(0, 0).unwrap().has(.Italic) && frame.style_at(3, 0).unwrap().get_background() == .Some(tui.Color.Default))
+    assert(frame.style_at(4, 0).is_none() && frame.style_at(0, -1).is_none())
+}
+
+@test fn underline_diff_compares_colors_across_frame_local_tables() {
+    mut old := tui.Frame::new(3, 1)
+    mut next := tui.Frame::new(3, 1)
+    highlight := tui.plain().underlined().underline_color(.Indexed(9))
+    old.text(old.area(), "x", highlight)
+    next.text(next.area(), "x", highlight.underline_color(.Rgb(73, 9, 255)))
+    mut out: []u8 = []
+    next.ansi_diff(&old, &mut out)
+    assert(bytes.decode(&out).unwrap() == "\x1b[1;1H\x1b[58;2;73;9;255;4mx\x1b[0m")
+    out.clear()
+    next.text(next.area(), "x", highlight)
+    next.ansi_diff(&old, &mut out)
+    assert(out.len == 0)
+    next.clear()
+    next.label(next.area(), "x")
+    next.ansi_diff(&old, &mut out)
+    assert(bytes.decode(&out).unwrap() == "\x1b[1;1Hx")
+}
+
+@test fn color_models_and_theme_values_round_trip() {
+    for n in 0..256 {
+        color := tui.Color.Indexed(u8(n))
+        assert(tui.Color::parse(color.str()) == .Some(color))
+    }
+    assert(tui.Color::parse("bright_gray") == .Some(tui.Color.BrightWhite))
+    assert(tui.Color::parse("Light-Black") == .Some(tui.Color.DarkGray))
+    assert(tui.Color::parse("light RED") == .Some(tui.Color.LightRed))
+    assert(tui.Color::parse("#cA0Dff").unwrap().str() == "#CA0DFF")
+    assert(tui.Color::parse("256").is_none() && tui.Color::parse("#abc").is_none())
+    assert(tui.Color::parse(" 12").is_none() && tui.Color::parse("reset") == .Some(tui.Color.Default))
+    assert(tui.Color.Red != tui.Color.Indexed(1))
+    assert(tui.Color::from_hsl(-120.0, 2.0, 0.5) == tui.Color.Rgb(0, 0, 255))
+    assert(tui.Color::from_hsl(0.0, 0.0, 0.5) == tui.Color.Rgb(128, 128, 128))
+    assert(tui.Color::from_hsluv(0.0, 0.0, 50.0) == tui.Color.Rgb(119, 119, 119))
+    assert(tui.Color::from_hsluv(12.18, 100.0, 53.2) == tui.Color.Rgb(255, 0, 0))
+    assert(tui.Color::from_hsluv(-94.13, 100.0, 32.3) == tui.Color.Rgb(0, 0, 255))
+}
+
+@test fn overlapping_text_preserves_unset_style_fields_and_reset_clears_them() {
+    mut frame := tui.Frame::new(6, 1)
+    base := tui.ink(.Gray).background(.LightRed).bold().underline_color(.Indexed(200))
+    frame.apply_style(frame.area(), base)
+    frame.label(frame.area(), "a界xyz")
+    frame.text(tui.Rect { x: 3, y: 0, w: 2, h: 1 }, "xy", tui.plain().without(.Bold).italic())
+    frame.text(tui.Rect { x: 5, y: 0, w: 1, h: 1 }, "z", tui.Style::reset())
+    cell := frame.style_at(1, 0).unwrap()
+    assert(cell.get_foreground() == .Some(tui.Color.Gray) && cell.get_background() == .Some(tui.Color.LightRed) && cell.has(.Bold))
+    cell2 := frame.style_at(4, 0).unwrap()
+    assert(cell2.get_underline_color() == .Some(tui.Color.Indexed(200)) && cell2.has(.Italic) && !cell2.has(.Bold))
+    cell3 := frame.style_at(5, 0).unwrap()
+    assert(cell3.get_foreground() == .Some(tui.Color.Default) && cell3.get_underline_color() == .Some(tui.Color.Default) && !cell3.has(.Bold))
+    assert(tui.Color.White == tui.Color.Gray && tui.Color.White.code() == 7 && tui.Color.BrightWhite.code() == 15)
+}
+
+@test fn shared_sgr_resets_reapply_the_surviving_attribute() {
+    mut frame := tui.Frame::new(3, 1)
+    frame.text(frame.area(), "a", tui.plain().bold().dim().with(.SlowBlink).with(.RapidBlink))
+    frame.text(tui.Rect { x: 1, y: 0, w: 2, h: 1 }, "b", tui.plain().dim().with(.SlowBlink))
+    frame.text(tui.Rect { x: 2, y: 0, w: 1, h: 1 }, "c", tui.plain().with(.RapidBlink))
+    old := tui.Frame::new(3, 1)
+    mut out: []u8 = []
+    frame.ansi_diff(&old, &mut out)
+    assert(bytes.decode(&out).unwrap() == "\x1b[1;1H\x1b[1;2;5;6ma\x1b[22;25;2;5mb\x1b[22;25;6mc\x1b[0m")
+}

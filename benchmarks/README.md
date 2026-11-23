@@ -1,26 +1,36 @@
 # Rendering mot Ratatui 0.30.2
 
-Båda programmen ritar samma 120 × 40 ASCII-celler, jämför två återanvända bildbuffertar och kodar ändringen till en återanvänd bytebuffert. Vid storleksändring växlar bredden mellan 100 och 120 och hela ytan skickas. Rustprogrammet använder `Buffer::set_stringn`, `Buffer::diff_iter` och `CrosstermBackend::draw`. Rustberoendena hör till det fristående referensprogrammet. [Dunderprogram](render.ddr) · [Rustprogram](reference/src/main.rs)
+Båda programmen bygger om samma vy på 120 × 40 celler, jämför två återanvända bildbuffertar och kodar uppdateringen till en återanvänd bytebuffert. Vid storleksändring växlar bredden mellan 100 och 120 och hela ytan skickas. Rustprogrammet använder `Buffer::set_stringn`, `Buffer::diff_iter` och `CrosstermBackend::draw` med färgutdata påslagen. Rustberoendena hör till referensprogrammet. [Dunderprogram](render.ddr) · [Rustprogram](reference/src/main.rs)
 
-## Resultat
+## Resultat för 0.3.0
 
-Apple M5, macOS 27.2.1, Dunder 0.11.0 med standardoptimeringar och Rust 1.99.1 i releaseprofil. Varje fall kör 20 uppvärmningsbilder och 200 mätbilder. Två hela körningar per program värmde upp maskinen. Tabellen visar medianen av sju körningars p50 och p95, med växlande körordning. Klockans upplösning i Dunder var cirka 1 µs.
+Apple M5, macOS 27.2.1, Dunder 0.11.0 med standardoptimeringar och Rust 1.99.1 i releaseprofil. Varje fall kör 20 uppvärmningsbilder och 200 mätbilder. Efter två uppvärmningskörningar växlade programmen körordning sju gånger. Tabellen visar medianen för körningarnas p50 och p95 avrundade till hela mikrosekunder. Dunders klocka hade cirka 1 µs upplösning.
 
 | Ändring | Dunder p50 / p95, µs | Ratatui p50 / p95, µs | Dunder byte/bild | Ratatui byte/bild |
 | --- | ---: | ---: | ---: | ---: |
-| Oförändrad bild | 18 / 18 | 79 / 83 | 0 | 13 |
-| Ett tecken | 18 / 20 | 78 / 83 | 9 | 22 |
-| Rullande textmönster | 30 / 32 | 95 / 99 | 2 028 | 2 041 |
-| Ny bredd | 44 / 50 | 86 / 93 | 4 671 | 4 684 |
-| Alla tecken ändras | 51 / 51 | 118 / 127 | 5 071 | 5 084 |
+| Oförändrad text | 17 / 21 | 93 / 101 | 0 | 19 |
+| Ett tecken | 19 / 22 | 92 / 100 | 9 | 28 |
+| Rullande textmönster | 31 / 38 | 111 / 121 | 2 028 | 2 047 |
+| Ny bredd | 48 / 58 | 93 / 112 | 4 671 | 4 690 |
+| Alla tecken ändras | 55 / 60 | 142 / 154 | 5 071 | 5 090 |
+| Oförändrad stiliserad text | 25 / 29 | 99 / 105 | 0 | 19 |
+| Ny understrykningsfärg på en cell | 31 / 35 | 100 / 108 | 58 | 79 |
+| Ny understrykningsfärg på alla rader | 101 / 107 | 146 / 155 | 5 509 | 5 530 |
 
-För encellsfallet låg de sju körningarnas medianer inom 18–21 µs för Dunder och 76–85 µs för Ratatui. Mätningen slutar när ANSI-strömmen finns i minnet. Teckenritning i terminalemulatorn, färgrik grafik och tangentbordslatens behöver egna prov.
+De sista tre fallen ritar kursiv, understruken text med RGB-förgrund och RGB-bakgrund. Varje rad väljer en egen understrykningsfärg. För en ändrad sådan cell varierade körningarnas median mellan 29 och 34 µs i Dunder och mellan 90 och 104 µs i Ratatui. Mätningen slutar när ANSI-strömmen finns i minnet.
 
-Över alla fem fall med avstängd mätklocka rapporterade Dunders runtime 143 allokeringsanrop och 708 670 begärda byte. 111 anrop återanvände block från poolen. Rustprogrammets globala allokerare registrerade 1 175 anrop och 2 585 196 begärda byte inklusive omallokering. I en separat körning med `/usr/bin/time -l` var processens högsta RSS 1 818 624 respektive 2 834 432 byte.
+| Arbetslaster | Dunder allokeringsanrop / begärda byte | Rust allokeringsanrop / begärda byte | Högsta RSS Dunder / Rust, byte |
+| --- | ---: | ---: | ---: |
+| Fem textfall | 156 / 709 330 | 1 178 / 2 585 257 | 1 835 008 / 2 818 048 |
+| Tre stilfall | 123 / 408 621 | 1 595 / 1 441 167 | 1 785 856 / 2 572 288 |
+
+Allokeringsproven kördes utan bildklocka. Dunders runtime räknar även återanvändning från poolen, som stod för 121 respektive 93 anrop. Rust räknar anrop via den globala allokeraren, inklusive omallokering. RSS kommer från en separat körning med `/usr/bin/time -l`.
+
+Stilfallen använder `foreground_rgb`, `background_rgb` och `underline_index` för att bygga stilar direkt från numeriska färgdata. Flaggan `--color-values` skapar i stället Dunders färgvärden `.Rgb(...)` och `.Indexed(...)` på varje ritad rad. Utdata var identiska. Den varianten gjorde 79 546 allokeringsanrop för 2 524 210 byte, varav 79 515 anrop återanvände poolminne. Allokeringskostnaden för dynamiskt skapade färgvärden är fortfarande högre än i Ratatui.
 
 ## Kör själv
 
-Kör i repots rot. Varje rad i tidsmätningen ger arbetslast, p50 och p95 i nanosekunder och genomsnittligt antal kodade byte per bild.
+Kör i repots rot. Varje resultatrad visar arbetslast, p50 och p95 i nanosekunder och genomsnittligt antal kodade byte per bild. Efter första hämtningen av Rustreferensen kan även Cargo köras med `--offline`.
 
 ```sh
 mkdir -p build
@@ -28,12 +38,19 @@ dunder build --locked --offline benchmarks/render.ddr -o build/render
 cargo build --locked --release --manifest-path benchmarks/reference/Cargo.toml --target-dir build/rust
 build/render
 build/rust/release/ratatui-render-reference
+
+cargo build --locked --release --manifest-path benchmarks/reference/Cargo.toml --target-dir build/rust --features style-oracle
+build/render --styles
+build/rust/release/ratatui-render-reference --styles
 ```
 
-Allokeringsprovet kör samma bilder. Det kan köras separat från tidsmätningen.
+Allokeringsprovet kör samma bilder.
 
 ```sh
-dunder build --runtime-profile benchmarks/render.ddr -o build/render-profile
+dunder build --locked --offline --runtime-profile benchmarks/render.ddr -o build/render-profile
 build/render-profile --allocations
+build/render-profile --styles --allocations
+build/render-profile --styles --color-values --allocations
 cargo run --locked --release --manifest-path benchmarks/reference/Cargo.toml --target-dir build/rust --features allocation-counts -- --allocations
+cargo run --locked --release --manifest-path benchmarks/reference/Cargo.toml --target-dir build/rust --features style-oracle,allocation-counts -- --styles --allocations
 ```

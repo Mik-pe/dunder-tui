@@ -1,0 +1,32 @@
+capability stdio
+
+import std.bytes as bytes
+import ..src.tui
+
+fn main() -> i32 {
+    mut frame := tui.Frame::new(32, 32)
+    modifiers: [tui.Modifier; 9] = [.Bold, .Dim, .Italic, .Underlined, .SlowBlink, .RapidBlink, .Reversed, .Hidden, .CrossedOut]
+    colors: [tui.Color; 7] = [.LightBlue, .Indexed(4), .Rgb(0, 0, 0), .Default, .BrightWhite, .Indexed(231), .Rgb(255, 128, 2)]
+    for i in 0..1024 {
+        mask := (i * 73).bit_and(511)
+        mut style := tui.ink(colors[i % 7]).background(colors[(i / 3) % 7]).underline_color(colors[(i / 5) % 7])
+        for j in 0..9 { if mask.bit_and(i32(1).shl(j)) != 0 { style = style.with(modifiers[j]) } }
+        area := tui.Rect { x: i % 32, y: i / 32, w: 1, h: 1 }
+        frame.text(area, "x", style)
+        if i >= 512 {
+            if i % 4 == 0 { frame.apply_style(area, tui.Style::reset().italic()) }
+            else { frame.apply_style(area, tui.plain().without(.Bold).dim().foreground(.Indexed(0))) }
+        }
+    }
+    mut out: []u8 = []
+    previous := tui.Frame::new(0, 0)
+    frame.ansi_diff(&previous, &mut out)
+    print(bytes.decode(&out).unwrap())
+    for i in 0..512 {
+        h := f64(i * 113 % 1081 - 540) + 0.375
+        s := f64(i * 79 % 130 - 10)
+        l := f64(i * 61 % 132 - 14)
+        print(tui.Color::from_hsl(h, s / 100.0, l / 100.0).str() + " " + tui.Color::from_hsluv(h, s, l).str())
+    }
+    0
+}

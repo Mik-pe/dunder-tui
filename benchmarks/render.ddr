@@ -5,7 +5,7 @@ import sys
 import std.time as clock
 import std.array as array
 
-fn bench(mode: i32, name: string, timed: bool) {
+fn bench(mode: i32, name: string, timed: bool, color_values: bool) {
     mut old := tui.Frame::new(120, 40)
     mut next := tui.Frame::new(120, 40)
     mut out: []u8 = []
@@ -20,9 +20,24 @@ fn bench(mode: i32, name: string, timed: bool) {
         for y in 0..40 {
             odd := if mode == 2 { (y + n) % 5 == 0 } else if mode == 4 { n % 2 == 0 } else { y % 5 == 0 }
             area := tui.Rect { x: 0, y: y, w: width, h: 1 }
-            if odd { next.label(area, line_b) } else { next.label(area, line_a) }
+            if mode >= 5 {
+                phase := if mode == 7 { n % 2 } else { 0 }
+                underline := u8(32 + (y + phase) % 120)
+                style := if color_values {
+                    tui.ink(.Rgb(84, 220, 190)).background(.Rgb(28, 22, 45)).underline_color(.Indexed(underline))
+                } else {
+                    tui.plain().foreground_rgb(0x54dcbe).background_rgb(0x1c162d).underline_index(underline)
+                }
+                decorated := style.italic().underlined()
+                if odd { next.text(area, line_b, decorated) } else { next.text(area, line_a, decorated) }
+            } else if odd { next.label(area, line_b) } else { next.label(area, line_a) }
         }
         if mode == 1 { next.label(tui.Rect { x: 60, y: 20, w: 1, h: 1 }, if n % 2 == 0 { "X" } else { "Y" }) }
+        if mode == 6 {
+            index := u8(200 + n % 2)
+            overlay := if color_values { tui.plain().underline_color(.Indexed(index)) } else { tui.plain().underline_index(index) }
+            next.apply_style(tui.Rect { x: 60, y: 20, w: 1, h: 1 }, overlay)
+        }
         out.clear()
         next.ansi_diff(&old, &mut out)
         next = replace(&mut old, move next)
@@ -37,10 +52,23 @@ fn bench(mode: i32, name: string, timed: bool) {
 }
 
 fn main() {
-    timed := sys.arg_count() < 2 || sys.arg(1) != "--allocations"
-    bench(0, "idle", timed)
-    bench(1, "cell", timed)
-    bench(2, "scroll", timed)
-    bench(3, "resize", timed)
-    bench(4, "full", timed)
+    mut styles := false
+    mut timed := true
+    mut color_values := false
+    for i in 1..sys.arg_count() {
+        if sys.arg(i) == "--styles" { styles = true }
+        if sys.arg(i) == "--color-values" { color_values = true }
+        if sys.arg(i) == "--allocations" { timed = false }
+    }
+    if styles {
+        bench(5, "styled-idle", timed, color_values)
+        bench(6, "styled-cell", timed, color_values)
+        bench(7, "styled-full", timed, color_values)
+        return
+    }
+    bench(0, "idle", timed, color_values)
+    bench(1, "cell", timed, color_values)
+    bench(2, "scroll", timed, color_values)
+    bench(3, "resize", timed, color_values)
+    bench(4, "full", timed, color_values)
 }

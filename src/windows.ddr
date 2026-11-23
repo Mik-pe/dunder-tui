@@ -90,7 +90,7 @@ pub fn open(state: &mut State) -> bool {
         mut info: [i16; 11] = [0; 11]
         state.vt = set_mode(screen, 5) != 0 && write_wide(screen, addr(&probe[0]), 6, addr(&mut n), ptr(0)) != 0 &&
         buffer_info(screen, addr(&mut info[0])) != 0 && info[2] == 1 && info[3] == 1
-        if !state.vt { _ := set_mode(screen, 0) }
+        if !state.vt && set_mode(screen, 0x10) == 0 { _ := set_mode(screen, 0) }
         _ := position(screen, 0)
         state.screen = screen
         return true
@@ -109,7 +109,8 @@ pub fn restore(state: &mut State) {
 
 fn cube(n: i32) -> i32 { if n == 0 { 0 } else { n * 40 + 55 } }
 
-fn color(code: i32, fallback: i32) -> i32 {
+fn color(encoded: i32, fallback: i32) -> i32 {
+    code := if encoded >= 256 && encoded < 512 { encoded - 256 } else { encoded }
     if code < 0 { return fallback }
     if code < 16 { return code.bit_and(8).bit_or(code.bit_and(1).shl(2)).bit_or(code.bit_and(2)).bit_or(code.shr(2).bit_and(1)) }
     mut rgb := code.bit_and(0xffffff)
@@ -133,8 +134,11 @@ fn color(code: i32, fallback: i32) -> i32 {
 pub fn paint(state: &State, x: i32, y: i32, value: string, style: palette.Brush) -> bool {
     mut fg := color(style.fg, state.palette.bit_and(15))
     bg := color(style.bg, state.palette.shr(4))
-    if style.bold { fg = fg.bit_or(8) }
-    attr := if style.reverse { fg * 16 + bg } else { bg * 16 + fg }
+    if style.modifiers.bit_and(2) != 0 { fg = fg.bit_and(7) }
+    if style.modifiers.bit_and(1) != 0 { fg = fg.bit_or(8) }
+    mut attr := if style.modifiers.bit_and(64) != 0 { fg * 16 + bg } else { bg * 16 + fg }
+    if style.modifiers.bit_and(128) != 0 { attr = attr.shr(4) * 17 }
+    if style.modifiers.bit_and(8) != 0 { attr = attr.bit_or(0x8000) }
     coord := u32(x).bit_or(u32(y).shl(16))
     unsafe {
         if position(state.screen, coord) == 0 || attributes(state.screen, u16(attr)) == 0 { return false }

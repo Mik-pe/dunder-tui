@@ -1,19 +1,21 @@
 import std.bytes as bytes
 
-pub struct Brush { fg: i32, bg: i32, bold: bool, reverse: bool }
+pub struct Brush { fg: i32, bg: i32, modifiers: i32 }
+pub struct Decoration { packed: i64, underline: i32 }
+
+impl Eq for Decoration {
+    fn eq(&self, other: &Self) -> bool { self.packed == other.packed && self.underline == other.underline }
+}
 
 impl Brush {
     pub fn packed(self) -> i64 {
-        mut value := i64(self.fg + 1).bit_or(i64(self.bg + 1).shl(26))
-        if self.bold { value = value.bit_or(i64(1).shl(52)) }
-        if self.reverse { value = value.bit_or(i64(1).shl(53)) }
-        value
+        i64(self.fg + 1).bit_or(i64(self.bg + 1).shl(26)).bit_or(i64(self.modifiers).shl(52))
     }
 
     pub fn unpack(value: i64) -> Self {
         Self {
             fg: i32(value.bit_and(0x3ffffff)) - 1, bg: i32(value.shr(26).bit_and(0x3ffffff)) - 1,
-            bold: value.shr(52).bit_and(1) != 0, reverse: value.shr(53).bit_and(1) != 0
+            modifiers: i32(value.shr(52))
         }
     }
 }
@@ -26,15 +28,16 @@ pub fn cursor(out: &mut []u8, x: i32, y: i32) {
     out.push(b'H')
 }
 
-fn color(out: &mut []u8, code: i32, bg: bool) {
-    base := if bg { 40 } else { 30 }
+fn color(out: &mut []u8, code: i32, base: i32) {
     if code < 0 { bytes.append_decimal(&mut out, i64(base + 9)); return }
-    if code < 8 { bytes.append_decimal(&mut out, i64(base + code)); return }
-    if code < 16 { bytes.append_decimal(&mut out, i64(base + 60 + code - 8)); return }
+    if base != 50 && code < 16 {
+        bytes.append_decimal(&mut out, i64(base + code + if code >= 8 { 52 } else { 0 }))
+        return
+    }
     bytes.append_decimal(&mut out, i64(base + 8))
-    if code < 256 {
+    if code < 512 {
         bytes.append_utf8(&mut out, ";5;")
-        bytes.append_decimal(&mut out, i64(code))
+        bytes.append_decimal(&mut out, i64(code.bit_and(255)))
     } else {
         bytes.append_utf8(&mut out, ";2;")
         bytes.append_decimal(&mut out, i64(code.shr(16).bit_and(255)))
@@ -45,21 +48,42 @@ fn color(out: &mut []u8, code: i32, bg: bool) {
     }
 }
 
-pub fn transition(out: &mut []u8, old: Brush, next: Brush) {
+fn separator(out: &mut []u8, start: i32) {
+    if out.len > start { out.push(b';') }
+}
+
+fn attribute(out: &mut []u8, start: i32, code: i32) {
+    separator(&mut out, start)
+    bytes.append_decimal(&mut out, i64(code))
+}
+
+fn modifiers(out: &mut []u8, start: i32, old: i32, next: i32) {
+    removed := old.bit_and(next.bit_not())
+    mut added := next.bit_and(old.bit_not())
+    if removed.bit_and(3) != 0 {
+        attribute(&mut out, start, 22)
+        added = added.bit_or(next.bit_and(3))
+    }
+    if removed.bit_and(48) != 0 {
+        attribute(&mut out, start, 25)
+        added = added.bit_or(next.bit_and(48))
+    }
+    for i in 0..9 {
+        bit := i32(1).shl(i)
+        if bit.bit_and(51) == 0 && removed.bit_and(bit) != 0 { attribute(&mut out, start, 21 + i) }
+        if added.bit_and(bit) != 0 { attribute(&mut out, start, i + 1) }
+    }
+}
+
+pub fn transition(out: &mut []u8, from: Decoration, to: Decoration) {
+    if from == to { return }
+    old := Brush::unpack(from.packed)
+    next := Brush::unpack(to.packed)
     bytes.append_utf8(&mut out, "\x1b[")
     start := out.len
-    if old.fg != next.fg { color(&mut out, next.fg, false) }
-    if old.bg != next.bg {
-        if out.len > start { out.push(b';') }
-        color(&mut out, next.bg, true)
-    }
-    if old.bold != next.bold {
-        if out.len > start { out.push(b';') }
-        bytes.append_utf8(&mut out, if next.bold { "1" } else { "22" })
-    }
-    if old.reverse != next.reverse {
-        if out.len > start { out.push(b';') }
-        bytes.append_utf8(&mut out, if next.reverse { "7" } else { "27" })
-    }
+    if old.fg != next.fg { color(&mut out, next.fg, 30) }
+    if old.bg != next.bg { separator(&mut out, start); color(&mut out, next.bg, 40) }
+    if from.underline != to.underline { separator(&mut out, start); color(&mut out, to.underline, 50) }
+    if old.modifiers != next.modifiers { modifiers(&mut out, start, old.modifiers, next.modifiers) }
     out.push(b'm')
 }

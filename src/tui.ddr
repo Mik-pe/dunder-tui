@@ -6,41 +6,194 @@ import .posix
 import .windows
 import std.bytes as bytes
 import std.time as clock
+import std.cmp as cmp
 import .paint
+import .colorspace
+import std.parse as parse
+import std.text as strings
 
-pub enum Color { Default, Black, Red, Green, Yellow, Blue, Magenta, Cyan, White, Indexed(u8), Rgb(u8, u8, u8) }
-pub struct Style { fg: Color, bg: Color, strong: bool, reverse: bool }
+pub enum Color {
+    Default, Black, Red, Green, Yellow, Blue, Magenta, Cyan, Gray, DarkGray,
+    LightRed, LightGreen, LightYellow, LightBlue, LightMagenta, LightCyan, White, BrightWhite,
+    Indexed(u8), Rgb(u8, u8, u8)
+}
 
 impl Color {
     pub fn code(&self) -> i32 {
         match self {
-            .Default => -1, .Black => 0, .Red => 1, .Green => 2, .Yellow => 3,
-            .Blue => 4, .Magenta => 5, .Cyan => 6, .White => 7,
+            .Default => -1, .Black => 0, .Red => 1, .Green => 2, .Yellow => 3, .Blue => 4,
+            .Magenta => 5, .Cyan => 6, .Gray => 7, .White => 7, .DarkGray => 8, .LightRed => 9, .LightGreen => 10,
+            .LightYellow => 11, .LightBlue => 12, .LightMagenta => 13, .LightCyan => 14, .BrightWhite => 15,
             .Indexed(n) => i32(n),
             .Rgb(r, g, b) => 0x1000000 + i32(r) * 65536 + i32(g) * 256 + i32(b),
+        }
+    }
+
+    pub fn from_hsl(hue: f64, saturation: f64, lightness: f64) -> Self {
+        rgb(colorspace.hsl(hue, saturation, lightness))
+    }
+
+    pub fn from_hsluv(hue: f64, saturation: f64, lightness: f64) -> Self {
+        rgb(colorspace.hsluv(hue, saturation, lightness))
+    }
+
+    pub fn parse(value: string) -> Option<Color> {
+        if value.len == 7 && value[0] == b'#' {
+            hex := parse.hex_u64_range(value, 1, 7)
+            if hex.ok { return .Some(rgb(u32(hex.value))) }
+        }
+        start := if value.len > 0 && value[0] == b'+' { 1 } else { 0 }
+        index := parse.u64_range(value, start, value.len)
+        if index.ok && index.value < 256 { return .Some(.Indexed(u8(index.value))) }
+        mut name := strings.lower(value)
+        for separator in [" ", "-", "_"] { name = strings.replace(name, separator, "") }
+        name = strings.replace(strings.replace(strings.replace(name, "bright", "light"), "grey", "gray"), "silver", "gray")
+        if name == "reset" { return .Some(.Default) }
+        if name == "lightblack" { return .Some(.DarkGray) }
+        if name == "lightwhite" || name == "lightgray" { return .Some(.BrightWhite) }
+        for i in 0..16 {
+            named := Color::decoded(i)
+            if strings.lower(named.str()) == name { return .Some(named) }
+        }
+        .None
+    }
+
+    fn encoded(&self) -> i32 {
+        match self { .Indexed(n) => 256 + i32(n), _ => self.code(), }
+    }
+
+    fn decoded(code: i32) -> Self {
+        if code < 0 { return .Default }
+        if code < 16 {
+            colors: [Color; 16] = [.Black, .Red, .Green, .Yellow, .Blue, .Magenta, .Cyan, .Gray,
+                .DarkGray, .LightRed, .LightGreen, .LightYellow, .LightBlue, .LightMagenta, .LightCyan, .BrightWhite]
+            return colors[code]
+        }
+        if code < 512 { return .Indexed(u8(code - 256)) }
+        rgb(u32(code))
+    }
+}
+
+impl Display for Color {
+    fn str(&self) -> string {
+        match self {
+            .Default => "Reset", .Black => "Black", .Red => "Red", .Green => "Green",
+            .Yellow => "Yellow", .Blue => "Blue", .Magenta => "Magenta", .Cyan => "Cyan",
+            .Gray => "Gray", .DarkGray => "DarkGray", .LightRed => "LightRed",
+            .LightGreen => "LightGreen", .LightYellow => "LightYellow", .LightBlue => "LightBlue",
+            .LightMagenta => "LightMagenta", .LightCyan => "LightCyan", .White => "Gray", .BrightWhite => "White",
+            .Indexed(n) => n.str(),
+            .Rgb(r, g, b) => {
+                digits := "0123456789ABCDEF"
+                mut out: []u8 = [b'#']
+                for channel in [r, g, b] {
+                    out.push(digits[i32(channel) / 16])
+                    out.push(digits[i32(channel) % 16])
+                }
+                bytes.decode(&out).unwrap()
+            },
         }
     }
 }
 
 impl Eq for Color {
-    fn eq(&self, other: &Self) -> bool { self.code() == other.code() }
+    fn eq(&self, other: &Self) -> bool { self.encoded() == other.encoded() }
 }
+
+fn packed_rgb(value: u32) -> i32 { 0x1000000 + i32(value.bit_and(0xffffff)) }
 
 pub fn rgb(value: u32) -> Color {
     .Rgb(u8(value.shr(16).bit_and(255)), u8(value.shr(8).bit_and(255)), u8(value.bit_and(255)))
 }
 
-pub fn plain() -> Style { Style { fg: .Default, bg: .Default, strong: false, reverse: false } }
+pub enum Modifier { Bold, Dim, Italic, Underlined, SlowBlink, RapidBlink, Reversed, Hidden, CrossedOut }
+
+impl Modifier {
+    fn mask(self) -> i32 {
+        match self {
+            .Bold => 1, .Dim => 2, .Italic => 4, .Underlined => 8, .SlowBlink => 16,
+            .RapidBlink => 32, .Reversed => 64, .Hidden => 128, .CrossedOut => 256,
+        }
+    }
+}
+
+const INHERIT: i32 = -2
+
+pub opaque struct Style {
+    fg: i32, bg: i32, underline: i32, added: i32, removed: i32,
+}
+
+pub fn plain() -> Style { Style { fg: INHERIT, bg: INHERIT, underline: INHERIT, added: 0, removed: 0 } }
 pub fn ink(color: Color) -> Style { plain().foreground(color) }
 
 impl Style {
-    pub fn foreground(self, color: Color) -> Self { mut s := self; s.fg = color; s }
-    pub fn background(self, color: Color) -> Self { mut s := self; s.bg = color; s }
-    pub fn bold(self) -> Self { mut s := self; s.strong = true; s }
-    pub fn inverted(self) -> Self { mut s := self; s.reverse = true; s }
+    pub fn reset() -> Self {
+        Self { fg: -1, bg: -1, underline: -1, added: 0, removed: 511 }
+    }
+
+    pub fn foreground(self, color: Color) -> Self { mut s := self; s.fg = color.encoded(); s }
+    pub fn background(self, color: Color) -> Self { mut s := self; s.bg = color.encoded(); s }
+    pub fn underline_color(self, color: Color) -> Self { mut s := self; s.underline = color.encoded(); s }
+
+    pub fn foreground_rgb(self, rgb: u32) -> Self { mut s := self; s.fg = packed_rgb(rgb); s }
+    pub fn background_rgb(self, rgb: u32) -> Self { mut s := self; s.bg = packed_rgb(rgb); s }
+    pub fn underline_rgb(self, rgb: u32) -> Self { mut s := self; s.underline = packed_rgb(rgb); s }
+    pub fn foreground_index(self, index: u8) -> Self { mut s := self; s.fg = 256 + i32(index); s }
+    pub fn background_index(self, index: u8) -> Self { mut s := self; s.bg = 256 + i32(index); s }
+    pub fn underline_index(self, index: u8) -> Self { mut s := self; s.underline = 256 + i32(index); s }
+
+    pub fn with(self, modifier: Modifier) -> Self {
+        mut s := self
+        mask := modifier.mask()
+        s.added = s.added.bit_or(mask)
+        s.removed = s.removed.bit_and(mask.bit_not())
+        s
+    }
+
+    pub fn without(self, modifier: Modifier) -> Self {
+        mut s := self
+        mask := modifier.mask()
+        s.removed = s.removed.bit_or(mask)
+        s.added = s.added.bit_and(mask.bit_not())
+        s
+    }
+
+    fn empty(&self) -> bool {
+        self.added == 0 && self.removed == 0 && self.fg == INHERIT && self.bg == INHERIT && self.underline == INHERIT
+    }
+
+    fn color(code: i32) -> Option<Color> {
+        if code == INHERIT { return .None }
+        .Some(Color::decoded(code))
+    }
+
+    pub fn get_foreground(&self) -> Option<Color> { Style::color(self.fg) }
+    pub fn get_background(&self) -> Option<Color> { Style::color(self.bg) }
+    pub fn get_underline_color(&self) -> Option<Color> { Style::color(self.underline) }
+    pub fn removes(&self, modifier: Modifier) -> bool { self.removed.bit_and(modifier.mask()) != 0 }
+
+    pub fn has(&self, modifier: Modifier) -> bool { self.added.bit_and(modifier.mask()) != 0 }
+    pub fn bold(self) -> Self { self.with(.Bold) }
+    pub fn dim(self) -> Self { self.with(.Dim) }
+    pub fn italic(self) -> Self { self.with(.Italic) }
+    pub fn underlined(self) -> Self { self.with(.Underlined) }
+    pub fn inverted(self) -> Self { self.with(.Reversed) }
+
+    pub fn patch(self, overlay: Style) -> Self {
+        mut s := self
+        if overlay.fg != INHERIT { s.fg = overlay.fg }
+        if overlay.bg != INHERIT { s.bg = overlay.bg }
+        if overlay.underline != INHERIT { s.underline = overlay.underline }
+        s.added = s.added.bit_and(overlay.removed.bit_not()).bit_or(overlay.added)
+        s.removed = s.removed.bit_and(overlay.added.bit_not()).bit_or(overlay.removed)
+        s
+    }
 
     fn brush(&self) -> paint.Brush {
-        paint.Brush { fg: self.fg.code(), bg: self.bg.code(), bold: self.strong, reverse: self.reverse }
+        paint.Brush {
+            fg: if self.fg == INHERIT { -1 } else { self.fg }, bg: if self.bg == INHERIT { -1 } else { self.bg },
+            modifiers: self.added.bit_and(511)
+        }
     }
 }
 
@@ -78,7 +231,7 @@ const TRAIL: i32 = -1
 const CLUSTER: i32 = 0x110000
 const WIDE: i32 = 0x200000
 
-pub opaque struct Frame { bounds: Rect, glyphs: []i32, styles: []i64, clusters: []string }
+pub opaque struct Frame { bounds: Rect, glyphs: []i32, styles: []i64, decorations: []i64, clusters: []string }
 
 impl Frame {
     pub fn new(w: i32, h: i32) -> Self {
@@ -90,10 +243,75 @@ impl Frame {
         glyphs.reserve(n)
         styles.reserve(n)
         for _ in 0..n { glyphs.push(0); styles.push(0) }
-        Self { bounds: Rect { x: 0, y: 0, w: cols, h: rows }, glyphs: glyphs, styles: styles, clusters: [] }
+        Self { bounds: Rect { x: 0, y: 0, w: cols, h: rows }, glyphs: glyphs, styles: styles, decorations: [], clusters: [] }
     }
 
     pub fn area(&self) -> Rect { self.bounds }
+
+    fn encode(&mut self, style: Style) -> i64 {
+        packed := style.brush().packed()
+        self.style_key(packed, style.underline)
+    }
+
+    fn style_key(&mut self, packed: i64, underline: i32) -> i64 {
+        if underline < 0 { return packed }
+        n := self.decorations.len
+        if n == 0 || self.decorations[n - 2] != packed || self.decorations[n - 1] != i64(underline) {
+            self.decorations.push(packed)
+            self.decorations.push(i64(underline))
+        }
+        i64(1) - i64(self.decorations.len)
+    }
+
+    fn decoration(&self, key: i64) -> paint.Decoration {
+        if key >= 0 { return paint.Decoration { packed: key, underline: -1 } }
+        i := i32(i64(-1) - key)
+        paint.Decoration { packed: self.decorations[i], underline: i32(self.decorations[i + 1]) }
+    }
+
+    fn same_style(&self, previous: &Frame, i: i32) -> bool {
+        key := self.styles[i]
+        other := previous.styles[i]
+        if key >= 0 || other >= 0 { return key == other }
+        self.decoration(key) == previous.decoration(other)
+    }
+
+    fn resolved(&self, key: i64) -> Style {
+        decoration := self.decoration(key)
+        brush := paint.Brush::unpack(decoration.packed)
+        Style {
+            fg: brush.fg, bg: brush.bg,
+            underline: decoration.underline, added: brush.modifiers, removed: 0
+        }
+    }
+
+    pub fn style_at(&self, x: i32, y: i32) -> Option<Style> {
+        if x < 0 || y < 0 || x >= self.bounds.w || y >= self.bounds.h { return .None }
+        .Some(self.resolved(self.styles[y * self.bounds.w + x]))
+    }
+
+    pub fn apply_style(&mut self, area: Rect, overlay: Style) {
+        if area.w <= 0 || area.h <= 0 || overlay.empty() { return }
+        left := clamp(area.x, self.bounds.w)
+        top := clamp(area.y, self.bounds.h)
+        right := i32(cmp.min<i64>(i64(area.x) + i64(area.w), i64(self.bounds.w)))
+        bottom := i32(cmp.min<i64>(i64(area.y) + i64(area.h), i64(self.bounds.h)))
+        if left >= right || top >= bottom { return }
+        mut last: i64 = 0
+        mut result := self.composite(last, &overlay)
+        for y in top..bottom {
+            mut x := left
+            while x < right {
+                i := y * self.bounds.w + x
+                start := if self.glyphs[i] == TRAIL { i - 1 } else { i }
+                old := self.styles[start]
+                if old != last { last = old; result = self.composite(old, &overlay) }
+                self.styles[start] = result
+                if self.glyphs[start] >= WIDE { self.styles[start + 1] = result }
+                x = start - y * self.bounds.w + 1 + self.glyphs[start].shr(21)
+            }
+        }
+    }
 
     fn erase_span(&mut self, i: i32) {
         code := self.glyphs[i]
@@ -114,7 +332,19 @@ impl Frame {
         self.styles[i] = style
     }
 
-    fn ascii_line(&mut self, area: Rect, value: string, brush: i64) -> bool {
+    fn composite(&mut self, old: i64, overlay: &Style) -> i64 {
+        decoration := self.decoration(old)
+        mut brush := paint.Brush::unpack(decoration.packed)
+        if overlay.fg != INHERIT { brush.fg = overlay.fg }
+        if overlay.bg != INHERIT { brush.bg = overlay.bg }
+        brush.modifiers = brush.modifiers.bit_and(overlay.removed.bit_not()).bit_or(overlay.added).bit_and(511)
+        underline := if overlay.underline == INHERIT { decoration.underline } else { overlay.underline }
+        packed := brush.packed()
+        if packed == decoration.packed && underline == decoration.underline { return old }
+        self.style_key(packed, underline)
+    }
+
+    fn ascii_line(&mut self, area: Rect, value: string, brush: i64, overlay: &Style) -> bool {
         for j in 0..value.len { if value[j] < 32 || value[j] >= 127 { return false } }
         if area.y < 0 || area.y >= self.bounds.h { return true }
         start := if area.x < 0 { -i64(area.x) } else { i64(0) }
@@ -124,24 +354,40 @@ impl Frame {
         if start >= limit { return true }
         i := area.y * self.bounds.w + i32(i64(area.x) + start)
         mut at := i
+        if overlay.empty() {
+            for j in i32(start)..i32(limit) {
+                if self.glyphs[at] == TRAIL || self.glyphs[at] >= WIDE { self.erase_span(at) }
+                self.glyphs[at] = i32(value[j]) - 32
+                at += 1
+            }
+            return true
+        }
+        mut last: i64 = 0
+        mut combined := brush
         for j in i32(start)..i32(limit) {
+            old := self.styles[at]
+            if old != last {
+                last = old
+                combined = if old == 0 || old == brush { brush } else { self.composite(old, &overlay) }
+            }
             if self.glyphs[at] == TRAIL || self.glyphs[at] >= WIDE { self.erase_span(at) }
             self.glyphs[at] = i32(value[j]) - 32
-            self.styles[at] = brush
+            self.styles[at] = combined
             at += 1
         }
         true
     }
 
     pub fn text(&mut self, area: Rect, value: string, style: Style) {
-        self.write_text(area, value, style.brush().packed())
+        brush := self.encode(style)
+        self.write_text(area, value, brush, &style)
     }
 
-    fn write_text(&mut self, area: Rect, value: string, brush: i64) {
+    fn write_text(&mut self, area: Rect, value: string, brush: i64, overlay: &Style) {
         mut x := 0
         mut y := 0
         if area.h <= 0 || area.w <= 0 { return }
-        if self.ascii_line(area, value, brush) { return }
+        if self.ascii_line(area, value, brush, &overlay) { return }
         chars := value.runes()
         mut at := 0
         mut offset := 0
@@ -158,25 +404,28 @@ impl Frame {
             px := i64(area.x) + i64(x)
             py := i64(area.y) + i64(y)
             if px >= 0 && px <= i64(self.bounds.w - glyph.span) && py >= 0 && py < i64(self.bounds.h) {
-                if single { self.put(i32(px), i32(py), cp, glyph.span, brush) }
+                cell := i32(py) * self.bounds.w + i32(px)
+                old := self.styles[cell]
+                combined := if old == 0 || old == brush { brush } else { self.composite(old, &overlay) }
+                if single { self.put(i32(px), i32(py), cp, glyph.span, combined) }
                 else {
                     if self.clusters.len == 0 {
                         self.clusters.reserve(self.glyphs.len)
                         for _ in 0..self.glyphs.len { self.clusters.push("") }
                     }
-                    self.put(i32(px), i32(py), CLUSTER, glyph.span, brush)
-                    self.clusters[i32(py) * self.bounds.w + i32(px)] = value[start..offset]
+                    self.put(i32(px), i32(py), CLUSTER, glyph.span, combined)
+                    self.clusters[cell] = value[start..offset]
                 }
             }
             x += glyph.span
         }
     }
 
-    pub fn label(&mut self, area: Rect, value: string) { self.write_text(area, value, 0) }
+    pub fn label(&mut self, area: Rect, value: string) { self.write_text(area, value, 0, &plain()) }
 
     pub fn panel(&mut self, area: Rect, title: string, style: Style) -> Rect {
         if area.w < 2 || area.h < 2 { return area.inset(1) }
-        brush := style.brush().packed()
+        brush := self.encode(style)
         right := area.x + area.w - 1
         bottom := area.y + area.h - 1
         for x in (area.x + 1)..right {
@@ -207,7 +456,7 @@ impl Frame {
     }
 
     pub fn half_block(&mut self, x: i32, y: i32, upper: u32, lower: u32) {
-        brush := paint.Brush { fg: 0x1000000 + i32(upper.bit_and(0xffffff)), bg: 0x1000000 + i32(lower.bit_and(0xffffff)), bold: false, reverse: false }
+        brush := paint.Brush { fg: packed_rgb(upper), bg: packed_rgb(lower), modifiers: 0 }
         self.put(x, y, 0x2580, 1, brush.packed())
     }
 
@@ -240,6 +489,7 @@ impl Frame {
     }
 
     pub fn clear(&mut self) {
+        self.decorations.clear()
         self.clusters.clear()
         if self.glyphs.len > 0 {
             unsafe {
@@ -250,17 +500,31 @@ impl Frame {
     }
 
     fn changed(&self, previous: &Frame, i: i32) -> bool {
-        self.glyphs[i] != previous.glyphs[i] || self.styles[i] != previous.styles[i] ||
+        self.glyphs[i] != previous.glyphs[i] || !self.same_style(&previous, i) ||
         (self.glyphs[i].bit_and(WIDE - 1) == CLUSTER - 32 && self.clusters[i] != previous.clusters[i])
     }
 
-    fn same_row(&self, previous: &Frame, row: i32) -> bool {
+    fn shared_style_floor(&self, previous: &Frame) -> i64 {
+        count := cmp.min<i32>(self.decorations.len, previous.decorations.len)
+        mut offset := 0
+        while offset < count {
+            if self.decorations[offset] != previous.decorations[offset] || self.decorations[offset + 1] != previous.decorations[offset + 1] { return -i64(offset) }
+            offset += 2
+        }
+        if self.decorations.len != previous.decorations.len { return -i64(count) }
+        -9223372036854775808
+    }
+
+    fn same_row(&self, previous: &Frame, row: i32, shared_floor: i64) -> bool {
         if self.clusters.len > 0 || previous.clusters.len > 0 || self.bounds.w == 0 { return false }
         unsafe {
-            return bytes.equal_memory(addr(&self.glyphs[row]), addr(&previous.glyphs[row]), usize(self.bounds.w) * size_of(i32)) &&
-            bytes.equal_memory(addr(&self.styles[row]), addr(&previous.styles[row]), usize(self.bounds.w) * size_of(i64))
+            if !bytes.equal_memory(addr(&self.glyphs[row]), addr(&previous.glyphs[row]), usize(self.bounds.w) * size_of(i32)) ||
+            !bytes.equal_memory(addr(&self.styles[row]), addr(&previous.styles[row]), usize(self.bounds.w) * size_of(i64)) { return false }
         }
-        false
+        if shared_floor != -9223372036854775808 {
+            for i in row..(row + self.bounds.w) { if self.styles[i] < shared_floor { return false } }
+        }
+        true
     }
 
     fn run_start(&self, previous: &Frame, i: i32, end: i32, full: bool) -> i32 {
@@ -282,10 +546,11 @@ impl Frame {
 
     pub fn ansi_diff(&self, previous: &Frame, out: &mut []u8) {
         full := self.bounds.w != previous.bounds.w || self.bounds.h != previous.bounds.h
+        shared_floor := if full { i64(0) } else { self.shared_style_floor(&previous) }
         mut current: i64 = 0
         for y in 0..self.bounds.h {
             row := y * self.bounds.w
-            if !full && self.same_row(&previous, row) { continue }
+            if !full && self.same_row(&previous, row, shared_floor) { continue }
             end := row + self.bounds.w
             mut at := row
             while at < end {
@@ -297,7 +562,7 @@ impl Frame {
                 while i < finish {
                     style := self.styles[i]
                     if current != style {
-                        paint.transition(&mut out, paint.Brush::unpack(current), paint.Brush::unpack(style))
+                        paint.transition(&mut out, self.decoration(current), self.decoration(style))
                         current = style
                     }
                     self.append_cell(&mut out, i)
@@ -311,10 +576,11 @@ impl Frame {
 
     fn paint_windows(&self, previous: &Frame, term: &terminal.Session) -> bool {
         full := self.bounds.w != previous.bounds.w || self.bounds.h != previous.bounds.h
+        shared_floor := if full { i64(0) } else { self.shared_style_floor(&previous) }
         mut run: []u8 = []
         for y in 0..self.bounds.h {
             row := y * self.bounds.w
-            if !full && self.same_row(&previous, row) { continue }
+            if !full && self.same_row(&previous, row, shared_floor) { continue }
             end := row + self.bounds.w
             mut at := row
             while at < end {
@@ -330,7 +596,7 @@ impl Frame {
                         self.append_cell(&mut run, i)
                         i += 1 + self.glyphs[i].shr(21)
                     }
-                    if !windows.paint(&term.win, x, y, bytes.decode(&run).unwrap(), paint.Brush::unpack(style)) { return false }
+                    if !windows.paint(&term.win, x, y, bytes.decode(&run).unwrap(), paint.Brush::unpack(self.decoration(style).packed)) { return false }
                 }
                 at = finish
             }
