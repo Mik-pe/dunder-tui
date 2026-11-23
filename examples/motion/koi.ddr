@@ -1,0 +1,51 @@
+import std.math as m
+import tui.canvas as c
+import .art
+
+fn fish(s: &mut c.Canvas, t: f64, phase: f64, size: f64, pigment: u32) {
+    a := t * 0.27 + phase
+    cx := 0.5 + 0.29 * m.cos(a)
+    cy := 0.52 + 0.25 * m.sin(a)
+    vx := -0.29 * m.sin(a) * f64(s.w) / f64(s.h)
+    vy := 0.25 * m.cos(a)
+    length := (vx * vx + vy * vy).sqrt()
+    fx := vx / length
+    fy := vy / length
+    for y in 0..s.h {
+        dy := ((f64(y) + 0.5) / f64(s.h) - cy) / size
+        for x in 0..s.w {
+            dx := (f64(x) + 0.5 - cx * f64(s.w)) / (f64(s.h) * size)
+            u := dx * fx + dy * fy
+            if u < -1.6 || u > 1.0 { continue }
+            v := -dx * fy + dy * fx + 0.16 * art.sat(-u) * m.sin(u * 3.1 - t * 3.8 - phase)
+            body := u * u + (v * v) / (0.25 + 0.12 * u) / (0.25 + 0.12 * u)
+            tail := u < -0.70 && v.abs() < (-u - 0.63) * 0.40 && u > -1.48 + v.abs() * 0.8
+            fin := (u + 0.09 + 0.71 * v.abs()).abs() + v.abs() * 0.65 < 0.41 && v.abs() < 0.53
+            i := y * s.w + x
+            if fin || tail { s.pixels[i] = c.mix(s.pixels[i], 0xd8cda8, 0.65) }
+            if body >= 1.0 { continue }
+            patch := m.sin(u * 8.0 + phase * 3.0) + 0.68 * m.cos(v * 14.0 + u * 5.0) + 0.31 * m.sin(u * 19.0 - v * 9.0)
+            mut col := c.mix(0xe5d9ad, 0xfff9d7, 1.0 - body)
+            if patch > 0.20 { col = c.mix(pigment, 0xffa655, (1.0 - body) * 0.32) }
+            if patch < -1.37 { col = 0x293138 }
+            if (u - 0.61).abs() < 0.10 && (v.abs() - 0.18).abs() < 0.065 { col = 0x19272c }
+            s.pixels[i] = col
+        }
+    }
+}
+
+pub fn draw(s: &mut c.Canvas, t: f64) {
+    for y in 0..s.h {
+        for x in 0..s.w {
+            u := f64(x) / f64(s.w)
+            v := f64(y) / f64(s.h)
+            caustic := m.sin(u * 18.0 + 2.0 * m.sin(v * 7.0 + t * 0.35) + t * 0.42) + m.sin(v * 16.0 + u * 3.0 - t * 0.48)
+            mut col := c.mix(0x09323b, 0x23605c, (1.0 - v) * 0.64 + art.wave(u * 4.0 + v) * 0.28)
+            col = c.mix(col, 0x91c3a4, art.glow(caustic - 1.31, 0.19) * 0.36)
+            s.pixels[y * s.w + x] = col
+        }
+    }
+    fish(&mut s, t, 0.1, 0.19, 0xd74d32)
+    fish(&mut s, t, 2.5, 0.165, 0xd59d2d)
+    fish(&mut s, t, 4.5, 0.20, 0xd74d32)
+}

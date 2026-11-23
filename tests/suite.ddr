@@ -1,3 +1,5 @@
+import std.bytes as bytes
+import ..src.canvas
 import ..src.tui
 import ..src.input
 import ..src.width
@@ -81,4 +83,62 @@ import ..src.width
     assert(frame.line(1) == "❤️1️⃣.")
     frame.label(tui.Rect { x: 1, y: 2, w: 2, h: 1 }, "💻")
     assert(frame.line(2) == "A💻界")
+}
+
+@test fn diff_tracks_glyph_width_spacing_and_separated_changes() {
+    mut old := tui.Frame::new(7, 1)
+    mut next := tui.Frame::new(7, 1)
+    old.label(old.area(), "a界bcdx")
+    next.label(next.area(), "a12bcdy")
+    mut out: []u8 = []
+    next.ansi_diff(&old, &mut out)
+    assert(bytes.decode(&out).unwrap() == "\x1b[1;2H12\x1b[1;7Hy")
+    out.clear()
+    old.ansi_diff(&next, &mut out)
+    assert(bytes.decode(&out).unwrap() == "\x1b[1;2H界\x1b[1;7Hx")
+    out.clear()
+    old.ansi_diff(&old, &mut out)
+    assert(out.len == 0)
+}
+
+@test fn diff_preserves_style_only_changes_and_resets_the_terminal() {
+    mut old := tui.Frame::new(3, 1)
+    mut next := tui.Frame::new(3, 1)
+    old.label(old.area(), "abc")
+    next.label(next.area(), "abc")
+    next.text(tui.Rect { x: 1, y: 0, w: 1, h: 1 }, "b", tui.ink(.Rgb(11, 129, 255)).background(.Indexed(197)).bold())
+    mut out: []u8 = []
+    next.ansi_diff(&old, &mut out)
+    assert(bytes.decode(&out).unwrap() == "\x1b[1;2H\x1b[38;2;11;129;255;48;5;197;1mb\x1b[0m")
+}
+
+@test fn half_block_canvas_clips_and_places_top_and_bottom_pixels() {
+    mut raster := canvas.Canvas::new(2, 3, 0x00ff00)
+    raster.line(-1, 0, 1, 0, 0xff0000)
+    mut frame := tui.Frame::new(3, 2)
+    raster.render(&mut frame, tui.Rect { x: 1, y: 0, w: 2, h: 2 })
+    assert(frame.line(1) == " ▀▀")
+    mut out: []u8 = []
+    previous := tui.Frame::new(3, 2)
+    frame.ansi_diff(&previous, &mut out)
+    assert(bytes.decode(&out).unwrap() == "\x1b[1;2H\x1b[38;2;255;0;0;48;2;0;255;0m▀▀\x1b[2;2H\x1b[38;2;0;255;0m▀▀\x1b[0m")
+    frame.clear()
+    assert(frame.line(0) == "   ")
+}
+
+@test fn canvas_clips_extreme_endpoints_before_stepping() {
+    mut raster := canvas.Canvas::new(4, 3, 0)
+    raster.line(-2147483647, 1, 2147483647, 1, 0xfefefe)
+    for x in 0..4 { assert(raster.pixels[4 + x] == 0xfefefe) }
+    raster.line(2147483647, 0, 1111111, 2, 0xff00ff)
+    assert(raster.pixels[3] == 0)
+}
+
+@test fn white_rgb_round_trips_on_both_halves() {
+    mut frame := tui.Frame::new(1, 1)
+    base := tui.Frame::new(1, 1)
+    frame.half_block(0, 0, 0xffffff, 0xffffff)
+    mut out: []u8 = []
+    frame.ansi_diff(&base, &mut out)
+    assert(bytes.decode(&out).unwrap() == "\x1b[1;1H\x1b[38;2;255;255;255;48;2;255;255;255m▀\x1b[0m")
 }

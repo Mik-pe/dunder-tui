@@ -1,0 +1,29 @@
+import std.math as m
+import tui.canvas as c
+import .art
+
+pub fn draw(s: &mut c.Canvas, t: f64) {
+    for y in 0..s.h {
+        for x in 0..s.w {
+            u := (f64(x) + 0.5 - f64(s.w) * 0.49) / f64(s.h)
+            v := (f64(y) + 0.5) / f64(s.h) - 0.53
+            a := u * 0.985 - v * 0.17
+            b := u * 0.17 + v * 0.985
+            r := (a * a + b * b).sqrt()
+            col0 := art.stars(x, y, t * 0.4, 0x090912, 0xc6b4ce)
+            mut col := c.mix(col0, 0x953f38, art.glow(r - 0.22, 0.21) * 0.47)
+            lens := (a * a + b * b * 0.81).sqrt()
+            ring := art.glow(lens - 0.215, 0.095)
+            threads := 0.72 + 0.28 * art.wave(lens * 152.0 + 3.0 * m.sin(a * 12.0 + t) - t * 1.8)
+            col = c.mix(col, art.ramp(0xb14c48, 0xffaa63, 0xffefb4, ring), ring * threads)
+            if r < 0.162 { col = 0x090810 }
+            disk := (a * a + b * b * 34.0).sqrt()
+            if disk < 0.88 && (r >= 0.16 || b > -0.007) {
+                fall := art.sat(1.1 - disk) * art.sat((disk - 0.09) * 8.0)
+                filament := art.wave(disk * 103.0 + 2.1 * m.sin(a * 12.0 + t) - t * 2.2)
+                col = c.mix(col, art.ramp(0x904051, 0xff9958, 0xffedaa, fall * 0.73 + filament * 0.27), fall * (0.63 + filament * 0.37))
+            }
+            s.pixels[y * s.w + x] = col
+        }
+    }
+}

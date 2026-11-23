@@ -1,13 +1,34 @@
-capability stdio
+capability stdio, unsafe
 
 import .width
 import .terminal
 import .posix
 import .windows
 import std.bytes as bytes
+import std.time as clock
+import .paint
 
-pub enum Color { Default, Black, Red, Green, Yellow, Blue, Magenta, Cyan, White }
+pub enum Color { Default, Black, Red, Green, Yellow, Blue, Magenta, Cyan, White, Indexed(u8), Rgb(u8, u8, u8) }
 pub struct Style { fg: Color, bg: Color, strong: bool, reverse: bool }
+
+impl Color {
+    pub fn code(&self) -> i32 {
+        match self {
+            .Default => -1, .Black => 0, .Red => 1, .Green => 2, .Yellow => 3,
+            .Blue => 4, .Magenta => 5, .Cyan => 6, .White => 7,
+            .Indexed(n) => i32(n),
+            .Rgb(r, g, b) => 0x1000000 + i32(r) * 65536 + i32(g) * 256 + i32(b),
+        }
+    }
+}
+
+impl Eq for Color {
+    fn eq(&self, other: &Self) -> bool { self.code() == other.code() }
+}
+
+pub fn rgb(value: u32) -> Color {
+    .Rgb(u8(value.shr(16).bit_and(255)), u8(value.shr(8).bit_and(255)), u8(value.bit_and(255)))
+}
 
 pub fn plain() -> Style { Style { fg: .Default, bg: .Default, strong: false, reverse: false } }
 pub fn ink(color: Color) -> Style { plain().foreground(color) }
@@ -18,17 +39,8 @@ impl Style {
     pub fn bold(self) -> Self { mut s := self; s.strong = true; s }
     pub fn inverted(self) -> Self { mut s := self; s.reverse = true; s }
 
-    fn same(self, other: Style) -> bool {
-        self.fg == other.fg && self.bg == other.bg && self.strong == other.strong && self.reverse == other.reverse
-    }
-
-    fn ansi(self) -> string {
-        mut seq := "\u{1b}[0"
-        if self.fg != Color.Default { seq += ";" + (29 + i32(self.fg)).str() }
-        if self.bg != Color.Default { seq += ";" + (39 + i32(self.bg)).str() }
-        if self.strong { seq += ";1" }
-        if self.reverse { seq += ";7" }
-        seq + "m"
+    fn brush(&self) -> paint.Brush {
+        paint.Brush { fg: self.fg.code(), bg: self.bg.code(), bold: self.strong, reverse: self.reverse }
     }
 }
 
@@ -62,43 +74,74 @@ impl Rect {
     }
 }
 
-struct Cell { glyph: string, span: i32, style: Style }
-fn blank() -> Cell { Cell { glyph: " ", span: 1, style: plain() } }
+const TRAIL: i32 = -1
+const CLUSTER: i32 = 0x110000
+const WIDE: i32 = 0x200000
 
-pub opaque struct Frame { bounds: Rect, cells: []Cell }
+pub opaque struct Frame { bounds: Rect, glyphs: []i32, styles: []i64, clusters: []string }
 
 impl Frame {
     pub fn new(w: i32, h: i32) -> Self {
         cols := clamp(w, 4096)
         rows := clamp(h, if cols > 0 { clamp(1048576 / cols, 4096) } else { 4096 })
-        mut cells: []Cell = []
-        cells.reserve(cols * rows)
-        for _ in 0..(cols * rows) { cells.push(blank()) }
-        Self { bounds: Rect { x: 0, y: 0, w: cols, h: rows }, cells: cells }
+        n := cols * rows
+        mut glyphs: []i32 = []
+        mut styles: []i64 = []
+        glyphs.reserve(n)
+        styles.reserve(n)
+        for _ in 0..n { glyphs.push(0); styles.push(0) }
+        Self { bounds: Rect { x: 0, y: 0, w: cols, h: rows }, glyphs: glyphs, styles: styles, clusters: [] }
     }
 
     pub fn area(&self) -> Rect { self.bounds }
 
     fn erase_span(&mut self, i: i32) {
-        span := self.cells[i].span
-        if span == 0 { self.cells[i - 1] = blank() }
-        if span == 2 { self.cells[i + 1] = blank() }
+        code := self.glyphs[i]
+        if code == TRAIL { self.glyphs[i - 1] = 0; self.styles[i - 1] = 0 }
+        if code >= WIDE { self.glyphs[i + 1] = 0; self.styles[i + 1] = 0 }
     }
 
-    fn put(&mut self, x: i32, y: i32, glyph: string, span: i32, style: Style) {
+    fn put(&mut self, x: i32, y: i32, symbol: i32, span: i32, style: i64) {
         if x < 0 || y < 0 || y >= self.bounds.h || x > self.bounds.w - span { return }
         i := y * self.bounds.w + x
         self.erase_span(i)
         if span == 2 {
             self.erase_span(i + 1)
-            self.cells[i + 1] = Cell { glyph: "", span: 0, style: style }
+            self.glyphs[i + 1] = TRAIL
+            self.styles[i + 1] = style
         }
-        self.cells[i] = Cell { glyph: glyph.clone(), span: span, style: style }
+        self.glyphs[i] = (symbol - 32).bit_or((span - 1) * WIDE)
+        self.styles[i] = style
+    }
+
+    fn ascii_line(&mut self, area: Rect, value: string, brush: i64) -> bool {
+        for j in 0..value.len { if value[j] < 32 || value[j] >= 127 { return false } }
+        if area.y < 0 || area.y >= self.bounds.h { return true }
+        start := if area.x < 0 { -i64(area.x) } else { i64(0) }
+        fit := i64(self.bounds.w) - i64(area.x)
+        end := i64(clamp(value.len, area.w))
+        limit := if fit < end { fit } else { end }
+        if start >= limit { return true }
+        i := area.y * self.bounds.w + i32(i64(area.x) + start)
+        mut at := i
+        for j in i32(start)..i32(limit) {
+            if self.glyphs[at] == TRAIL || self.glyphs[at] >= WIDE { self.erase_span(at) }
+            self.glyphs[at] = i32(value[j]) - 32
+            self.styles[at] = brush
+            at += 1
+        }
+        true
     }
 
     pub fn text(&mut self, area: Rect, value: string, style: Style) {
+        self.write_text(area, value, style.brush().packed())
+    }
+
+    fn write_text(&mut self, area: Rect, value: string, brush: i64) {
         mut x := 0
         mut y := 0
+        if area.h <= 0 || area.w <= 0 { return }
+        if self.ascii_line(area, value, brush) { return }
         chars := value.runes()
         mut at := 0
         mut offset := 0
@@ -106,6 +149,7 @@ impl Frame {
             cp := i32(chars[at])
             glyph := width.glyph(&chars, at)
             start := offset
+            single := glyph.end == at + 1
             at = glyph.end
             offset += glyph.bytes
             if cp == 10 { x = 0; y += 1; continue }
@@ -114,30 +158,39 @@ impl Frame {
             px := i64(area.x) + i64(x)
             py := i64(area.y) + i64(y)
             if px >= 0 && px <= i64(self.bounds.w - glyph.span) && py >= 0 && py < i64(self.bounds.h) {
-                self.put(i32(px), i32(py), value[start..offset], glyph.span, style)
+                if single { self.put(i32(px), i32(py), cp, glyph.span, brush) }
+                else {
+                    if self.clusters.len == 0 {
+                        self.clusters.reserve(self.glyphs.len)
+                        for _ in 0..self.glyphs.len { self.clusters.push("") }
+                    }
+                    self.put(i32(px), i32(py), CLUSTER, glyph.span, brush)
+                    self.clusters[i32(py) * self.bounds.w + i32(px)] = value[start..offset]
+                }
             }
             x += glyph.span
         }
     }
 
-    pub fn label(&mut self, area: Rect, value: string) { self.text(area, value, plain()) }
+    pub fn label(&mut self, area: Rect, value: string) { self.write_text(area, value, 0) }
 
     pub fn panel(&mut self, area: Rect, title: string, style: Style) -> Rect {
         if area.w < 2 || area.h < 2 { return area.inset(1) }
+        brush := style.brush().packed()
         right := area.x + area.w - 1
         bottom := area.y + area.h - 1
         for x in (area.x + 1)..right {
-            self.put(x, area.y, "─", 1, style)
-            self.put(x, bottom, "─", 1, style)
+            self.put(x, area.y, 0x2500, 1, brush)
+            self.put(x, bottom, 0x2500, 1, brush)
         }
         for y in (area.y + 1)..bottom {
-            self.put(area.x, y, "│", 1, style)
-            self.put(right, y, "│", 1, style)
+            self.put(area.x, y, 0x2502, 1, brush)
+            self.put(right, y, 0x2502, 1, brush)
         }
-        self.put(area.x, area.y, "┌", 1, style)
-        self.put(right, area.y, "┐", 1, style)
-        self.put(area.x, bottom, "└", 1, style)
-        self.put(right, bottom, "┘", 1, style)
+        self.put(area.x, area.y, 0x250c, 1, brush)
+        self.put(right, area.y, 0x2510, 1, brush)
+        self.put(area.x, bottom, 0x2514, 1, brush)
+        self.put(right, bottom, 0x2518, 1, brush)
         self.text(Rect { x: area.x + 1, y: area.y, w: area.w - 2, h: 1 }, title, style)
         area.inset(1)
     }
@@ -153,101 +206,203 @@ impl Frame {
         }
     }
 
-    fn row(&self, y: i32, styled: bool) -> string {
+    pub fn half_block(&mut self, x: i32, y: i32, upper: u32, lower: u32) {
+        brush := paint.Brush { fg: 0x1000000 + i32(upper.bit_and(0xffffff)), bg: 0x1000000 + i32(lower.bit_and(0xffffff)), bold: false, reverse: false }
+        self.put(x, y, 0x2580, 1, brush.packed())
+    }
+
+    fn append_cell(&self, out: &mut []u8, i: i32) {
+        if self.glyphs[i] == TRAIL { return }
+        cp := self.glyphs[i].bit_and(WIDE - 1) + 32
+        if cp == CLUSTER { bytes.append_utf8(&mut out, self.clusters[i]) }
+        else if cp == 0 { return }
+        else if cp < 128 { out.push(u8(cp)) }
+        else if cp < 2048 {
+            out.push(u8(192 + cp.shr(6)))
+            out.push(u8(128 + cp.bit_and(63)))
+        } else {
+            if cp < 65536 { out.push(u8(224 + cp.shr(12))) }
+            else {
+                out.push(u8(240 + cp.shr(18)))
+                out.push(u8(128 + cp.shr(12).bit_and(63)))
+            }
+            out.push(u8(128 + cp.shr(6).bit_and(63)))
+            out.push(u8(128 + cp.bit_and(63)))
+        }
+    }
+
+    pub fn line(&self, y: i32) -> string {
         if y < 0 || y >= self.bounds.h { return "" }
         mut out: []u8 = []
-        mut current := plain()
-        mut end := self.bounds.w
-        if styled {
-            while end > 0 {
-                i := y * self.bounds.w + end - 1
-                if self.cells[i].glyph != " " || !self.cells[i].style.same(plain()) { break }
-                end -= 1
-            }
-        }
-        for x in 0..end {
-            i := y * self.bounds.w + x
-            if self.cells[i].span == 0 { continue }
-            style := self.cells[i].style
-            if styled && !current.same(style) {
-                bytes.append_utf8(&mut out, style.ansi())
-                current = style
-            }
-            bytes.append_utf8(&mut out, self.cells[i].glyph)
-        }
-        if styled && !current.same(plain()) { bytes.append_utf8(&mut out, "\u{1b}[0m") }
-        if end < self.bounds.w { bytes.append_utf8(&mut out, "\x1b[K") }
+        start := y * self.bounds.w
+        for i in start..(start + self.bounds.w) { self.append_cell(&mut out, i) }
         bytes.decode(&out).unwrap()
     }
 
-    pub fn line(&self, y: i32) -> string { self.row(y, false) }
-
-    fn same_row(&self, previous: &Frame, y: i32) -> bool {
-        if self.bounds.h != previous.bounds.h || self.bounds.w != previous.bounds.w { return false }
-        start := y * self.bounds.w
-        for i in start..(start + self.bounds.w) {
-            if self.cells[i].glyph != previous.cells[i].glyph || !self.cells[i].style.same(previous.cells[i].style) { return false }
-        }
-        true
-    }
-
-    fn paint_row(&self, term: &terminal.Session, y: i32) -> bool {
-        mut x := 0
-        while x < self.bounds.w {
-            start := x
-            style := self.cells[y * self.bounds.w + x].style
-            mut run: []u8 = []
-            while x < self.bounds.w {
-                i := y * self.bounds.w + x
-                if !self.cells[i].style.same(style) { break }
-                bytes.append_utf8(&mut run, self.cells[i].glyph)
-                x += 1
+    pub fn clear(&mut self) {
+        self.clusters.clear()
+        if self.glyphs.len > 0 {
+            unsafe {
+                bytes.zero_memory(addr(&mut self.glyphs[0]), usize(self.glyphs.len) * size_of(i32))
+                bytes.zero_memory(addr(&mut self.styles[0]), usize(self.styles.len) * size_of(i64))
             }
-            if !windows.paint(&term.win, start, y, bytes.decode(&run).unwrap(), style) { return false }
+        }
+    }
+
+    fn changed(&self, previous: &Frame, i: i32) -> bool {
+        self.glyphs[i] != previous.glyphs[i] || self.styles[i] != previous.styles[i] ||
+        (self.glyphs[i].bit_and(WIDE - 1) == CLUSTER - 32 && self.clusters[i] != previous.clusters[i])
+    }
+
+    fn same_row(&self, previous: &Frame, row: i32) -> bool {
+        if self.clusters.len > 0 || previous.clusters.len > 0 || self.bounds.w == 0 { return false }
+        unsafe {
+            return bytes.equal_memory(addr(&self.glyphs[row]), addr(&previous.glyphs[row]), usize(self.bounds.w) * size_of(i32)) &&
+            bytes.equal_memory(addr(&self.styles[row]), addr(&previous.styles[row]), usize(self.bounds.w) * size_of(i64))
+        }
+        false
+    }
+
+    fn run_start(&self, previous: &Frame, i: i32, end: i32, full: bool) -> i32 {
+        mut start := i
+        while start < end {
+            if self.glyphs[start] != TRAIL && (full || self.changed(&previous, start)) { break }
+            start += 1
+        }
+        start
+    }
+
+    fn run_end(&self, previous: &Frame, start: i32, end: i32, full: bool) -> i32 {
+        mut finish := start
+        while finish < end && (full || self.changed(&previous, finish)) {
+            finish += 1 + self.glyphs[finish].shr(21)
+        }
+        finish
+    }
+
+    pub fn ansi_diff(&self, previous: &Frame, out: &mut []u8) {
+        full := self.bounds.w != previous.bounds.w || self.bounds.h != previous.bounds.h
+        mut current: i64 = 0
+        for y in 0..self.bounds.h {
+            row := y * self.bounds.w
+            if !full && self.same_row(&previous, row) { continue }
+            end := row + self.bounds.w
+            mut at := row
+            while at < end {
+                start := self.run_start(&previous, at, end, full)
+                if start == end { break }
+                finish := self.run_end(&previous, start, end, full)
+                paint.cursor(&mut out, start - row, y)
+                mut i := start
+                while i < finish {
+                    style := self.styles[i]
+                    if current != style {
+                        paint.transition(&mut out, paint.Brush::unpack(current), paint.Brush::unpack(style))
+                        current = style
+                    }
+                    self.append_cell(&mut out, i)
+                    i += 1 + self.glyphs[i].shr(21)
+                }
+                at = finish
+            }
+        }
+        if current != 0 { bytes.append_utf8(&mut out, "\x1b[0m") }
+    }
+
+    fn paint_windows(&self, previous: &Frame, term: &terminal.Session) -> bool {
+        full := self.bounds.w != previous.bounds.w || self.bounds.h != previous.bounds.h
+        mut run: []u8 = []
+        for y in 0..self.bounds.h {
+            row := y * self.bounds.w
+            if !full && self.same_row(&previous, row) { continue }
+            end := row + self.bounds.w
+            mut at := row
+            while at < end {
+                start := self.run_start(&previous, at, end, full)
+                if start == end { break }
+                finish := self.run_end(&previous, start, end, full)
+                mut i := start
+                while i < finish {
+                    style := self.styles[i]
+                    x := i - row
+                    run.clear()
+                    while i < finish && self.styles[i] == style {
+                        self.append_cell(&mut run, i)
+                        i += 1 + self.glyphs[i].shr(21)
+                    }
+                    if !windows.paint(&term.win, x, y, bytes.decode(&run).unwrap(), paint.Brush::unpack(style)) { return false }
+                }
+                at = finish
+            }
         }
         true
     }
 
-    fn present(&self, term: &terminal.Session, previous: &Frame) -> bool {
+    fn present(&self, term: &terminal.Session, previous: &Frame, output: &mut []u8) -> bool {
         if target_is("windows") {
-            for y in 0..self.bounds.h {
-                if !self.same_row(&previous, y) && !self.paint_row(&term, y) { return false }
-            }
-            return true
-        } else {
-            mut output: []u8 = []
-            for y in 0..self.bounds.h {
-                if self.same_row(&previous, y) { continue }
-                bytes.append_utf8(&mut output, "\x1b[" + (y + 1).str() + ";1H")
-                bytes.append_utf8(&mut output, self.row(y, true))
-            }
-            return output.len == 0 || posix.write(bytes.decode(&output).unwrap())
+            if !term.win.vt { return self.paint_windows(&previous, &term) }
         }
+        output.clear()
+        self.ansi_diff(&previous, &mut output)
+        if output.len == 0 { return true }
+        if target_is("windows") { return windows.write(&term.win, &output) }
+        else { return posix.write_bytes(&output) }
     }
 }
 
 pub enum Key { Char(rune), Up, Down, Left, Right, Home, End, Delete, Backspace, Tab, Enter, Escape }
 
 pub fn run<S>(state: &mut S, draw: fn(&mut Frame, &S), update: fn(&mut S, Key) -> bool) -> Result<(), string> {
+    drive<S>(&mut state, draw, update, 0, fn(_state: &mut S, _elapsed: i64) -> bool { false })
+}
+
+pub fn animate<S>(state: &mut S, fps: i32, draw: fn(&mut Frame, &S), update: fn(&mut S, Key) -> bool, tick: fn(&mut S, i64) -> bool) -> Result<(), string> {
+    if fps < 1 || fps > 1000 { return .Err("Frame rate must be between 1 and 1000.") }
+    drive<S>(&mut state, draw, update, fps, tick)
+}
+
+fn drive<S>(state: &mut S, draw: fn(&mut Frame, &S), update: fn(&mut S, Key) -> bool, fps: i32, tick: fn(&mut S, i64) -> bool) -> Result<(), string> {
     mut term := terminal.session()
     (cols, rows) := term.size()
     if cols <= 0 || rows <= 0 || !term.open() { return .Err("An interactive terminal is required on stdin and stdout.") }
     defer { term.close() }
     if !term.enter() { return .Err("Could not enter the alternate screen.") }
     mut previous := Frame::new(0, 0)
+    mut frame := Frame::new(0, 0)
+    mut output: []u8 = []
+    start := if fps > 0 { clock.monotonic_ns() } else { i64(0) }
+    if start < 0 { return .Err("Could not read the animation clock.") }
+    interval := if fps == 0 { i64(0) } else { i64(1000000000) / i64(fps) }
+    mut next_tick := start + interval
     mut dirty := true
     while true {
         (next_w, next_h) := term.size()
         if next_w <= 0 || next_h <= 0 { return .Err("Could not read the terminal size.") }
         if next_w > 4096 || next_h > 4096 || i64(next_w) * i64(next_h) > 1048576 { return .Err("Terminal viewport is too large.") }
+        if interval > 0 {
+            now := clock.monotonic_ns()
+            if now < 0 { return .Err("Could not read the animation clock.") }
+            if now >= next_tick {
+                dirty = tick(&mut state, (now - start) / 1000000) || dirty
+                next_tick += ((now - next_tick) / interval + 1) * interval
+            }
+        }
         if dirty || next_w != previous.bounds.w || next_h != previous.bounds.h {
-            mut frame := Frame::new(next_w, next_h)
+            if frame.bounds.w != next_w || frame.bounds.h != next_h { frame = Frame::new(next_w, next_h) }
+            else { frame.clear() }
             draw(&mut frame, &state)
-            if !frame.present(&term, &previous) { return .Err("Could not write the frame.") }
-            previous = frame
+            if !frame.present(&term, &previous, &mut output) { return .Err("Could not write the frame.") }
+            frame = replace(&mut previous, move frame)
             dirty = false
         }
-        match term.next() {
+        mut wait_ms := 125
+        if interval > 0 {
+            now := clock.monotonic_ns()
+            if now < 0 { return .Err("Could not read the animation clock.") }
+            left := next_tick - now
+            wait_ms = if left <= 0 { 0 } else { clamp(i32((left + 999999) / 1000000), 125) }
+        }
+        match term.next(wait_ms) {
             .Idle => {},
             .Error => { return .Err("Could not read terminal input.") },
             .Quit => { return .Ok },

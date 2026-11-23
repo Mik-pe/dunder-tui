@@ -1,0 +1,46 @@
+capability stdio
+
+import ..src.tui
+import sys
+import std.time as clock
+import std.array as array
+
+fn bench(mode: i32, name: string, timed: bool) {
+    mut old := tui.Frame::new(120, 40)
+    mut next := tui.Frame::new(120, 40)
+    mut out: []u8 = []
+    mut times: []i64 = []
+    mut bytes: i64 = 0
+    line_a := "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ--0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRST"
+    line_b := "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz++ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrst"
+    for n in 0..220 {
+        width := if mode == 3 && n % 2 == 0 { 100 } else { 120 }
+        start := if timed { clock.monotonic_ns() } else { i64(0) }
+        if next.area().w != width { next = tui.Frame::new(width, 40) } else { next.clear() }
+        for y in 0..40 {
+            odd := if mode == 2 { (y + n) % 5 == 0 } else if mode == 4 { n % 2 == 0 } else { y % 5 == 0 }
+            area := tui.Rect { x: 0, y: y, w: width, h: 1 }
+            if odd { next.label(area, line_b) } else { next.label(area, line_a) }
+        }
+        if mode == 1 { next.label(tui.Rect { x: 60, y: 20, w: 1, h: 1 }, if n % 2 == 0 { "X" } else { "Y" }) }
+        out.clear()
+        next.ansi_diff(&old, &mut out)
+        next = replace(&mut old, move next)
+        if n >= 20 {
+            if timed { times.push(clock.monotonic_ns() - start) }
+            bytes += i64(out.len)
+        }
+    }
+    if !timed { print(bytes); return }
+    array.sort<i64>(&mut times)
+    print(f"{name} {times[99]} {times[189]} {bytes/200}")
+}
+
+fn main() {
+    timed := sys.arg_count() < 2 || sys.arg(1) != "--allocations"
+    bench(0, "idle", timed)
+    bench(1, "cell", timed)
+    bench(2, "scroll", timed)
+    bench(3, "resize", timed)
+    bench(4, "full", timed)
+}

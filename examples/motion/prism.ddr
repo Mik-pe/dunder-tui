@@ -1,0 +1,35 @@
+import std.math as m
+import tui.canvas as c
+import .art
+
+pub fn draw(s: &mut c.Canvas, t: f64) {
+    colors: [u32; 7] = [0xff5064, 0xff884a, 0xffdb51, 0x81f49e, 0x52dce9, 0x608bff, 0xb779ff]
+    sweep := 0.035 * m.sin(t * 0.9)
+    for y in 0..s.h {
+        v := (f64(y) + 0.5) / f64(s.h)
+        for x in 0..s.w {
+            u := (f64(x) + 0.5) / f64(s.w)
+            mut color := art.stars(x, y, t, 0x0c1120, 0x5b6582)
+            left := 0.5 - (v - 0.16) * 0.35
+            right := 0.5 + (v - 0.16) * 0.35
+            if v >= 0.16 && v <= 0.83 && u >= left && u <= right {
+                color = art.ramp(0x172537, 0x38475d, 0x142032, (u - left) / (right - left + 0.001))
+                edge := m.min(m.min(u - left, right - u) * f64(s.w), (0.83 - v) * f64(s.h))
+                color = c.mix(color, 0xc3d5eb, art.sat(1.15 - edge))
+            }
+            enter := 0.65 + sweep - 0.36 * u
+            if u <= 0.37 { color = c.mix(color, 0xfff6dc, art.glow(v - enter, 0.035)) }
+            if u > 0.37 && u < 0.638 {
+                color = c.mix(color, 0xffedcb, art.glow(v - (0.515 + sweep + 0.09 * (u - 0.37)), 0.035))
+            }
+            if u >= 0.63 {
+                for band in 0..7 {
+                    slope := -0.49 + f64(band) * 0.166
+                    d := v - (0.539 + sweep + (u - 0.63) * slope)
+                    color = c.mix(color, colors[band], art.glow(d, 0.037) * 0.98)
+                }
+            }
+            s.pixels[y * s.w + x] = color
+        }
+    }
+}

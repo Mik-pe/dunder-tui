@@ -64,7 +64,10 @@ pub fn restore(state: &mut State) {
 }
 
 pub fn write(value: string) -> bool {
-    data := value.bytes()
+    write_bytes(&value.as_bytes())
+}
+
+pub fn write_bytes(data: &[]u8) -> bool {
     mut sent: i64 = 0
     while sent < i64(data.len) {
         unsafe {
@@ -77,7 +80,7 @@ pub fn write(value: string) -> bool {
     true
 }
 
-pub fn next(state: &mut State) -> input.Event {
+pub fn next(state: &mut State, wait_ms: i32) -> input.Event {
     mut expired := false
     while true {
         decoded := input.decode(&state.pending, expired)
@@ -85,7 +88,7 @@ pub fn next(state: &mut State) -> input.Event {
             bytes.consume_prefix(&mut state.pending, decoded.consumed)
             return decoded.event
         }
-        timeout := if state.pending.len == 0 { 125 } else if state.pending[0] == 27 { 40 } else { 500 }
+        timeout := if state.pending.len == 0 { wait_ms } else if state.pending[0] == 27 { 40 } else { 500 }
         mut pollfd: []u8 = [0, 0, 0, 0, 1, 0, 0, 0]
         unsafe {
             ready := sys.fd_poll(&mut pollfd, 1, i64(timeout))

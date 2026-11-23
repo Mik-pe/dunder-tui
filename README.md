@@ -1,6 +1,6 @@
 # dunder-tui
 
-Bygg interaktiva terminalappar i Dunder för macOS, Linux och Windows. Skriv en funktion som ritar appens tillstånd och en som tar emot tangenter. Biblioteket sköter inmatning, storleksändringar och återställning av terminalen. Bara ändrade rader ritas om.
+Bygg interaktiva terminalappar i Dunder för macOS, Linux och Windows. Skriv en funktion som ritar appens tillstånd och en som tar emot tangenter. Biblioteket sköter inmatning, storleksändringar och återställning av terminalen. Vid omritning skickas bara ändrade celler.
 
 ## Prova
 
@@ -14,13 +14,35 @@ dunder run examples/counter/main.ddr
 
 Tryck ↑ eller ↓ för att ändra talet och `q` för att avsluta. Kör `dunder run examples/bokhylla/main.ddr` för ett exempel med två paneler och en rullande lista. Prova att göra fönstret lägre än listan.
 
+## Animationer
+
+Kör galleriet med tio animationer. Välj en scen med ← och → eller siffrorna 1–9 och 0. Mellanslag pausar och återupptar. Avsluta med `q`.
+
+```sh
+dunder run examples/motion/main.ddr
+```
+
+![Tio animationer från galleriet](docs/motion.webp)
+
+Starta en viss scen med exempelvis `dunder run examples/motion/main.ddr -- koi`. Lista scenerna med `dunder run examples/motion/main.ddr -- --list`.
+
+| Tangent | Scen | Tangent | Scen |
+| --- | --- | --- | --- |
+| 1 | [Polarnatt](examples/motion/aurora.ddr) | 6 | [Efterglöd](examples/motion/afterglow.ddr) |
+| 2 | [Prisma](examples/motion/prism.ddr) | 7 | [Medusa](examples/motion/medusa.ddr) |
+| 3 | [Koidammen](examples/motion/koi.ddr) | 8 | [Tesserakt](examples/motion/tesseract.ddr) |
+| 4 | [Händelsehorisont](examples/motion/horizon.ddr) | 9 | [Glödbädd](examples/motion/ember.ddr) |
+| 5 | [Harmonograf](examples/motion/plotter.ddr) | 0 | [Drivande atlas](examples/motion/atlas.ddr) |
+
+För en egen animation tar `tui.animate(&mut state, 30, draw, update, tick)` hand om bildklockan. `tick` får förfluten tid i millisekunder och returnerar `true` när något behöver ritas. En sen bild går direkt till aktuell tid. Tangentbordet fungerar under tiden. Med `import tui.canvas` kan du rita pixlar och linjer i RGB. `Canvas.render` visar två vertikala pixlar per teckencell. Galleriet använder 24-bitarsfärg i moderna terminaler och närmaste konsolfärg i äldre Windowskonsoler.
+
 ## Skriv en egen app
 
 Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `dunder.toml`.
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.1.0", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.2.0", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.
@@ -66,7 +88,7 @@ fn main() -> i32 {
 | `frame.list(area, &items, selected, highlight)` | Visa listan med markerad rad. När markeringen passerar nederkanten följer vyn med. |
 | `tui.ink(.Cyan).bold()` | Välj textfärg. `.background(.Blue)` och `.inverted()` kan kombineras med färg och fetstil. |
 
-En egen widget är en vanlig funktion som tar `&mut tui.Frame` och en `tui.Rect`. Testa den utan terminal med `tui.Frame::new(20, 4)` och läs en färdig rad med `frame.line(0)`. [Körbara exempel på layout och textklippning](tests/suite.ddr)
+En egen widget är en vanlig funktion som tar `&mut tui.Frame` och en `tui.Rect`. Använd `tui.ink(tui.rgb(0x82efc5))` för RGB eller `tui.ink(.Indexed(197))` för palettfärg. Testa den utan terminal med `tui.Frame::new(20, 4)` och läs en färdig rad med `frame.line(0)`. [Körbara exempel på layout och textklippning](tests/suite.ddr)
 
 ## Plattformar och tester
 
@@ -76,9 +98,9 @@ En egen widget är en vanlig funktion som tar `&mut tui.Frame` och en `tui.Rect`
 | `arm64-linux`, `x86_64-linux` | Samma terminalgränssnitt. Appen använder Linux systemanrop direkt. |
 | `x86_64-windows` | Win32-konsol med egen skärmbuffert och tangentbordshändelser via `ReadConsoleInputW`. |
 
-Kör `dunder test` för layout, rullning, Unicode och tangentavkodning. På macOS och Linux öppnar `dunder run tests/posix_terminal.ddr` en pseudoterminal och kontrollerar bland annat omritning, storleksändring, Ctrl+C och återställning. På Windows öppnar `dunder run tests/windows_console.ddr` en separat konsol och kontrollerar inmatning, skärminnehåll, färg och återgång till föregående skärm.
+Kör `dunder test examples/motion/tests.ddr` för alla tio animationerna och `dunder test` för layout, rullning, Unicode och tangentavkodning. På macOS och Linux öppnar `dunder run tests/posix_terminal.ddr` en pseudoterminal och kontrollerar bland annat omritning, storleksändring, Ctrl+C och återställning. På Windows öppnar `dunder run tests/windows_console.ddr` en separat konsol och kontrollerar inmatning, skärminnehåll, färg och återgång till föregående skärm.
 
-Version 0.1.0 har körts på macOS, i Linux på båda arkitekturerna och som Windows-x64-binär under Wine. Körning på en nativ Windowsvärd återstår.
+I en pseudoterminal på en Mac med M5 skickade de tio scenerna 29,9–30,1 bilder per sekund vid 100 × 30 teckenceller och ett mål på 30. Galleriets scenbyte, paus och återställning av terminalen har provats på macOS och Linux. Windowsbinären har provats under Wine. Körning på en nativ Windowsvärd återstår. [Renderingsmätning mot Ratatui](benchmarks/README.md)
 
 Korsbygg exempelvis en Windowsapp med `dunder build examples/counter/main.ddr --target x86_64-windows -o counter.exe`.
 

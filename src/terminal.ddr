@@ -28,7 +28,7 @@ impl Session {
         }
     }
 
-    pub fn next(&mut self) -> input.Event {
-        if target_is("windows") { return windows.next(&mut self.win) } else { return posix.next(&mut self.unix) }
+    pub fn next(&mut self, wait_ms: i32) -> input.Event {
+        if target_is("windows") { return windows.next(&mut self.win, wait_ms) } else { return posix.next(&mut self.unix, wait_ms) }
     }
 }

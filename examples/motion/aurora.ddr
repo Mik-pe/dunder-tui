@@ -1,0 +1,26 @@
+import std.math as m
+import tui.canvas as c
+import .art
+
+pub fn draw(s: &mut c.Canvas, t: f64) {
+    for x in 0..s.w {
+        u := f64(x) / f64(s.w)
+        ridge := 0.82 - 0.065 * m.sin(u * 8.0) - 0.044 * m.sin(u * 17.0 + 2.0) - 0.017 * m.sin(u * 51.0)
+        near := 0.91 + 0.034 * m.sin(u * 13.0 + 1.2) + 0.014 * m.sin(u * 37.0)
+        edge := 0.49 + 0.13 * m.sin(u * 6.3 + t * 0.37) + 0.055 * m.sin(u * 16.0 - t * 0.3)
+        fold := 0.27 + 0.09 * m.sin(u * 7.0 - t * 0.27)
+        rays := 0.59 + 0.41 * art.wave(u * 91.0 + 2.2 * m.sin(u * 21.0 + t))
+        for y in 0..s.h {
+            v := f64(y) / f64(s.h)
+            mut color := c.mix(0x080b25, 0x244250, v)
+            color = art.stars(x, y, t, color, 0xb2cae1)
+            d := edge - v
+            veil := art.sat(1.0 - d / 0.33) * art.sat(1.0 + d / 0.036) * rays
+            color = c.mix(color, art.ramp(0x504fbd, 0x1cbaa5, 0xa0ffd1, 1.0 - d * 3.8), veil * 0.91)
+            color = c.mix(color, 0xa48aea, art.glow(v - fold, 0.13) * 0.34)
+            if v >= ridge { color = c.mix(0x203044, 0x17263a, (v - ridge) * 6.0) }
+            if v >= near { color = 0x0a1723 }
+            s.pixels[y * s.w + x] = color
+        }
+    }
+}

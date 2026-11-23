@@ -1,0 +1,37 @@
+import std.math as m
+import tui.canvas as c
+import .art
+
+pub fn draw(s: &mut c.Canvas, t: f64) {
+    pulse := art.wave(t * 2.1)
+    cx := 0.5 + 0.09 * m.sin(t * 0.34)
+    cy := 0.37 + 0.038 * m.cos(t * 1.05)
+    radius := 0.25 + 0.038 * pulse
+    for y in 0..s.h {
+        for x in 0..s.w {
+            u := (f64(x) + 0.5 - cx * f64(s.w)) / f64(s.h)
+            v := (f64(y) + 0.5) / f64(s.h) - cy
+            dist := (u * u + v * v).sqrt()
+            mut col := c.mix(0x09122b, 0x183d58, art.glow(dist, 0.90) * 0.88)
+            col = art.stars(x, y, t * 0.54, col, 0x669eab)
+            if v > 0.01 && v < 0.61 {
+                k := v / 0.61
+                for j in 0..9 {
+                    seed := f64(j) - 4.0
+                    strand := seed * 0.046 * (1.0 - 0.52 * k) + k * 0.08 * m.sin(v * 13.0 - t * 1.7 + seed * 0.51) + 0.025 * m.sin(t + v * 23.0 + seed)
+                    fade := art.sat(1.1 - k + 0.12 * m.cos(seed * 3.0))
+                    col = c.mix(col, c.mix(0x72dfdd, 0xe890e0, art.wave(seed * 3.0)), art.glow(u - strand, 0.018) * fade)
+                }
+            }
+            rim := 0.018 + 0.018 * m.cos(u * 61.0 + t)
+            d := ((u / radius) * (u / radius) + (v / 0.22) * (v / 0.22)).sqrt()
+            if v < rim && d < 1.0 {
+                ribs := art.wave(u * 56.0 / (0.63 + d) + v * 4.0)
+                col = art.ramp(0x407096, 0x9799cb, 0xe5b6e8, 0.26 + 0.48 * ribs + 0.27 * (1.0 - d))
+                col = c.mix(col, 0xc9ffea, art.glow(d - 0.94, 0.15))
+                col = c.mix(col, 0xffc8e5, art.glow(v - rim, 0.032))
+            }
+            s.pixels[y * s.w + x] = col
+        }
+    }
+}

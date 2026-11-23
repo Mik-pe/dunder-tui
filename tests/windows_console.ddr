@@ -29,7 +29,7 @@ unsafe fn set_window(handle: ptr, absolute: i32, rect: ptr) -> i32
 @extern("kernel32.dll", "WriteConsoleOutputCharacterW")
 unsafe fn stamp(handle: ptr, data: ptr, count: u32, coord: u32, written: ptr) -> i32
 
-struct Probe { step: i32, failure: i32, width: i32 }
+struct Probe { step: i32, failure: i32, width: i32, input: ptr, started: bool }
 
 unsafe fn push_key(handle: ptr, vk: i32, unit: i32) -> bool {
     mut record: [u16; 10] = [0; 10]
@@ -42,8 +42,18 @@ unsafe fn push_key(handle: ptr, vk: i32, unit: i32) -> bool {
     enqueue(handle, addr(&record[0]), 1, addr(&mut n)) != 0 && n == 1
 }
 
+fn tick(probe: &mut Probe, elapsed: i64) -> bool {
+    if probe.started || elapsed < 25 { return false }
+    unsafe {
+        assert(push_key(probe.input, 38, 0) && push_key(probe.input, 0, 0xd83c) &&
+            push_key(probe.input, 0, 0xdf0d) && push_key(probe.input, 27, 27))
+    }
+    probe.started = true
+    true
+}
+
 fn draw(frame: &mut tui.Frame, probe: &Probe) {
-    frame.text(frame.area(), "Å" + probe.step.str(), tui.ink(.Cyan))
+    if probe.started { frame.text(frame.area(), "Å" + probe.step.str(), tui.ink(.Rgb(0, 255, 255))) }
 }
 
 fn update(probe: &mut Probe, key: tui.Key) -> bool {
@@ -93,13 +103,11 @@ fn verify() -> i32 {
         mut old_in: u32 = 0
         mut old_out: u32 = 0
         if mode(stdin, addr(&mut old_in)) == 0 || mode(stdout, addr(&mut old_out)) == 0 { return 13 }
-        if !push_key(stdin, 38, 0) || !push_key(stdin, 0, 0xd83c) ||
-        !push_key(stdin, 0, 0xdf0d) || !push_key(stdin, 27, 27) { return 14 }
         mut sentinel: u16 = 35
         mut n: u32 = 0
         if stamp(stdout, addr(&sentinel), 1, 0, addr(&mut n)) == 0 || n != 1 { return 19 }
-        mut probe := Probe { step: 0, failure: 0, width: 0 }
-        result := tui.run<Probe>(&mut probe, draw, update)
+        mut probe := Probe { step: 0, failure: 0, width: 0, input: stdin, started: false }
+        result := tui.animate(&mut probe, 60, draw, update, tick)
         if result.is_err() { return 15 }
         if probe.failure != 0 { return probe.failure }
         if probe.step != 3 { return 16 }

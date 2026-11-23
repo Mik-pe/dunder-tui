@@ -1,0 +1,6 @@
+name = "motion"
+root = "main.ddr"
+test_root = "tests.ddr"
+
+[dependencies]
+tui = { path = "../..", capabilities = ["stdio", "unsafe"] }

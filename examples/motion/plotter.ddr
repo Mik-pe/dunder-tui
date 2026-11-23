@@ -1,0 +1,29 @@
+import std.math as m
+import tui.canvas as c
+
+pub fn draw(s: &mut c.Canvas, t: f64) {
+    paper: u32 = 0xf0e5ce
+    ink: [u32; 3] = [0x1c666e, 0xd35e4d, 0x353456]
+    for y in 0..s.h {
+        for x in 0..s.w {
+            s.pixels[y * s.w + x] = if x % 8 == 0 && y % 8 == 0 { 0xcbbca3 } else { paper }
+        }
+    }
+    for pen in 0..3 {
+        phase := f64(pen) * 2.094
+        mut px := 0
+        mut py := 0
+        for k in 0..440 {
+            a := t * 0.74 - f64(439 - k) * 0.027
+            xx := 0.60 * m.sin(3.0 * a + phase + t * 0.10) + 0.36 * m.sin(5.0 * a - phase)
+            yy := 0.59 * m.sin(2.0 * a + phase) + 0.38 * m.cos(4.0 * a - phase + t * 0.13)
+            x := s.w / 2 + i32(xx * f64(s.w) * 0.43)
+            y := s.h / 2 + i32(yy * f64(s.h) * 0.46)
+            if k > 0 { s.line(px, py, x, y, c.mix(paper, ink[pen], 0.15 + 0.83 * f64(k) / 440.0)) }
+            px = x
+            py = y
+        }
+        s.line(px - 1, py, px + 1, py, ink[pen])
+        s.line(px, py - 1, px, py + 1, ink[pen])
+    }
+}

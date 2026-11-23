@@ -17,7 +17,7 @@ unsafe fn attributes(fd: i32, buf: ptr) -> i32
 @extern("c", "ioctl")
 unsafe fn ioctl(fd: i32, request: usize, data: ptr) -> i32
 
-struct Probe { master: i32, slave: i32, step: i32, quit: string, ok: bool }
+struct Probe { master: i32, slave: i32, step: i32, quit: string, ok: bool, timed: bool, ticks: i32, last: i64 }
 
 fn send(fd: i32, data: string) -> bool {
     buf := data.bytes()
@@ -29,6 +29,7 @@ fn draw(frame: &mut tui.Frame, state: &Probe) {
     (heading, body) := frame.area().rows(1)
     frame.label(heading, "Rubrik")
     frame.label(body, f"Steg {state.step} med bredd {body.w}")
+    if state.timed && state.ticks < 2 { return }
     if state.step == 0 { assert(send(state.master, "\x1b[A")) }
     else if state.step == 1 { assert(send(state.master, "\x1b[B")) }
     else { assert(send(state.master, state.quit)) }
@@ -61,7 +62,7 @@ fn update(state: &mut Probe, key: tui.Key) -> bool {
         state.ok = text.contains(rendered, "\x1b[?1049h") && text.contains(rendered, "Steg 0 med bredd 32")
         match key { .Up => {}, _ => { state.ok = false }, }
     } else if state.step == 1 {
-        state.ok = text.contains(rendered, "Steg 1 med bredd 32") && !text.contains(rendered, "Rubrik") && resize(state.slave)
+        state.ok = rendered == "\x1b[2;6H1" && resize(state.slave)
         match key { .Down => {}, _ => { state.ok = false }, }
     } else {
         state.ok = text.contains(rendered, "Rubrik") && text.contains(rendered, "Steg 2 med bredd 20")
@@ -71,7 +72,14 @@ fn update(state: &mut Probe, key: tui.Key) -> bool {
     state.ok && state.step < 3
 }
 
-unsafe fn verify(quit: string) -> bool {
+fn tick(state: &mut Probe, elapsed: i64) -> bool {
+    assert(elapsed > state.last)
+    state.last = elapsed
+    state.ticks += 1
+    true
+}
+
+unsafe fn verify(quit: string, timed: bool) -> bool {
     mut master := -1
     mut slave := -1
     mut size: [u16; 4] = [7, 32, 0, 0]
@@ -89,8 +97,8 @@ unsafe fn verify(quit: string) -> bool {
     mut before: [u64; 16] = [0; 16]
     mut after: [u64; 16] = [0; 16]
     if attributes(slave, addr(&mut before[0])) != 0 { return false }
-    mut state := Probe { master: master, slave: slave, step: 0, quit: quit.clone(), ok: true }
-    result := tui.run<Probe>(&mut state, draw, update)
+    mut state := Probe { master: master, slave: slave, step: 0, quit: quit.clone(), ok: true, timed: timed, ticks: 0, last: 0 }
+    result := if timed { tui.animate(&mut state, 60, draw, update, tick) } else { tui.run(&mut state, draw, update) }
     tail := output(master)
     if result.is_err() || !state.ok || !text.contains(tail, "\x1b[?25h\x1b[?1049l") { return false }
     if quit == "q" && state.step != 3 { return false }
@@ -106,7 +114,7 @@ unsafe fn verify(quit: string) -> bool {
 
 fn main() -> i32 {
     if target_is("linux") || target_is("macos") {
-        unsafe { if verify("q") && verify("\x03") { print("terminal OK"); return 0 } }
+        unsafe { if verify("q", false) && verify("\x03", false) && verify("q", true) { print("terminal OK"); return 0 } }
     }
     _ := sys.eprint("POSIX terminal check failed")
     1

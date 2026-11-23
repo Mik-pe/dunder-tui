@@ -1,0 +1,32 @@
+import std.math as m
+import tui.canvas as c
+import .art
+
+pub fn draw(s: &mut c.Canvas, t: f64) {
+    for y in 0..s.h {
+        v := f64(y) / f64(s.h)
+        for x in 0..s.w {
+            u := f64(x) / f64(s.w)
+            dx := (u - 0.57) * f64(s.w) / f64(s.h)
+            dy := v - 0.40
+            radius := (dx * dx + dy * dy).sqrt()
+            mut col := art.ramp(0x160d40, 0x713373, 0xff817a, v * 1.25)
+            col = c.mix(col, 0xffa377, art.glow(radius - 0.20, 0.14) * 0.28)
+            if radius < 0.215 && (dy < 0.02 || art.frac((v + t * 0.013) * 27.0) > 0.22 + dy) {
+                col = c.mix(0xffda80, 0xff516f, (dy + 0.15) * 3.0)
+            }
+            ridge := 0.57 + 0.029 * m.sin(u * 22.0) + 0.027 * m.sin(u * 41.0 + 2.0) - 0.06 * (u - 0.5).abs()
+            if v > ridge { col = 0x302047 }
+            if v > 0.64 {
+                z := v - 0.64
+                road := (u - 0.5) / (z + 0.015)
+                line := art.frac(road * 2.2 + 0.5) - 0.5
+                band := art.frac(0.42 / (z + 0.018) + t * 0.75)
+                col = c.mix(0x1b183b, 0x532345, z * 2.0)
+                col = c.mix(col, 0xf863a1, art.glow(line, 0.11) * art.sat(z * 9.0))
+                col = c.mix(col, 0xff98b3, art.glow(band - 0.5, 0.095) * art.sat(z * 8.0))
+            }
+            s.pixels[y * s.w + x] = col
+        }
+    }
+}

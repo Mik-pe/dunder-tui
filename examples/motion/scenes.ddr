@@ -1,0 +1,28 @@
+import tui.canvas as c
+import .aurora
+import .prism
+import .koi
+import .horizon
+import .plotter
+import .afterglow
+import .medusa
+import .tesseract
+import .ember
+import .atlas
+
+pub struct Scene { id: string, title: string, accent: u32, draw: fn(&mut c.Canvas, f64) }
+
+pub fn all() -> []Scene {
+    [
+        Scene { id: "aurora", title: "Polarnatt", accent: 0x86efc5, draw: aurora.draw },
+        Scene { id: "prism", title: "Prisma", accent: 0xfecc84, draw: prism.draw },
+        Scene { id: "koi", title: "Koidammen", accent: 0xffac75, draw: koi.draw },
+        Scene { id: "horizon", title: "Händelsehorisont", accent: 0xffb26d, draw: horizon.draw },
+        Scene { id: "plotter", title: "Harmonograf", accent: 0xe1d3b4, draw: plotter.draw },
+        Scene { id: "afterglow", title: "Efterglöd", accent: 0xff81ab, draw: afterglow.draw },
+        Scene { id: "medusa", title: "Medusa", accent: 0xc2aae7, draw: medusa.draw },
+        Scene { id: "tesseract", title: "Tesserakt", accent: 0x79ddf1, draw: tesseract.draw },
+        Scene { id: "ember", title: "Glödbädd", accent: 0xff885b, draw: ember.draw },
+        Scene { id: "atlas", title: "Drivande atlas", accent: 0xcfe899, draw: atlas.draw },
+    ]
+}

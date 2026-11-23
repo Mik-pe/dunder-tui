@@ -1,0 +1,68 @@
+capability stdio
+
+import tui
+import tui.canvas as c
+import .scenes
+import sys
+
+struct Gallery { catalog: []scenes.Scene, selected: i32, paused: bool, elapsed: i64, last_tick: i64 }
+
+fn draw(frame: &mut tui.Frame, gallery: &Gallery) {
+    scene := &gallery.catalog[gallery.selected]
+    area := frame.area()
+    (header, rest) := area.rows(1)
+    (artwork, footer) := rest.rows(rest.h - 1)
+    color := tui.ink(tui.rgb(scene.accent))
+    counter := if gallery.selected < 9 { "0" + (gallery.selected + 1).str() } else { "10" }
+    frame.text(header, " " + counter + " / 10   " + scene.title, color.bold())
+    if artwork.w > 0 && artwork.h > 0 {
+        mut surface := c.Canvas::new(artwork.w, artwork.h * 2, 0)
+        render := scene.draw
+        render(&mut surface, f64(gallery.elapsed) / 1000.0)
+        surface.render(&mut frame, artwork)
+    }
+    action := if gallery.paused { "spela" } else { "pausa" }
+    frame.text(footer, " ← →  byt scen    mellanslag  " + action + "    q  avsluta", color)
+}
+
+fn update(gallery: &mut Gallery, key: tui.Key) -> bool {
+    old := gallery.selected
+    match key {
+        .Right => { gallery.selected = (old + 1) % gallery.catalog.len },
+        .Left => { gallery.selected = (old + gallery.catalog.len - 1) % gallery.catalog.len },
+        .Char(k) if i32(k) >= 49 && i32(k) <= 57 => { gallery.selected = i32(k) - 49 },
+        .Char(k) if i32(k) == 48 => { gallery.selected = 9 },
+        .Char(k) if i32(k) == 32 => { gallery.paused = !gallery.paused },
+        .Char(k) if i32(k) == 113 => { return false },
+        .Escape => { return false },
+        _ => {},
+    }
+    if old != gallery.selected { gallery.elapsed = 0 }
+    true
+}
+
+fn tick(gallery: &mut Gallery, now: i64) -> bool {
+    if !gallery.paused { gallery.elapsed += now - gallery.last_tick }
+    gallery.last_tick = now
+    !gallery.paused
+}
+
+fn main() -> i32 {
+    catalog := scenes.all()
+    mut selected := 0
+    if sys.arg_count() > 1 {
+        arg := sys.arg(1)
+        if arg == "--list" {
+            for scene in &catalog { print(scene.id + "  " + scene.title) }
+            return 0
+        }
+        selected = -1
+        for i in 0..catalog.len { if arg == catalog[i].id { selected = i } }
+        if selected < 0 { _ := sys.eprint("Okänd scen. Använd --list för att visa alla."); return 2 }
+    }
+    mut gallery := Gallery { catalog: catalog, selected: selected, paused: false, elapsed: 0, last_tick: 0 }
+    match tui.animate(&mut gallery, 30, draw, update, tick) {
+        .Ok => 0,
+        .Err(message) => { _ := sys.eprint(message); 1 },
+    }
+}

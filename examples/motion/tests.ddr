@@ -1,0 +1,24 @@
+import tui.canvas as c
+import .scenes
+
+@test fn each_scene_draws_and_moves() {
+    catalog := scenes.all()
+    assert(catalog.len == 10)
+    for i in 0..catalog.len {
+        for j in 0..i { assert(catalog[i].id != catalog[j].id) }
+        render := catalog[i].draw
+        mut a := c.Canvas::new(72, 40, 0)
+        mut b := c.Canvas::new(72, 40, 0)
+        render(&mut a, 0.0)
+        render(&mut b, 1.75)
+        mut changed := 0
+        mut colored := 0
+        for j in 0..a.pixels.len {
+            if a.pixels[j] != b.pixels[j] { changed += 1 }
+            if a.pixels[j] != a.pixels[0] { colored += 1 }
+        }
+        assert(changed > 20 && colored > 100)
+        mut tiny := c.Canvas::new(1, 2, 0)
+        render(&mut tiny, 20.0)
+    }
+}

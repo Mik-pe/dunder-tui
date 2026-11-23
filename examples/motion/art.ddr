@@ -1,0 +1,21 @@
+import std.math as m
+import tui.canvas as c
+
+pub fn sat(n: f64) -> f64 { if n < 0.0 { return 0.0 }; if n > 1.0 { return 1.0 }; n }
+pub fn frac(n: f64) -> f64 { n - n.floor() }
+pub fn wave(n: f64) -> f64 { 0.5 + 0.5 * m.sin(n) }
+pub fn glow(distance: f64, width: f64) -> f64 { z := sat(1.0 - distance.abs() / width); z * z }
+pub fn ramp(a: u32, b: u32, d: u32, u: f64) -> u32 {
+    if u < 0.5 { return c.mix(a, b, u * 2.0) }
+    c.mix(b, d, u * 2.0 - 1.0)
+}
+pub fn hash(x: i32, y: i32) -> f64 {
+    mut n := u32(x + 8192).wrapping_mul(374761393).wrapping_add(u32(y + 8192).wrapping_mul(668265263))
+    n = n.bit_xor(n.shr(13)).wrapping_mul(1274126177)
+    f64(n.bit_xor(n.shr(16)).bit_and(65535)) / 65536.0
+}
+pub fn stars(x: i32, y: i32, t: f64, bg: u32, color: u32) -> u32 {
+    seed := hash(x, y)
+    if seed < 0.982 { return bg }
+    c.mix(bg, color, (seed - 0.982) * 32.0 + 0.22 * wave(seed * 8500.0 + t))
+}
