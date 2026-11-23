@@ -1,0 +1,18 @@
+enum Mode { Fixed, Inline(i32) }
+
+struct Screen { mode: Mode, rows: i32 }
+impl Screen {
+    fn grow(&mut self) { self.rows += 1 }
+    fn update(&mut self) {
+        match self.mode {
+            .Fixed => {},
+            _ => { self.grow() },
+        }
+    }
+}
+
+fn main() {
+    mut s := Screen { mode:.Inline(2), rows:8 }
+    s.update()
+    assert(s.rows == 9)
+}
