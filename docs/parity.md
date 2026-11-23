@@ -2,18 +2,18 @@
 
 Referensen är taggen `ratatui-v0.30.2`, inklusive de stabila tillvalen. Tabellen följer de publika områdena i den versionen. En genomförd jämförelse anges med sitt konkreta prov. [Referenskod](https://github.com/ratatui/ratatui/tree/ratatui-v0.30.2) · [Publikt API](https://docs.rs/ratatui/0.30.2/ratatui/) · [Funktionsflaggor](https://docs.rs/crate/ratatui/0.30.2/features)
 
-Funktionsparitet styr ordningen. Nästa användarflöde är fasta och infogade vyportar för program som kombinerar vanlig terminalutskrift med en interaktiv vy. Prestanda mäts tillsammans med beteendet så att en långsammare arbetslast kan prioriteras utifrån vad användaren märker. [Fynd för Dunder-språket och standardbiblioteket](dunder.md)
+Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där användaren kan behålla händelser i skalets skrollhistorik. Prestanda mäts tillsammans med beteendet så att en långsammare arbetslast kan prioriteras utifrån vad användaren märker. [Fynd för Dunder-språket och standardbiblioteket](dunder.md)
 
 | Område | Finns i Dunder | Återstår att leverera eller verifiera |
 | --- | --- | --- |
-| Buffer och Cell | Återanvända bildbuffertar, breda tecken, celldiff, exakt och ungefärlig sammanslagning av linjesymboler, färgutdata och avläsning av rader och cellstilar. Rektangulär kopiering, linjär storleksändring och tillämpning av en diff. | Buffertar med förskjutet origo samt sammanslagning till den gemensamma omslutande rektangeln. Cellernas regler för att hoppa över eller alltid rita. |
+| Buffer och Cell | Återanvända bildbuffertar, breda tecken, celldiff, exakt och ungefärlig sammanslagning av linjesymboler, färgutdata och avläsning av rader och cellstilar. Buffertar med förskjutet origo, rektangulär kopiering, linjär storleksändring och tillämpning av en diff på en delyta. | Sammanslagning till den gemensamma omslutande rektangeln. Cellernas regler för att hoppa över eller alltid rita. |
 | Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. | Material- och Tailwind-paletter, beständiga dataformat och full täckning för konvertering mellan stilrepresentationer. |
 | Text | Span, Line, Text, Paragraph, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. | Strängbredder för skriftspecifika ligaturer över grafemgränser, full täckning för sammansatta emoji och alla operationer på fristående texttyper. |
 | Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering och cache. 15 076 jämförda layouter, 1 200 rektangelprov och 1 100 jämförda bilder. | Utökad täckning av överbestämda system med många olika paneler och upprepade ändringar av reglerna. |
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna tecken, individuella kanter, justerade titlar, utfyllnad och skuggor. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
 | Övriga widgets | Clear och Fill på Frame, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. | Kalender med datumstilar, logotyp och maskot. |
 | Egna widgets och tester | Funktioner ritar på en Frame. Tillstånd kan uppdateras vid ritning med `run_stateful`. Egna backends kan anslutas till Terminal. TestBackend har skrollhistorik, markör, fem rensningslägen och regionskrollning. | Gemensamma widgetgränssnitt och bredare testning av specialiserade terminalbackends. |
-| Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, markörstyrning från Frame, bildräknare, ANSI och Win32. Avbruten ritning och omskrivning efter backendfel har provats. | Fast och infogad vyport, innehåll ovanför vyn, regionrensning och regionskrollning i de fysiska backendarna, fönstrets pixelmått och fler felprov för terminallivscykeln. |
+| Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, markörstyrning från Frame, bildräknare, ANSI och Win32. Fast och inbäddad vyport, loggrader, rensning och regionskrollning. Återställning efter skrivfel och uteblivet markörsvar har provats. | Fönstrets pixelmått, fler felprov vid delvis genomförd skrollning och täckning i nativ Windowskonsol. |
 | Stabil Rust-integration | Jämförelseprogrammen använder den låsta Rustreferensen. Dunder-appar byggs offline. | Kontrollera Dunder-motsvarigheter till bekvämlighetsmakron, serialisering, cachning och backendval där dessa påverkar appens beteende. |
 | Effektivitet och plattformar | Tid, minne, allokeringar och faktiska terminalbyte för en widgetvy på macOS och Linux. Pseudoterminalprov på macOS och Linux ARM64/x86-64. Win32-prov under Wine. | Nativ Windows x64, fler arbetslaster med komplex layout, lägre kostnad för dynamiska färgvärden och paritet på fysisk x86-64. |
 
@@ -161,4 +161,22 @@ cargo build --locked --release --manifest-path benchmarks/reference/Cargo.toml -
 build/terminal-states | build/rust/release/examples/terminal
 build/cursor-pty build/cursor-app
 build/cursor-pty build/rust/release/examples/terminal --live
+```
+
+## Fasta och inbäddade vyportar i 0.11.0
+
+90 startlägen ger 1 440 jämförelser med Ratatui 0.30.2. Provet fyller skärmen med kontrolltecken före start och jämför skärmens och skrollhistorikens tecken, röd förgrund, fetstil, vyportens rektangel och markörens position och synlighet efter varje operation. Det omfattar bredare och smalare skärm, flyttad fast vy, en vy som fyller hela fönstret och fler loggrader än skärmens höjd. [Dunderprov](../tests/viewport_reference.ddr) · [Ratatui-prov](../benchmarks/reference/examples/viewports.rs)
+
+Samma pseudoterminalprov kör den fasta vyn och loggboken mot både Dunder och Crossterm. Det läser av cellerna efter upprepade infogningar och jämför terminalinställningarna före och efter. Dunderprovet skickar också tangenttryckningar runt ett markörsvar och låter en markörförfrågan löpa ut. På macOS provades loggboken dessutom i en tmux-panel med sex rader. Hela historiken innehöll skalets förtext, händelserna 1–8 i ordning, loggboken och skalets eftertext. [PTY-drivrutin](../tests/viewport_terminal.ddr) · [Win32-prov](../tests/windows_console.ddr)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/viewport_reference.ddr -o build/viewports
+dunder build --locked --offline tests/viewport_terminal.ddr -o build/viewport-pty
+dunder build --locked --offline tests/fixed_app.ddr -o build/fixed
+dunder build --locked --offline --example loggbok -o build/loggbok
+cargo build --locked --release --manifest-path benchmarks/reference/Cargo.toml --features terminal-oracle --example viewports --target-dir build/rust
+build/viewports | build/rust/release/examples/viewports
+build/viewport-pty build/fixed build/loggbok
+build/viewport-pty build/rust/release/examples/viewports build/rust/release/examples/viewports --reference
 ```

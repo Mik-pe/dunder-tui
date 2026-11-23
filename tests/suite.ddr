@@ -748,3 +748,44 @@ fn reject_number(frame: &mut tui.Frame, n: &mut i32) -> Result<(),string> {
     assert(t.backend().scrollback().len() == 65535 && t.backend().scrollback().row(0).line(0) == "  ")
     assert(t.backend().scrollback().row(65534).line(0) == "8 ")
 }
+@test fn offset_frames_use_absolute_coordinates_for_widgets_glyphs_styles_and_diffs() {
+    a := tui.Rect {x:60000,y:40000,w:12,h:5}
+    mut f := tui.Frame::at(a)
+    assert(f.area() == a && f.line(0) == "" && f.symbol_at(a.x-1,a.y).is_none())
+    brush := tui.ink(.Red).underline_color(.Blue)
+    body := f.panel(a,"N",tui.ink(.Cyan))
+    f.fill_symbol(body,".",tui.plain())
+    f.text(body,"界é",brush)
+    run := tui.GlyphRun::new("🌍abc")
+    run.render(&mut f,body.offset(0,1),0,run.count(),brush)
+    f.half_block(body.x+8,body.y+2,0xff22aa,0x66ccff)
+    f.apply_style(tui.Rect {x:body.x+1,y:body.y,w:1,h:1},tui.plain().bold())
+    assert(f.line(a.y) == "┌N─────────┐")
+    assert(f.line(body.y) == "│界é.......│" && f.line(body.y+1) == "│🌍abc.....│")
+    assert(f.style_at(body.x,body.y).unwrap().has(.Bold) && f.symbol_at(body.x+8,body.y+2).unwrap() == "▀")
+    mut other := tui.Frame::at(tui.Rect {x:77,y:55,w:9,h:2})
+    other.copy_region(&f,body,77,55)
+    assert(other.line(55) == "界é......" && other.style_at(79,55).unwrap().get_underline_color() == .Some(.Blue))
+    other.resize(6,3)
+    assert(other.area().x == 77 && other.line(55) == "界é...")
+    other.erase(tui.Rect {x:78,y:55,w:1,h:1})
+    assert(other.line(55) == "  é...")
+    f.clear_area(body)
+    f.stroke(body,`─`,brush,.Replace)
+    assert(f.line(body.y) == "│──────────│")
+    blank := tui.Frame::at(a)
+    mut changed := tui.Frame::at(a)
+    assert(changed.set_cell(a.x+2,a.y+1,"界",tui.plain()))
+    mut out: []u8 = []
+    changed.ansi_diff(&blank,&mut out)
+    assert(bytes.decode(&out).unwrap() == "\x1b[40002;60003H界")
+}
+
+@test fn invalid_viewports_report_errors_before_presentation() {
+    bad := tui.Terminal<testing.TestBackend>::with_viewport(testing.TestBackend::new(4,3),.Fixed(tui.Rect {x:-1,y:0,w:1,h:1}))
+    assert(bad.is_err())
+    assert(tui.Terminal<testing.TestBackend>::with_viewport(testing.TestBackend::new(2,2),.Inline(0)).is_err())
+    mut t := tui.Terminal<testing.TestBackend>::with_viewport(testing.TestBackend::new(4,3),.Inline(3)).unwrap()
+    bad_width := tui.Frame::new(3,1)
+    assert(t.insert_before(&bad_width).is_err() && t.backend().scrollback().len() == 0)
+}

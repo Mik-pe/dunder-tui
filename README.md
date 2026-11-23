@@ -4,7 +4,7 @@ Bygg interaktiva terminalappar i Dunder för macOS, Linux och Windows. Skriv en 
 
 ## Prova
 
-Vill du se animationerna direkt? Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i en terminal. Samma paket innehåller kustkartan `kustlinjer`, signalvisualiseraren `signal`, boklistan `bokhylla` och tidtabellen `avganger`. [Ladda ner för macOS, Linux eller Windows](https://github.com/Mik-pe/dunder-tui/releases/latest)
+Vill du se animationerna direkt? Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i en terminal. Samma paket innehåller kustkartan `kustlinjer`, signalvisualiseraren `signal`, boklistan `bokhylla` samt tidtabellen `avganger` och loggboken `loggbok`. [Ladda ner för macOS, Linux eller Windows](https://github.com/Mik-pe/dunder-tui/releases/latest)
 
 Med Dunder 0.11.1 eller senare installerat kan du starta exemplen med deras namn. [Installera Dunder](https://github.com/Mik-pe/dunder#installera-och-kör)
 
@@ -62,7 +62,7 @@ Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.10.0", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.11.0", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.
@@ -122,6 +122,12 @@ fn main() {
 ```
 
 Implementera `tui.Backend` med `size` och `present` för att ansluta en egen utmatning. `present` får aktuell och föregående bild. `frame.ansi_diff(&previous,&mut output)` skriver ändrade celler och markörkommandon till en bytebuffert. Med `try_draw` kan ritfunktionen returnera ett fel före utmatningen. Om backenden rapporterar ett skrivfel får den en hel bild nästa gång. `completed()` ger den senast lyckade bilden. Anropa `invalidate()` för att tvinga fram en hel omritning efter externa ändringar. [Backend med felprov](tests/suite.ddr) · [Testterminalens skrollhistorik](src/testing.ddr)
+
+## Rita i en del av terminalen
+
+Kör `dunder run --example loggbok`. Appen visar två rader under skalets tidigare utmatning. Enter lägger en händelse ovanför vyn. När terminalen är full hamnar de äldsta raderna i skrollhistoriken. Tryck **q** för att fortsätta i skalet under loggboken. [Hela exemplet](examples/loggbok/main.ddr)
+
+Använd `tui.run_in(.Fixed(area), &mut state, draw, update)` för en interaktiv vy på en bestämd plats. `frame.area()` ger terminalens absoluta koordinater. Text, widgets, cellkopior och markören använder samma koordinater. För en inbäddad vy med egen händelseloop öppnar du terminalen med `tui.open(.Inline(2))?`. Skicka en `Frame` med vyportens bredd till `term.insert_before(&lines)` när du vill lägga till färgsatta loggrader. Terminalen återställer sitt läge när den går ur räckvidd.
 
 ## Bygg en vy
 

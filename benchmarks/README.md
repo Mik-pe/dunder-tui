@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Resultat för 0.11.0
+
+Efter införandet av vyportar jämfördes samma fem terminalarbetslaster och 1 100 bilder igen. På macOS var medianen för hel omritning 163 µs med Dunder och 188 µs med Ratatui. [Tider, terminalbyte, minne och allokeringar](terminal.md#version-0110)
+
 ## Resultat för 0.10.0
 
 Terminalprovet kör de publika ritanropen i Dunder och Ratatui med samma diagram och synlig markör. Det kontrollerar de 1 100 fullständiga bilderna och mäter även skrivning till en pseudoterminal. [Bildtid, minne och terminalbyte](terminal.md)

@@ -2,6 +2,7 @@ capability unsafe, stdio
 
 import sys
 import std.bytes as bytes
+import std.time as clock
 import .input
 
 @extern("c", "tcgetattr")
@@ -78,6 +79,52 @@ pub fn write_bytes(data: &[]u8) -> bool {
         }
     }
     true
+}
+
+fn cursor_reply(pending: &mut []u8) -> Option<(i32,i32)> {
+    for start in 0..pending.len {
+        if pending[start] != 27 || start+2 >= pending.len || pending[start+1] != b'[' { continue }
+        mut i := start+2
+        mut row := 0
+        while i < pending.len && pending[i] >= 48 && pending[i] <= 57 && row <= 65535 {
+            row = row*10+i32(pending[i])-48
+            i += 1
+        }
+        if row < 1 || row > 65536 || i >= pending.len || pending[i] != b';' { continue }
+        i += 1
+        mut col := 0
+        while i < pending.len && pending[i] >= 48 && pending[i] <= 57 && col <= 65535 {
+            col = col*10+i32(pending[i])-48
+            i += 1
+        }
+        if col < 1 || col > 65536 || i >= pending.len || pending[i] != b'R' { continue }
+        removed := i+1-start
+        for j in (i+1)..pending.len { pending[j-removed] = pending[j] }
+        pending.truncate(pending.len-removed)
+        return .Some((col-1,row-1))
+    }
+    .None
+}
+
+pub fn read_cursor(state: &mut State) -> Result<(i32,i32),string> {
+    if !write("\x1b[6n") { return .Err("Could not request cursor position.") }
+    deadline := clock.monotonic_ns()+1000000000
+    mut fd: []u8 = [0,0,0,0,1,0,0,0]
+    while state.pending.len < 65536 {
+        match cursor_reply(&mut state.pending) { .Some(pos) => { return .Ok(pos) }, .None => {}, }
+        left := deadline-clock.monotonic_ns()
+        if left <= 0 { break }
+        unsafe {
+            ready := sys.fd_poll(&mut fd,1,(left+999999)/1000000)
+            if ready == -4 { continue }
+            if ready <= 0 { break }
+            state.pending.reserve(state.pending.len+128)
+            n := sys.fd_read(0,&mut state.pending,128)
+            if n == -4 { continue }
+            if n <= 0 { break }
+        }
+    }
+    .Err("The terminal did not report its cursor position.")
 }
 
 pub fn next(state: &mut State, wait_ms: i32) -> input.Event {

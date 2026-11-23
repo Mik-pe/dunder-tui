@@ -1,0 +1,22 @@
+capability stdio
+import ..src.tui
+import sys
+
+fn draw(frame: &mut tui.Frame, step: &i32) {
+    a := frame.area()
+    frame.label(a,if step == 0 { "NORD" } else { "SYD" })
+    frame.set_cursor_position(a.right()-1,a.bottom()-1)
+}
+fn key(step: &mut i32, k: tui.Key) -> bool {
+    match k { .Char(c) if c == `q` => false, _ => { step += 1; true }, }
+}
+fn main() -> i32 {
+    if sys.arg_count() == 2 && sys.arg(1) == "--timeout" {
+        if tui.open(.Inline(2)).is_err() { return 0 }
+        return 1
+    }
+    mut phase := 0
+    match tui.run_in(.Fixed(tui.Rect {x:4,y:2,w:8,h:2}),&mut phase,draw,key) {
+        .Ok => 0, .Err(e) => { _ := sys.eprint(e); 1 },
+    }
+}

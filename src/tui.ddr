@@ -3,6 +3,7 @@ capability stdio, unsafe
 import .lines
 import .width
 import .terminal
+import .input
 import .posix
 import .windows
 import std.bytes as bytes
@@ -347,18 +348,26 @@ pub opaque struct Frame { bounds: Rect, cursor_x: i32, cursor_y: i32, number: u6
 
 impl Frame {
     pub fn new(w: i32, h: i32) -> Self {
-        cols := clamp(w, 4096)
-        rows := clamp(h, if cols > 0 { clamp(1048576 / cols, 4096) } else { 4096 })
+        Frame::at(Rect { x:0, y:0, w:w, h:h })
+    }
+
+    pub fn at(area: Rect) -> Self {
+        x := clamp(area.x,65535)
+        y := clamp(area.y,65535)
+        cols := clamp(area.w, 4096)
+        rows := clamp(area.h, if cols > 0 { clamp(1048576 / cols, 4096) } else { 4096 })
         n := cols * rows
         mut glyphs: []i32 = []
         mut styles: []i64 = []
         glyphs.reserve(n)
         styles.reserve(n)
         for _ in 0..n { glyphs.push(0); styles.push(0) }
-        Self { bounds: Rect { x: 0, y: 0, w: cols, h: rows }, cursor_x: -1, cursor_y: 0, number: 0, glyphs: glyphs, styles: styles, decorations: [], clusters: [], cluster_cells: [] }
+        Self { bounds: Rect { x:x, y:y, w:cols, h:rows }, cursor_x: -1, cursor_y: 0, number: 0, glyphs: glyphs, styles: styles, decorations: [], clusters: [], cluster_cells: [] }
     }
 
     pub fn area(&self) -> Rect { self.bounds }
+
+    fn index(&self, x: i32, y: i32) -> i32 { (y-self.bounds.y)*self.bounds.w + (x-self.bounds.x) }
 
     pub fn count(&self) -> u64 { self.number }
 
@@ -412,8 +421,8 @@ impl Frame {
     }
 
     pub fn style_at(&self, x: i32, y: i32) -> Option<Style> {
-        if x < 0 || y < 0 || x >= self.bounds.w || y >= self.bounds.h { return .None }
-        .Some(self.resolved(self.styles[y * self.bounds.w + x]))
+        if !self.bounds.contains(x,y) { return .None }
+        .Some(self.resolved(self.styles[self.index(x,y)]))
     }
 
     pub fn apply_style(&mut self, area: Rect, overlay: Style) {
@@ -426,18 +435,15 @@ impl Frame {
 
     fn style_range(&mut self, area: Rect, overlay: &Style, include_left_overlap: bool) {
         if area.w <= 0 || area.h <= 0 || overlay.empty() { return }
-        left := clamp(area.x, self.bounds.w)
-        top := clamp(area.y, self.bounds.h)
-        right := i32(cmp.min<i64>(i64(area.x) + i64(area.w), i64(self.bounds.w)))
-        bottom := i32(cmp.min<i64>(i64(area.y) + i64(area.h), i64(self.bounds.h)))
-        if left >= right || top >= bottom { return }
+        clipped := area.intersection(self.bounds)
+        if clipped.is_empty() { return }
         mut last: i64 = 0
         mut result := self.composite(last, &overlay)
-        for y in top..bottom {
-            row := y * self.bounds.w
-            mut first := self.head(row + left)
-            if !include_left_overlap && first < row + left { first += self.advance(first) }
-            final_head := self.head(row + right - 1)
+        for y in clipped.y..clipped.bottom() {
+            left := self.index(clipped.x,y)
+            mut first := self.head(left)
+            if !include_left_overlap && first < left { first += self.advance(first) }
+            final_head := self.head(left + clipped.w - 1)
             end := final_head + self.advance(final_head)
             for i in first..end {
                 old := self.styles[i]
@@ -466,8 +472,8 @@ impl Frame {
     }
 
     fn put(&mut self, x: i32, y: i32, symbol: i32, span: i32, style: i64) {
-        if x < 0 || y < 0 || y >= self.bounds.h || x > self.bounds.w - span { return }
-        i := y * self.bounds.w + x
+        if x < self.bounds.x || y < self.bounds.y || y >= self.bounds.y+self.bounds.h || x > self.bounds.x+self.bounds.w-span { return }
+        i := self.index(x,y)
         self.erase_span(i)
         for j in 1..span { self.erase_span(i + j) }
         self.glyphs[i] = if symbol == 32 { WRITTEN_SPACE } else { symbol - 32 }
@@ -500,13 +506,13 @@ impl Frame {
     }
 
     fn ascii_slice(&mut self, area: Rect, value: string, offset: i32, finish: i32, brush: i64, overlay: &Style) {
-        if area.y < 0 || area.y >= self.bounds.h { return }
-        start := if area.x < 0 { -i64(area.x) } else { i64(0) }
-        fit := i64(self.bounds.w) - i64(area.x)
+        if area.y < self.bounds.y || area.y >= self.bounds.y+self.bounds.h { return }
+        start := cmp.max<i64>(0,i64(self.bounds.x)-i64(area.x))
+        fit := i64(self.bounds.x+self.bounds.w) - i64(area.x)
         end := i64(clamp(finish - offset, area.w))
         limit := if fit < end { fit } else { end }
         if start >= limit { return }
-        i := area.y * self.bounds.w + i32(i64(area.x) + start)
+        i := self.index(i32(i64(area.x)+start),area.y)
         mut at := i
         if overlay.empty() {
             for j in i32(start)..i32(limit) {
@@ -556,8 +562,8 @@ impl Frame {
             if glyph.span > area.w - x { x = area.w; continue }
             px := i64(area.x) + i64(x)
             py := i64(area.y) + i64(y)
-            if px >= 0 && px <= i64(self.bounds.w - glyph.span) && py >= 0 && py < i64(self.bounds.h) {
-                cell := i32(py) * self.bounds.w + i32(px)
+            if px >= i64(self.bounds.x) && px <= i64(self.bounds.x+self.bounds.w-glyph.span) && py >= i64(self.bounds.y) && py < i64(self.bounds.y+self.bounds.h) {
+                cell := self.index(i32(px),i32(py))
                 old := self.styles[cell]
                 combined := if old == 0 || old == brush { brush } else { self.composite(old, &overlay) }
                 if single { self.put(i32(px), i32(py), cp, glyph.span, combined) }
@@ -575,13 +581,13 @@ impl Frame {
             for _ in 0..self.glyphs.len { self.clusters.push("") }
         }
         self.put(x, y, if cells == 0 { ZERO_CLUSTER } else { CLUSTER }, cmp.max<i32>(1, cells), brush)
-        i := y * self.bounds.w + x
+        i := self.index(x,y)
         if self.clusters[i] == "" { self.cluster_cells.push(i) }
         self.clusters[i] = move value
     }
 
     pub fn set_cell(&mut self, x: i32, y: i32, value: string, style: Style) -> bool {
-        if x < 0 || y < 0 || y >= self.bounds.h || x >= self.bounds.w || value.len == 0 { return false }
+        if !self.bounds.contains(x,y) || value.len == 0 { return false }
         chars := value.runes()
         mut at := 0
         mut cells := 0
@@ -591,8 +597,8 @@ impl Frame {
             cells += g.span
             at = g.end
         }
-        if cells > self.bounds.w - x { return false }
-        brush := self.composite(self.styles[y * self.bounds.w + x], &style)
+        if cells > self.bounds.x+self.bounds.w-x { return false }
+        brush := self.composite(self.styles[self.index(x,y)], &style)
         if chars.len == 1 && width.columns(i32(chars[0])) > 0 { self.put(x, y, i32(chars[0]), cells, brush) }
         else { self.put_cluster(x, y, value.clone(), cells, brush) }
         true
@@ -620,7 +626,7 @@ impl Frame {
             mut last: i64 = 0
             mut combined := self.composite(0, &style)
             for y in area.y..(area.y + area.h) {
-                start := y * self.bounds.w + area.x
+                start := self.index(area.x,y)
                 for i in start..(start + area.w) {
                     old := self.styles[i]
                     if old != last { last = old; combined = self.composite(old, &style) }
@@ -637,7 +643,7 @@ impl Frame {
         for y in area.y..(area.y + area.h) {
             mut x := first
             while x <= area.x + area.w - cells {
-                i := y * self.bounds.w + x
+                i := self.index(x,y)
                 old := self.styles[i]
                 if old != last { last = old; combined = self.composite(old, &style) }
                 if cp == CLUSTER { self.put_cluster(x, y, cluster.clone(), cells, combined) }
@@ -651,7 +657,7 @@ impl Frame {
         area := bounds.intersection(self.bounds)
         for y in area.y..(area.y + area.h) {
             for x in area.x..(area.x + area.w) {
-                i := y * self.bounds.w + x
+                i := self.index(x,y)
                 self.erase_span(i)
                 self.glyphs[i] = 0
                 self.styles[i] = 0
@@ -665,7 +671,7 @@ impl Frame {
         if width.columns(i32(symbol)) != 1 { return }
         for y in area.y..(area.y + area.h) {
             for x in area.x..(area.x + area.w) {
-                i := y * self.bounds.w + x
+                i := self.index(x,y)
                 result := self.composite(self.styles[i], &style)
                 if self.glyphs[i] == 0 { self.put(x, y, i32(symbol), 1, result); continue }
                 head := self.head(i)
@@ -712,10 +718,13 @@ impl Frame {
     }
 
     pub fn styled_rune(&mut self, x: i32, y: i32, right: i32, symbol: rune, style: &Style) {
-        if x < 0 || y < 0 || x >= right || x >= self.bounds.w || y >= self.bounds.h { return }
+        if x < self.bounds.x || y < self.bounds.y || x >= right { return }
+        col := x-self.bounds.x
+        row := y-self.bounds.y
+        if col >= self.bounds.w || row >= self.bounds.h { return }
         span := width.columns(i32(symbol))
-        if span < 1 || span > cmp.min<i32>(right,self.bounds.w)-x { return }
-        i := y*self.bounds.w+x
+        if span < 1 || span > self.bounds.w-col || span > right-x { return }
+        i := row*self.bounds.w+col
         brush := self.composite(self.styles[i], &style)
         if span == 1 && self.glyphs[i] >= 0 && self.glyphs[i] < WIDE {
             self.glyphs[i] = if symbol == ` ` { WRITTEN_SPACE } else { i32(symbol)-32 }
@@ -753,16 +762,16 @@ impl Frame {
     }
 
     pub fn symbol_at(&self, x: i32, y: i32) -> Option<string> {
-        if x < 0 || y < 0 || x >= self.bounds.w || y >= self.bounds.h { return .None }
+        if !self.bounds.contains(x,y) { return .None }
         mut out: []u8 = []
-        self.append_cell(&mut out, y * self.bounds.w + x, false)
+        self.append_cell(&mut out, self.index(x,y), false)
         .Some(bytes.decode(&out).unwrap())
     }
 
     pub fn line(&self, y: i32) -> string {
-        if y < 0 || y >= self.bounds.h { return "" }
+        if y < self.bounds.y || y >= self.bounds.y+self.bounds.h { return "" }
         mut out: []u8 = []
-        start := y * self.bounds.w
+        start := (y-self.bounds.y)*self.bounds.w
         for i in start..(start + self.bounds.w) { self.append_cell(&mut out, i, false) }
         bytes.decode(&out).unwrap()
     }
@@ -782,7 +791,7 @@ impl Frame {
             self.put_cluster(x,y,source.clusters[i].clone(),if code == ZERO_CLUSTER { 0 } else { span },brush)
         } else {
             self.put(x,y,if value == WRITTEN_SPACE { 32 } else { code },span,brush)
-            if value == 0 { self.glyphs[y*self.bounds.w+x] = 0 }
+            if value == 0 { self.glyphs[self.index(x,y)] = 0 }
         }
         span
     }
@@ -790,29 +799,35 @@ impl Frame {
     pub fn copy_region(&mut self, source: &Frame, region: Rect, x: i32, y: i32) {
         from := region.intersection(source.bounds)
         if from.is_empty() { return }
-        left := cmp.max<i64>(i64(from.x),i64(region.x)-i64(x))
-        top := cmp.max<i64>(i64(from.y),i64(region.y)-i64(y))
-        right := cmp.min<i64>(i64(from.right()),i64(region.x)-i64(x)+i64(self.bounds.w))
-        bottom := cmp.min<i64>(i64(from.bottom()),i64(region.y)-i64(y)+i64(self.bounds.h))
+        left := cmp.max<i64>(i64(from.x),i64(region.x)-i64(x)+i64(self.bounds.x))
+        top := cmp.max<i64>(i64(from.y),i64(region.y)-i64(y)+i64(self.bounds.y))
+        right := cmp.min<i64>(i64(from.right()),i64(region.x)-i64(x)+i64(self.bounds.x+self.bounds.w))
+        bottom := cmp.min<i64>(i64(from.bottom()),i64(region.y)-i64(y)+i64(self.bounds.y+self.bounds.h))
         if right <= left || bottom <= top { return }
         for row in i32(top)..i32(bottom) {
             dy := i32(i64(y)+i64(row)-i64(region.y))
             mut col := i32(left)
             while col < i32(right) {
                 dx := i32(i64(x)+i64(col)-i64(region.x))
-                col += self.copy_glyph(&source,row*source.bounds.w+col,dx,dy,i32(right)-col)
+                col += self.copy_glyph(&source,source.index(col,row),dx,dy,i32(right)-col)
             }
         }
     }
 
+    fn rows_at(&self, first: i32, y: i32, count: i32) -> Frame {
+        mut out := Frame::at(Rect { x:0,y:y,w:self.bounds.w,h:count })
+        out.copy_region(&self,Rect { x:self.bounds.x,y:self.bounds.y+first,w:self.bounds.w,h:count },0,y)
+        out
+    }
+
     pub fn resize(&mut self, w: i32, h: i32) {
         if self.bounds.w == w && self.bounds.h == h { return }
-        mut resized := Frame::new(w,h)
+        mut resized := Frame::at(self.bounds.resize(w,h))
         limit := cmp.min<i32>(self.glyphs.len,resized.glyphs.len)
         mut i := 0
         while i < limit {
             x := i%resized.bounds.w
-            i += resized.copy_glyph(&self,i,x,i/resized.bounds.w,cmp.min<i32>(limit-i,resized.bounds.w-x))
+            i += resized.copy_glyph(&self,i,resized.bounds.x+x,resized.bounds.y+i/resized.bounds.w,cmp.min<i32>(limit-i,resized.bounds.w-x))
         }
         resized.cursor_x = self.cursor_x
         resized.cursor_y = self.cursor_y
@@ -820,35 +835,34 @@ impl Frame {
         self = move resized
     }
 
-    pub fn erase(&mut self, region: Rect) {
-        area := self.bounds.intersection(region)
-        for y in area.y..area.bottom() {
-            for x in area.x..area.right() {
-                i := y*self.bounds.w+x
-                self.erase_span(i)
-                self.glyphs[i] = 0
-                self.styles[i] = 0
-            }
-        }
-    }
+    pub fn erase(&mut self, region: Rect) { self.clear_area(region) }
 
     pub fn apply_diff(&mut self, frame: &Frame, previous: &Frame) {
-        full := self.bounds != frame.bounds || frame.bounds != previous.bounds
-        if self.bounds != frame.bounds { self = Frame::new(frame.bounds.w,frame.bounds.h) }
-        shared := if full { i64(0) } else { frame.shared_style_floor(&previous) }
-        for y in 0..frame.bounds.h {
-            row := y*frame.bounds.w
-            if !full && frame.same_row(&previous,row,shared) { continue }
-            mut x := 0
-            while x < frame.bounds.w {
-                i := row+x
-                if full || frame.changed(&previous,i) { x += self.copy_glyph(&frame,i,x,y,frame.bounds.w-x) }
-                else { x += frame.advance(i) }
-            }
-        }
+        if self.bounds != frame.bounds {
+            self = Frame::at(frame.bounds)
+            self.copy_region(&frame,frame.bounds,frame.bounds.x,frame.bounds.y)
+        } else { self.apply_region_diff(&frame,&previous) }
         self.cursor_x = frame.cursor_x
         self.cursor_y = frame.cursor_y
         self.number = frame.number
+    }
+
+    pub fn apply_region_diff(&mut self, frame: &Frame, previous: &Frame) {
+        full := frame.bounds != previous.bounds
+        if full { self.copy_region(&frame,frame.bounds,frame.bounds.x,frame.bounds.y); return }
+        area := self.bounds.intersection(frame.bounds)
+        if area.is_empty() { return }
+        shared := frame.shared_style_floor(&previous)
+        for y in area.y..area.bottom() {
+            row := frame.index(frame.bounds.x,y)
+            if frame.same_row(&previous,row,shared) { continue }
+            mut x := area.x
+            while x < area.right() {
+                i := row+(x-frame.bounds.x)
+                if frame.changed(&previous,i) { x += self.copy_glyph(&frame,i,x,y,area.right()-x) }
+                else { x += frame.advance(i) }
+            }
+        }
     }
 
     pub fn clear(&mut self) {
@@ -917,9 +931,8 @@ impl Frame {
         finish
     }
 
-    pub fn ansi_diff(&self, previous: &Frame, out: &mut []u8) {
-        start_len := out.len
-        full := self.bounds.w != previous.bounds.w || self.bounds.h != previous.bounds.h
+    fn ansi_cells(&self, previous: &Frame, out: &mut []u8) {
+        full := self.bounds != previous.bounds
         shared_floor := if full { i64(0) } else { self.shared_style_floor(&previous) }
         mut current: i64 = 0
         for y in 0..self.bounds.h {
@@ -931,7 +944,7 @@ impl Frame {
                 start := if full { at } else { self.run_start(&previous, at, end) }
                 if start == end { break }
                 finish := if full { end } else { self.run_end(&previous, start, end) }
-                paint.cursor(&mut out, start - row, y)
+                paint.cursor(&mut out, self.bounds.x+start-row, self.bounds.y+y)
                 mut i := start
                 while i < finish {
                     style := self.styles[i]
@@ -946,6 +959,11 @@ impl Frame {
             }
         }
         if current != 0 { bytes.append_utf8(&mut out, "\x1b[0m") }
+    }
+
+    pub fn ansi_diff(&self, previous: &Frame, out: &mut []u8) {
+        start_len := out.len
+        self.ansi_cells(&previous,&mut out)
         if self.cursor_x >= 0 {
             if out.len != start_len || self.cursor_x != previous.cursor_x || self.cursor_y != previous.cursor_y {
                 paint.cursor(&mut out,self.cursor_x,self.cursor_y)
@@ -955,7 +973,7 @@ impl Frame {
     }
 
     fn paint_windows(&self, previous: &Frame, term: &terminal.Session) -> bool {
-        full := self.bounds.w != previous.bounds.w || self.bounds.h != previous.bounds.h
+        full := self.bounds != previous.bounds
         shared_floor := if full { i64(0) } else { self.shared_style_floor(&previous) }
         mut run: []u8 = []
         for y in 0..self.bounds.h {
@@ -976,7 +994,7 @@ impl Frame {
                         self.append_cell(&mut run, i, true)
                         i += self.advance(i)
                     }
-                    if !windows.paint(&term.win, x, y, bytes.decode(&run).unwrap(), paint.Brush::unpack(self.decoration(style).packed)) { return false }
+                    if !windows.paint(&term.win, self.bounds.x+x, self.bounds.y+y, bytes.decode(&run).unwrap(), paint.Brush::unpack(self.decoration(style).packed)) { return false }
                 }
                 at = finish
             }
@@ -988,8 +1006,8 @@ impl Frame {
         if target_is("windows") {
             if !term.win.vt {
                 if !self.paint_windows(&previous,&term) { return false }
-                return windows.cursor(&term.win,cmp.min<i32>(self.cursor_x,self.bounds.w-1),
-                    cmp.min<i32>(self.cursor_y,self.bounds.h-1),previous.cursor_x)
+                return windows.cursor(&term.win,cmp.min<i32>(self.cursor_x,self.bounds.x+self.bounds.w-1),
+                    cmp.min<i32>(self.cursor_y,self.bounds.y+self.bounds.h-1),previous.cursor_x)
             }
         }
         output.clear()
@@ -1062,7 +1080,7 @@ impl GlyphRun {
     }
 
     pub fn write(&self, frame: &mut Frame, bounds: Rect, first: i32, end: i32, style: Style) -> i32 {
-        if bounds.w <= 0 || bounds.h <= 0 || bounds.y < 0 || bounds.y >= frame.bounds.h { return 0 }
+        if bounds.w <= 0 || bounds.h <= 0 || bounds.y < frame.bounds.y || bounds.y >= frame.bounds.y+frame.bounds.h { return 0 }
         start := clamp(first, self.count())
         finish := clamp(end, self.count())
         if start >= finish { return 0 }
@@ -1071,7 +1089,7 @@ impl GlyphRun {
             .Some(data) => data.write(&mut frame, bounds, start, finish, brush, style),
             .None => {
                 frame.ascii_slice(bounds, self.source, start, finish, brush, &style)
-                cmp.max<i32>(0, i32(cmp.min<i64>(i64(finish - start), cmp.min<i64>(i64(bounds.w), i64(frame.bounds.w) - i64(bounds.x)))))
+                cmp.max<i32>(0, i32(cmp.min<i64>(i64(finish - start), cmp.min<i64>(i64(bounds.w), i64(frame.bounds.x+frame.bounds.w) - i64(bounds.x)))))
             },
         }
     }
@@ -1080,7 +1098,7 @@ impl GlyphRun {
 impl GlyphData {
     fn write(&self, frame: &mut Frame, bounds: Rect, start: i32, finish: i32, brush: i64, style: Style) -> i32 {
         mut x := i64(bounds.x)
-        right := cmp.min<i64>(i64(frame.bounds.w), x + i64(bounds.w))
+        right := cmp.min<i64>(i64(frame.bounds.x+frame.bounds.w), x + i64(bounds.w))
         mut last: i64 = 0
         mut combined := brush
         for i in start..finish {
@@ -1088,8 +1106,8 @@ impl GlyphData {
             cells := self.tokens[i * 2 + 1]
             if cells == 0 { continue }
             if x + i64(cells) > right { break }
-            if x >= 0 {
-                index := bounds.y * frame.bounds.w + i32(x)
+            if x >= i64(frame.bounds.x) {
+                index := frame.index(i32(x),bounds.y)
                 old := frame.styles[index]
                 if old != last {
                     last = old
@@ -1106,13 +1124,26 @@ impl GlyphData {
 
 pub enum Key { Char(rune), Up, Down, Left, Right, Home, End, Delete, Backspace, Tab, Enter, Escape }
 
+pub enum Viewport { Fullscreen, Fixed(Rect), Inline(i32) }
+
+fn valid_area(area: Rect) -> bool {
+    area.x >= 0 && area.y >= 0 && area.w >= 0 && area.h >= 0 && area.w <= 4096 && area.h <= 4096 &&
+        i64(area.x)+i64(area.w) <= 65536 && i64(area.y)+i64(area.h) <= 65536 && area.cell_count() <= 1048576
+}
+
 pub trait Backend {
     fn size(&mut self) -> (i32,i32)
     fn present(&mut self, frame: &Frame, previous: &Frame) -> Result<(),string>
+    fn scrollback_needs_full_screen(&self) -> bool { false }
+    fn read_cursor(&mut self) -> Result<(i32,i32),string> { .Err("Backend cannot read the cursor.") }
+    fn move_to(&mut self, x: i32, y: i32) -> Result<(),string> { .Err("Backend cannot move the cursor.") }
+    fn extend_lines(&mut self, rows: i32) -> Result<(),string> { .Err("Backend cannot append lines.") }
+    fn shift_rows(&mut self, top: i32, bottom: i32, delta: i32) -> Result<(),string> { .Err("Backend cannot scroll a region.") }
+    fn write_region(&mut self, frame: &Frame) -> Result<(),string> { .Err("Backend cannot write a region.") }
 }
 
 pub opaque struct Terminal<B> where B: Backend {
-    device: B, buffers: [Frame;2], front: i32, number: u64, invalid: bool,
+    device: B, viewport: Viewport, area: Rect, screen: Rect, last_y: i32, buffers: [Frame;2], front: i32, number: u64, invalid: bool,
 }
 
 enum Renderer<S> {
@@ -1121,7 +1152,144 @@ enum Renderer<S> {
 
 impl Terminal<B> {
     pub fn new(move device: B) -> Self {
-        Self { device: move device, buffers: [Frame::new(0,0),Frame::new(0,0)], front: 0, number: 0, invalid: true }
+        empty := Rect { x:0,y:0,w:0,h:0 }
+        Self { device: move device, viewport:.Fullscreen, area:empty, screen:empty, last_y:0, buffers: [Frame::new(0,0),Frame::new(0,0)], front: 0, number: 0, invalid: true }
+    }
+
+    pub fn with_viewport(move device: B, viewport: Viewport) -> Result<Self,string> {
+        mut term := Self::new(move device)
+        term.viewport = viewport
+        (w,h) := term.device.size()
+        term.screen = Rect { x:0,y:0,w:w,h:h }
+        if !valid_area(term.screen) { return .Err("Invalid terminal size.") }
+        match viewport {
+            .Fullscreen => { term.area = term.screen },
+            .Fixed(area) => {
+                if !valid_area(area) { return .Err("Invalid fixed viewport.") }
+                term.area = area
+            },
+            .Inline(height) => {
+                if height < 1 || height > 4096 { return .Err("Invalid inline height.") }
+                _ := term.reserve_inline(height,0)?
+            },
+        }
+        term.buffers[0] = Frame::at(term.area)
+        term.buffers[0].cursor_x = -2
+        term.invalid = false
+        .Ok(move term)
+    }
+
+    fn reserve_inline(&mut self, height: i32, offset: i32) -> Result<(i32,i32),string> {
+        pos := self.device.read_cursor()?
+        reserve := cmp.max<i32>(0,height-offset-1)
+        self.device.extend_lines(reserve)?
+        below := cmp.max<i32>(0,self.screen.h-pos.1-1)
+        top := cmp.max<i32>(0,pos.1-cmp.max<i32>(0,reserve-below)-offset)
+        self.area = Rect { x:0,y:top,w:self.screen.w,h:cmp.min<i32>(height,self.screen.h) }
+        self.last_y = pos.1
+        .Ok(pos)
+    }
+
+    pub fn viewport_area(&self) -> Rect { self.area }
+
+    pub fn clear(&mut self) -> Result<(),string> {
+        pos := self.device.read_cursor()?
+        self.clear_surface()?
+        self.device.move_to(pos.0,pos.1)
+    }
+
+    fn clear_surface(&mut self) -> Result<(),string> {
+        self.invalid = true
+        area := match self.viewport {
+            .Inline(_) => Rect { x:0,y:self.area.y,w:self.screen.w,h:self.screen.h-self.area.y },
+            _ => self.area,
+        }
+        blank := Frame::at(area)
+        self.device.write_region(&blank)?
+        previous := &mut self.buffers[self.front]
+        if previous.bounds == self.area { previous.clear() }
+        else { previous = Frame::at(self.area) }
+        previous.cursor_x = -2
+        self.invalid = false
+        .Ok
+    }
+
+    pub fn resize(&mut self, area: Rect) -> Result<(),string> {
+        if !valid_area(area) { return .Err("Invalid terminal viewport size.") }
+        old := self.area
+        mut cursor: Option<(i32,i32)> = .None
+        viewport := self.viewport
+        match viewport {
+            .Inline(height) => {
+                self.screen = area
+                result := self.reserve_inline(height,cmp.max<i32>(0,self.last_y-old.y))
+                if result.is_err() { self.screen.w = -1; return .Err(result.unwrap_err()) }
+                cursor = .Some(result.unwrap())
+            },
+            .Fixed(_) => { self.area = area; self.viewport = .Fixed(area) },
+            .Fullscreen => { self.screen = area; self.area = area },
+        }
+        if self.area.w < old.w {
+            self.area.y = 0
+            (w,h) := self.device.size()
+            blank := Frame::new(w,h)
+            self.invalid = true
+            self.device.write_region(&blank)?
+        }
+        self.clear_surface()?
+        match cursor { .Some(p) => self.device.move_to(p.0,p.1), .None => .Ok, }
+    }
+
+    pub fn insert_before(&mut self, lines: &Frame) -> Result<(),string> {
+        viewport := self.viewport
+        match viewport { .Inline(_) => {}, _ => { return .Ok }, }
+        source := lines.area()
+        if source.h == 0 || self.area.is_empty() { return .Ok }
+        if source.w != self.area.w { return .Err("Inserted lines must match the viewport width.") }
+        invalid_before := self.invalid
+        self.invalid = true
+        mut row := 0
+        free := cmp.min<i32>(source.h,self.screen.h-self.area.bottom())
+        if free > 0 {
+            self.device.shift_rows(self.area.y,self.area.bottom()+free,free)?
+            top := self.area.y
+            self.area.y += free
+            self.buffers[self.front].bounds.y = self.area.y
+            block := lines.rows_at(0,top,free)
+            self.device.write_region(&block)?
+            row = free
+        }
+        if row < source.h && self.device.scrollback_needs_full_screen() {
+            while row < source.h {
+                block := lines.rows_at(row,self.area.y,1)
+                self.device.write_region(&block)?
+                self.device.move_to(0,self.screen.h-1)?
+                self.device.extend_lines(1)?
+                row += 1
+            }
+            self.device.write_region(&self.buffers[self.front])?
+        } else if self.area.h == self.screen.h {
+            for line in row..source.h {
+                block := lines.rows_at(line,0,1)
+                self.device.write_region(&block)?
+                self.device.shift_rows(0,1,-1)?
+            }
+            top := self.buffers[self.front].rows_at(0,0,1)
+            self.device.write_region(&top)?
+        } else {
+            while row < source.h {
+                count := cmp.min<i32>(self.area.y,source.h-row)
+                if count < 1 { return .Err("No space above the viewport.") }
+                self.device.shift_rows(0,self.area.y,-count)?
+                block := lines.rows_at(row,self.area.y-count,count)
+                self.device.write_region(&block)?
+                row += count
+            }
+        }
+        cursor := self.buffers[self.front].cursor_position()
+        match cursor { .Some(p) => { self.device.move_to(p.0,p.1)? }, .None => {}, }
+        self.invalid = invalid_before
+        .Ok
     }
 
     pub fn backend(&self) -> &B from self { &self.device }
@@ -1144,9 +1312,16 @@ impl Terminal<B> {
     }
 
     fn prepare(&mut self, w: i32, h: i32) -> Result<(),string> {
-        if w < 0 || h < 0 || w > 4096 || h > 4096 || i64(w)*i64(h) > 1048576 { return .Err("Invalid terminal viewport size.") }
+        screen := Rect { x:0,y:0,w:w,h:h }
+        if !valid_area(screen) { return .Err("Invalid terminal viewport size.") }
+        viewport := self.viewport
+        match viewport {
+            .Fullscreen => { self.area = screen; self.screen = screen },
+            .Inline(_) if screen != self.screen => { self.resize(screen)? },
+            _ => {},
+        }
         back := 1-self.front
-        if self.buffers[back].bounds.w != w || self.buffers[back].bounds.h != h { self.buffers[back] = Frame::new(w,h) }
+        if self.buffers[back].bounds != self.area { self.buffers[back] = Frame::at(self.area) }
         else { self.buffers[back].clear() }
         self.buffers[back].hide_cursor()
         self.buffers[back].number = self.number
@@ -1161,6 +1336,25 @@ impl Terminal<B> {
             self.device.present(&self.buffers[back],&unknown)
         } else { self.device.present(&self.buffers[back],&self.buffers[self.front]) }
         if result.is_err() { self.invalid = true; return result }
+        viewport := self.viewport
+        match viewport {
+            .Inline(_) => {
+                next := &self.buffers[back]
+                prev := &self.buffers[self.front]
+                if next.cursor_x >= 0 { self.last_y = next.cursor_y }
+                else {
+                    mut i := next.glyphs.len
+                    while i > 0 {
+                        i -= 1
+                        if next.glyphs[i] >= 0 && (next.bounds != prev.bounds || next.changed(&prev,i)) {
+                            self.last_y = next.bounds.y+i/next.bounds.w
+                            break
+                        }
+                    }
+                }
+            },
+            _ => {},
+        }
         self.invalid = false
         self.front = back
         self.number = self.number.wrapping_add(u64(1))
@@ -1168,39 +1362,189 @@ impl Terminal<B> {
     }
 }
 
-struct LiveBackend { session: terminal.Session, output: []u8 }
+@resource(dispose)
+pub opaque struct LiveBackend { session: terminal.Session, output: []u8, active: bool, width: i32, height: i32, inline_end: i32, fixed: bool, original_x: i32, original_y: i32 }
+
+impl LiveBackend {
+    fn dispose(&mut self) { self.close() }
+
+    pub fn close(&mut self) {
+        if !self.active { return }
+        if self.inline_end > 0 && self.height > 0 {
+            _ := self.move_to(0,cmp.min<i32>(self.height-1,self.inline_end))
+            if self.inline_end >= self.height { _ := self.extend_lines(1) }
+        } else if self.fixed {
+            if target_is("windows") { _ := self.move_to(self.original_x,self.original_y) }
+            else { _ := self.control("\x1b8") }
+        }
+        self.session.close()
+        self.active = false
+    }
+
+    pub fn next(&mut self, wait_ms: i32) -> input.Event {
+        if !self.active { return .Error }
+        self.session.next(wait_ms)
+    }
+
+    fn bytes(&self, data: &[]u8) -> bool {
+        if target_is("windows") { return windows.write(&self.session.win,&data) }
+        else { return posix.write_bytes(&data) }
+    }
+
+    fn control(&mut self, value: string) -> Result<(),string> {
+        if self.bytes(&value.as_bytes()) { .Ok } else { .Err("Could not write to the terminal.") }
+    }
+
+    fn visible(&self, frame: &Frame) -> Rect {
+        frame.bounds.intersection(Rect { x:0,y:0,w:self.width,h:self.height })
+    }
+
+    fn draw_region(&mut self, frame: &Frame, previous: &Frame, cursor: bool) -> bool {
+        if cursor { return frame.present(&self.session,&previous,&mut self.output) }
+        if target_is("windows") {
+            if !self.session.win.vt { return frame.paint_windows(&previous,&self.session) }
+        }
+        self.output.clear()
+        frame.ansi_cells(&previous,&mut self.output)
+        self.bytes(&self.output)
+    }
+}
+
+pub fn open(viewport: Viewport) -> Result<Terminal<LiveBackend>,string> {
+    alternate := match viewport { .Fullscreen => true, _ => false, }
+    mut backend := LiveBackend { session:terminal.session(), output:[], active:false,width:0,height:0,inline_end:-1,fixed:false,original_x:0,original_y:0 }
+    (w,h) := backend.size()
+    if w <= 0 || h <= 0 || !backend.session.open(alternate) { return .Err("An interactive terminal is required on stdin and stdout.") }
+    backend.active = true
+    match viewport {
+        .Fixed(_) => {
+            if target_is("windows") {
+                pos := backend.read_cursor()?
+                backend.original_x = pos.0
+                backend.original_y = pos.1
+            } else { backend.control("\x1b7")? }
+            backend.fixed = true
+        },
+        .Inline(_) => { backend.inline_end = 0 },
+        _ => {},
+    }
+    if !backend.session.enter() { return .Err("Could not enter terminal mode.") }
+    if alternate { return .Ok(Terminal<LiveBackend>::new(move backend)) }
+    Terminal<LiveBackend>::with_viewport(move backend,viewport)
+}
 
 impl Backend for LiveBackend {
-    fn size(&mut self) -> (i32,i32) { self.session.size() }
+    fn scrollback_needs_full_screen(&self) -> bool { true }
+    fn size(&mut self) -> (i32,i32) {
+        (w,h) := self.session.size()
+        self.width = w
+        self.height = h
+        (w,h)
+    }
+
+    fn read_cursor(&mut self) -> Result<(i32,i32),string> {
+        if target_is("windows") { return windows.read_position(&self.session.win) }
+        else { return posix.read_cursor(&mut self.session.unix) }
+    }
+
+    fn move_to(&mut self, x: i32, y: i32) -> Result<(),string> {
+        if target_is("windows") {
+            if !self.session.win.vt {
+                if windows.move_to(&self.session.win,x,y) { return .Ok }
+                return .Err("Could not move the console cursor.")
+            }
+        }
+        self.control(f"\x1b[{y+1};{x+1}H")
+    }
+
+    fn extend_lines(&mut self, rows: i32) -> Result<(),string> {
+        if target_is("windows") {
+            if !self.session.win.vt {
+                if windows.append_rows(&mut self.session.win,rows) { return .Ok }
+                return .Err("Could not append console lines.")
+            }
+        }
+        self.output.clear()
+        for _ in 0..rows { self.output.push(13); self.output.push(10) }
+        if self.bytes(&self.output) { .Ok } else { .Err("Could not append lines.") }
+    }
+
+    fn shift_rows(&mut self, top: i32, bottom: i32, delta: i32) -> Result<(),string> {
+        if self.inline_end >= 0 && delta > 0 && bottom == self.inline_end+delta { self.inline_end = bottom }
+        if delta == 0 { return .Ok }
+        if target_is("windows") {
+            if !self.session.win.vt {
+                if windows.shift_rows(&mut self.session.win,top,bottom,delta) { return .Ok }
+                return .Err("Could not scroll the console.")
+            }
+        }
+        if bottom == top+1 { return self.control(f"\x1b[{top+1};1H\x1b[2K") }
+        direction := if delta < 0 { "S" } else { "T" }
+        self.control(f"\x1b[{top+1};{bottom}r\x1b[{delta.abs()}{direction}\x1b[r")
+    }
+
+    fn write_region(&mut self, frame: &Frame) -> Result<(),string> {
+        previous := Frame::new(0,0)
+        visible := self.visible(&frame)
+        if visible.is_empty() { return .Ok }
+        if visible != frame.bounds {
+            mut cropped := Frame::at(visible)
+            cropped.copy_region(&frame,visible,visible.x,visible.y)
+            if self.draw_region(&cropped,&previous,false) { return .Ok }
+        } else if self.draw_region(&frame,&previous,false) { return .Ok }
+        .Err("Could not write terminal rows.")
+    }
+
     fn present(&mut self, frame: &Frame, previous: &Frame) -> Result<(),string> {
-        if frame.present(&self.session,&previous,&mut self.output) { .Ok } else { .Err("Could not write the frame.") }
+        if !self.active { return .Err("The terminal is closed.") }
+        if self.inline_end >= 0 { self.inline_end = frame.bounds.bottom() }
+        visible := self.visible(&frame)
+        if visible == frame.bounds {
+            if self.draw_region(&frame,&previous,true) { return .Ok }
+        } else {
+            mut cropped := Frame::at(visible)
+            cropped.copy_region(&frame,visible,visible.x,visible.y)
+            cropped.cursor_x = cmp.min<i32>(frame.cursor_x,self.width-1)
+            cropped.cursor_y = cmp.min<i32>(frame.cursor_y,self.height-1)
+            mut before := Frame::new(0,0)
+            if frame.bounds == previous.bounds {
+                before = Frame::at(visible)
+                before.copy_region(&previous,visible,visible.x,visible.y)
+            }
+            before.cursor_x = previous.cursor_x
+            before.cursor_y = previous.cursor_y
+            if self.draw_region(&cropped,&before,true) { return .Ok }
+        }
+        .Err("Could not write the frame.")
     }
 }
 
 pub fn run<S>(state: &mut S, draw: fn(&mut Frame, &S), update: fn(&mut S, Key) -> bool) -> Result<(), string> {
-    drive<S>(&mut state, Renderer<S>.Draw(draw), update, .None, fn(_state: &mut S, _elapsed: i64) -> bool { false })
+    drive<S>(.Fullscreen,&mut state, Renderer<S>.Draw(draw), update, .None, fn(_state: &mut S, _elapsed: i64) -> bool { false })
 }
 
 pub fn run_stateful<S>(state: &mut S, draw: fn(&mut Frame, &mut S), update: fn(&mut S, Key) -> bool) -> Result<(), string> {
-    drive<S>(&mut state, Renderer<S>.Stateful(draw), update, .None, fn(_state: &mut S, _elapsed: i64) -> bool { false })
+    drive<S>(.Fullscreen,&mut state, Renderer<S>.Stateful(draw), update, .None, fn(_state: &mut S, _elapsed: i64) -> bool { false })
 }
 
 pub fn animate<S>(state: &mut S, fps: i32, draw: fn(&mut Frame, &S), update: fn(&mut S, Key) -> bool, tick: fn(&mut S, i64) -> bool) -> Result<(), string> {
-    drive<S>(&mut state, Renderer<S>.Draw(draw), update, .Some(fps), tick)
+    drive<S>(.Fullscreen,&mut state, Renderer<S>.Draw(draw), update, .Some(fps), tick)
 }
 
 pub fn animate_stateful<S>(state: &mut S, fps: i32, draw: fn(&mut Frame, &mut S), update: fn(&mut S, Key) -> bool, tick: fn(&mut S, i64) -> bool) -> Result<(), string> {
-    drive<S>(&mut state, Renderer<S>.Stateful(draw), update, .Some(fps), tick)
+    drive<S>(.Fullscreen,&mut state, Renderer<S>.Stateful(draw), update, .Some(fps), tick)
 }
 
-fn drive<S>(state: &mut S, renderer: Renderer<S>, update: fn(&mut S, Key) -> bool, rate: Option<i32>, tick: fn(&mut S, i64) -> bool) -> Result<(), string> {
+pub fn run_in<S>(viewport: Viewport, state: &mut S, draw: fn(&mut Frame,&S), update: fn(&mut S,Key)->bool) -> Result<(),string> {
+    drive<S>(viewport,&mut state,Renderer<S>.Draw(draw),update,.None,fn(_s:&mut S,_ms:i64)->bool { false })
+}
+
+fn drive<S>(viewport: Viewport, state: &mut S, renderer: Renderer<S>, update: fn(&mut S, Key) -> bool, rate: Option<i32>, tick: fn(&mut S, i64) -> bool) -> Result<(), string> {
     fps := rate.unwrap_or(0)
     if rate.is_some() && (fps < 1 || fps > 1000) { return .Err("Frame rate must be between 1 and 1000.") }
-    mut term := Terminal<LiveBackend>::new(LiveBackend { session: terminal.session(), output: [] })
-    (cols, rows) := term.device.size()
-    if cols <= 0 || rows <= 0 || !term.device.session.open() { return .Err("An interactive terminal is required on stdin and stdout.") }
-    defer { term.device.session.close() }
-    if !term.device.session.enter() { return .Err("Could not enter the alternate screen.") }
+    mut term := open(viewport)?
+    mut last_w := 0
+    mut last_h := 0
     start := if fps > 0 { clock.monotonic_ns() } else { i64(0) }
     if start < 0 { return .Err("Could not read the animation clock.") }
     interval := if fps == 0 { i64(0) } else { i64(1000000000) / i64(fps) }
@@ -1218,7 +1562,9 @@ fn drive<S>(state: &mut S, renderer: Renderer<S>, update: fn(&mut S, Key) -> boo
                 next_tick += ((now - next_tick) / interval + 1) * interval
             }
         }
-        if dirty || next_w != term.completed().area().w || next_h != term.completed().area().h {
+        if dirty || next_w != last_w || next_h != last_h {
+            last_w = next_w
+            last_h = next_h
             term.prepare(next_w,next_h)?
             frame := &mut term.buffers[1-term.front]
             match &renderer {

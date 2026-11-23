@@ -1,0 +1,67 @@
+capability unsafe, process, stdio
+import .terminal_driver as driver
+import sys
+
+fn fixed(master: i32, slave: i32, s: &mut driver.Screen) -> bool {
+    s.cells[2*s.w+3] = `#`
+    s.cells[2*s.w+12] = `!`
+    unsafe {
+        if !driver.wait_state(master,&mut s,2,"#NORD    !","",11,3,1) || s.alternate { return false }
+        if !driver.send(master,"n") || !driver.wait_state(master,&mut s,2,"#SYD     !","",11,3,1) { return false }
+        if !driver.send(master,"q") || !driver.wait_for(master,&mut s,2,"#SYD     !","\x1b[?25h") { return false }
+    }
+    !s.alternate
+}
+
+fn inline(master: i32, slave: i32, s: &mut driver.Screen) -> bool {
+    s.cells[0] = `#`
+    s.y = 1
+    unsafe {
+        if !driver.wait_for(master,&mut s,0,"#","\x1b[6n") || s.alternate { return false }
+        if !driver.send(master,"\x1b[2;") || !driver.send(master,"1R") { return false }
+        if !driver.wait_for(master,&mut s,2,"0 rader","") || !s.contains(1,"Loggbok") { return false }
+        for n in 1..6 {
+            if !driver.send(master,"\r") { return false }
+            at := if n < 3 { 2+n } else { 4 }
+            if !driver.wait_for(master,&mut s,at,f"{n} rader","") { return false }
+            if !s.contains(at-1,"Loggbok") || !s.contains(at-2,f"Händelse {n}") { return false }
+            if n < 3 && !s.contains(0,"#") { return false }
+        }
+        if !s.contains(0,"Händelse 3") { return false }
+        if !driver.send(master,"q") || !driver.wait_for(master,&mut s,0,"","\x1b[?25h") { return false }
+    }
+    !s.alternate
+}
+
+fn timeout(master: i32, slave: i32, s: &mut driver.Screen) -> bool {
+    unsafe {
+        if !driver.wait_for(master,&mut s,0,"","\x1b[6n") { return false }
+        return driver.wait_state(master,&mut s,0,"","\x1b[?25h",-1,-1,1)
+    }
+    false
+}
+
+fn typing(master: i32, slave: i32, s: &mut driver.Screen) -> bool {
+    unsafe {
+        if !driver.wait_for(master,&mut s,0,"","\x1b[6n") || !driver.send(master,"\r\x1b[1;1Rq") { return false }
+        return driver.wait_state(master,&mut s,2,"1 rader","\x1b[?25h",-1,-1,1)
+    }
+    false
+}
+
+fn main() -> i32 {
+    if sys.arg_count() < 3 { return 1 }
+    mut fixed_args: []string = []
+    mut inline_args: []string = []
+    if sys.arg_count() == 4 { fixed_args.push("--fixed"); inline_args.push("--inline") }
+    unsafe {
+        if sys.arg_count() == 3 {
+            if !driver.test_with_args(sys.arg(1),["--timeout"],32,5,timeout) { _ := sys.eprint("cursor timeout cleanup failed"); return 4 }
+            if !driver.test(sys.arg(2),32,5,typing) { _ := sys.eprint("queued input failed"); return 5 }
+        }
+        if !driver.test_with_args(sys.arg(1),move fixed_args,32,5,fixed) { _ := sys.eprint("fixed viewport failed"); return 2 }
+        if !driver.test_with_args(sys.arg(2),move inline_args,32,5,inline) { _ := sys.eprint("inline viewport failed"); return 3 }
+    }
+    print("fixed and inline PTYs OK")
+    0
+}

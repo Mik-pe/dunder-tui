@@ -1,0 +1,44 @@
+capability stdio
+import tui
+import sys
+
+fn draw(frame: &mut tui.Frame, count: &mut i32) {
+    (title,body) := frame.area().rows(1)
+    frame.text(title,"Loggbok",tui.ink(.Cyan).bold())
+    frame.label(body,f"{count} rader   Enter lägg till   q avsluta")
+}
+
+fn loggbok() -> Result<(),string> {
+    mut term: tui.Terminal<tui.LiveBackend> = tui.open(.Inline(2))?
+    mut count := 0
+    mut last_size := (0,0)
+    mut dirty := true
+    while true {
+        size := term.backend_mut().size()
+        if dirty || size != last_size {
+            term.draw(&mut count,draw)?
+            dirty = false
+            last_size = size
+        }
+        event := term.backend_mut().next(200)
+        match event {
+            .Press(.Enter) => {
+                count += 1
+                mut row := tui.Frame::new(term.viewport_area().w,1)
+                row.text(row.area(),f"Händelse {count}",tui.ink(.LightMagenta))
+                term.insert_before(&row)?
+                dirty = true
+            },
+            .Press(.Escape) => { return .Ok },
+            .Press(.Char(c)) if c == `q` => { return .Ok },
+            .Quit => { return .Ok },
+            .Error => { return .Err("Kunde inte läsa tangentbordet.") },
+            _ => {},
+        }
+    }
+    .Ok
+}
+
+fn main() -> i32 {
+    match loggbok() { .Ok => 0, .Err(error) => { _ := sys.eprint(error); 1 }, }
+}

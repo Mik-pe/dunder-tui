@@ -9,14 +9,14 @@ import sys
 @extern("c", "tcgetattr")
 unsafe fn attributes(fd: i32, buf: ptr) -> i32
 
-pub struct Screen { w: i32, h: i32, x: i32, y: i32, cursor_visible: bool, cells: []rune }
+pub struct Screen { w: i32, h: i32, x: i32, y: i32, cursor_visible: bool, alternate: bool, saved_x: i32, saved_y: i32, top: i32, bottom: i32, cells: []rune }
 
 impl Screen {
     pub fn new(w: i32, h: i32) -> Self {
         mut cells: []rune = []
         cells.reserve(w * h)
         for _ in 0..(w * h) { cells.push(` `) }
-        Self { w: w, h: h, x: 0, y: 0, cursor_visible: true, cells: move cells }
+        Self { w: w, h: h, x: 0, y: 0, cursor_visible: true, alternate:false, saved_x:0, saved_y:0, top:0, bottom:h, cells: move cells }
     }
     pub fn contains(&self, row: i32, value: string) -> bool {
         mut line: []u8 = []
@@ -26,13 +26,27 @@ impl Screen {
         }
         text.contains(bytes.decode(&line).unwrap(), value)
     }
+    fn scroll(&mut self, delta: i32) {
+        for row in 0..(self.bottom-self.top) {
+            y := if delta < 0 { self.top+row } else { self.bottom-1-row }
+            from := y-delta
+            for x in 0..self.w {
+                self.cells[y*self.w+x] = if from >= self.top && from < self.bottom { self.cells[from*self.w+x] } else { ` ` }
+            }
+        }
+    }
+
     fn apply(&mut self, batch: string) {
         chars := batch.runes()
         mut i := 0
         while i < chars.len {
             c := chars[i]
             i += 1
-            if i32(c) == 27 && i < chars.len && chars[i] == `[` {
+            if i32(c) == 27 && i < chars.len && (chars[i] == `7` || chars[i] == `8`) {
+                if chars[i] == `7` { self.saved_x = self.x; self.saved_y = self.y }
+                else { self.x = self.saved_x; self.y = self.saved_y }
+                i += 1
+            } else if i32(c) == 27 && i < chars.len && chars[i] == `[` {
                 i += 1
                 mut private_mode := false
                 mut previous := 0
@@ -44,7 +58,17 @@ impl Screen {
                     if v == `;` { previous = number; number = 0; continue }
                     if v == `?` { private_mode = true; continue }
                     if private_mode && number == 25 && (v == `h` || v == `l`) { self.cursor_visible = v == `h` }
-                    if v == `H` {
+                    if private_mode && number == 1049 { self.alternate = v == `h` }
+                    if v == `r` {
+                        self.top = if previous > 0 { previous-1 } else { 0 }
+                        self.bottom = if number > 0 && number <= self.h { number } else { self.h }
+                        self.x = 0; self.y = 0
+                    } else if v == `S` || v == `T` {
+                        count := if number > 0 { number } else { 1 }
+                        self.scroll(if v == `S` { -count } else { count })
+                    } else if v == `K` && number == 2 && self.y < self.h {
+                        for col in 0..self.w { self.cells[self.y*self.w+col] = ` ` }
+                    } else if v == `H` {
                         self.y = if previous > 0 { previous - 1 } else { 0 }
                         self.x = if number > 0 { number - 1 } else { 0 }
                     } else if v == `J` && number == 2 {
@@ -52,6 +76,10 @@ impl Screen {
                     }
                     break
                 }
+            } else if i32(c) == 13 { self.x = 0 }
+            else if i32(c) == 10 {
+                if self.y+1 == self.bottom { self.scroll(-1) }
+                else if self.y+1 < self.h { self.y += 1 }
             } else if i32(c) >= 32 {
                 cols := width.columns(i32(c))
                 if cols <= 0 { continue }

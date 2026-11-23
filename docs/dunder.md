@@ -1,5 +1,13 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Tre förbättringar från vyportarna
+
+- **Plattformsvillkor före länkning.** På macOS länkar 0.11.2 in `kernel32.dll` för `if target_is("windows") && enabled`. Det hindrar programmet från att starta. Två nästlade villkor ger rätt binär. [Minimalt program](../tests/dogfood/compiler/target_condition.ddr)
+- **Typinferens mellan moduler.** Om en fabrik returnerar en generisk mottagare inuti ett `Result` kan nästa generiska metodanrop få `dunder check` att avslutas med kod 103 utan diagnostik. Både lokal typannotering och definition i samma modul har verifierats som fungerande. [Tvåmodulsprov](../tests/dogfood/compiler/inferred_receiver)
+- **Gemensam UTF-16-kodning.** Windowskonsolen och standardbibliotekets sökvägar bygger samma surrogatpar. Konsolen skickar en längd till operativsystemet medan sökvägsfunktionen avvisar inre nollor och avslutar med en nolla. [Konsolskrivaren](../src/windows.ddr) · [Sökvägsprovet i Dunder](https://github.com/Mik-pe/dunder/blob/v0.11.2/stdlib/sys/winpath.ddr)
+
+Förbättringarna och deras acceptansprov finns i [Dunders nästa steg](https://github.com/Mik-pe/dunder/blob/d744946bda92e0342e5baa0feb4a32a2e780f64e/docs/next-steps.md).
+
 ## Två kompilatorfynd från den utbytbara terminalbackenden
 
 Två olika specialiseringar av samma generiska typ kan var för sig använda en generisk metod som anropar en annan. Tillsammans får det andra anropet E2003, oberoende av ordningen. Terminalen delar nu upp arbetet i förberedelse, ritning och publicering. En separat reproduktion på två rader visar att `unwrap()` på `Result<(),string>` ger E1002 även utan generiska metoder i användarens kod. Båda fallen har verifierats med den publicerade Dunder 0.11.2 på macOS ARM64. [Metodprov](../tests/dogfood/compiler/nested_methods.ddr) · [Resultatprov](../tests/dogfood/compiler/unwrap_unit.ddr)

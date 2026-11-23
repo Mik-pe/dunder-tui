@@ -39,3 +39,7 @@ required-features = ["layout-cache"]
 [[example]]
 name = "terminal"
 required-features = ["terminal-oracle"]
+
+[[example]]
+name = "viewports"
+required-features = ["terminal-oracle"]

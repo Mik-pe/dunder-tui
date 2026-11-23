@@ -2,7 +2,27 @@
 
 Båda programmen ritar samma diagram med tre dataserier genom sitt publika `Terminal.draw` och begär en synlig markör på statusraden. Testbackendarna jämför samtliga 1 100 bilder, inklusive cellstilar, markörposition och bildnummer. För tidsmätningen skriver Dunder sin ANSI-diff och Ratatui använder Crossterm. Båda samlar utdata i en återanvänd bytebuffert och kan skriva den till en pseudoterminal. Storleken kommer från samma förutbestämda serie i båda programmen. [Dunder](terminal.ddr) · [Rust](reference/examples/terminal_bench.rs)
 
-## Bildtid
+## Version 0.11.0
+
+Samma diagram och 1 100 färdiga bilder jämfördes igen efter införandet av absoluta buffertkoordinater och vyportar. Tabellen visar bildtid med PTY i mikrosekunder som median / p95. Varje värde är medianen av sju mätserier. Minsta och största resultat för varje serie finns i råtabellen. [Alla tider och byte per bild](results/terminal-0.11.0.tsv)
+
+| Ändring | macOS Dunder | macOS Ratatui | Linux ARM64 Dunder | Linux ARM64 Ratatui | Linux x86-64 Dunder | Linux x86-64 Ratatui |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Oförändrad | 92 / 99 | 93 / 101 | 92 / 98 | 98 / 105 | 906 / 945 | 184 / 190 |
+| En cell | 97 / 103 | 93 / 101 | 98 / 106 | 98 / 104 | 915 / 967 | 183 / 188 |
+| Skrollning | 156 / 166 | 167 / 180 | 135 / 144 | 130 / 137 | 1 204 / 1 253 | 232 / 257 |
+| Ny bredd | 152 / 163 | 174 / 193 | 124 / 133 | 136 / 146 | 1 151 / 1 218 | 247 / 266 |
+| Hela diagrammet | 163 / 177 | 188 / 200 | 138 / 147 | 142 / 157 | 1 255 / 1 338 | 254 / 271 |
+
+På macOS tog en hel omritning 163 µs med Dunder och 188 µs med Ratatui. En ensam celländring tog 97 respektive 93 µs. Programmen skrev sammanlagt 4 835 689 respektive 8 081 000 byte till terminalen. Linux x86-64 använde CPU-översättning. En mätserie på Linux ARM64 gav tydliga tidsavvikelser vid ändrad bredd och full omritning.
+
+| Plattform | Allokeringsanrop Dunder / Rust | Färska Dunderallokeringar | Begärda byte Dunder / Rust | Högsta RSS i KiB Dunder / Rust |
+| --- | ---: | ---: | ---: | ---: |
+| macOS ARM64 | 544 284 / 25 822 | 562 | 10 042 016 / 129 153 325 | 2 016 / 2 960 |
+| Linux ARM64 | 544 284 / 25 818 | 562 | 10 042 016 / 129 153 126 | 400 / 2 020 |
+| Linux x86-64, översatt | 544 284 / 25 816 | 562 | 10 042 016 / 129 152 817 | 6 064 / 5 668 |
+
+## Bildtid i 0.10.0
 
 Varje arbetslast körs i 96 × 24 celler med 20 uppvärmningsbilder och 200 mätbilder. Storleksprovet växlar mellan 80 och 96 kolumner. Tiden omfattar förberedelse av bildbufferten, ritning, diff, markörstyrning och i PTY-läget skrivningen. Tabellen visar medianen av sju körningars p50 / p95 i mikrosekunder med PTY. Programmen växlade startordning. Råtabellen visar även variationen mellan körningar och motsvarande värden utan terminalskrivning. [Mätserier i nanosekunder](results/terminal-0.10.0.tsv)
 
@@ -16,7 +36,7 @@ Varje arbetslast körs i 96 × 24 celler med 20 uppvärmningsbilder och 200 mät
 
 Pseudoterminalen tog emot 4 835 689 byte från Dunder och 8 081 000 från Ratatui inklusive uppvärmning. Det motsvarar 40,2 procent färre byte. På macOS var Dunders median för skrollning, ny bredd och full omritning lägre än Ratatuis lägsta median över de sju körningarna. För en ensam ändrad cell hade Ratatui lägre median. Linux x86-64 kördes med CPU-översättning och hade högre bildtider för Dunder i samtliga fall.
 
-## Allokeringar och minne
+## Allokeringar och minne i 0.10.0
 
 Profilerna avser uppstart och samma 1 100 bilder. Dunders räknare inkluderar poolträffar. Av 544 269 anrop var 559 färska allokeringar. Rust använder en räknande global allokerare. RSS är medianen av toppvärdet i tre separata processer utan profilräknare.
 

@@ -56,14 +56,14 @@ impl Canvas {
         for y in 0..area.h {
             if y >= (self.h + 1) / 2 { break }
             py := i64(area.y) + i64(y)
-            if py >= i64(bounds.h) { break }
-            if py < 0 { continue }
+            if py >= i64(bounds.y+bounds.h) { break }
+            if py < i64(bounds.y) { continue }
             src := y * 2
             for x in 0..area.w {
                 if x >= self.w { break }
                 px := i64(area.x) + i64(x)
-                if px >= i64(bounds.w) { break }
-                if px < 0 { continue }
+                if px >= i64(bounds.x+bounds.w) { break }
+                if px < i64(bounds.x) { continue }
                 top := self.pixels[src * self.w + x]
                 bottom := if src + 1 < self.h { self.pixels[(src + 1) * self.w + x] } else { top }
                 frame.half_block(i32(px), i32(py), top, bottom)

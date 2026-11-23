@@ -158,6 +158,41 @@ fn update(probe: &mut Probe, key: tui.Key) -> bool {
     probe.failure == 0 && probe.step < 3
 }
 
+@extern("kernel32.dll","SetConsoleCursorPosition")
+unsafe fn position(handle: ptr, coord: u32) -> i32
+
+fn embedded_frame(frame: &mut tui.Frame, state: &mut i32) {
+    frame.label(frame.area(),"VIEW")
+    frame.set_cursor_position(frame.area().x+1,frame.area().y)
+}
+
+unsafe fn unit_at(h: ptr, x: i32, y: i32) -> i32 {
+    mut unit: u16 = 0
+    mut count: u32 = 0
+    if read_text(h,addr(&mut unit),1,u32(x).bit_or(u32(y).shl(16)),addr(&mut count)) == 0 || count != 1 { return -1 }
+    i32(unit)
+}
+
+unsafe fn embedded(out: ptr) -> i32 {
+    mut bounds: [i16;11] = [0;11]
+    if info(out,addr(&mut bounds[0])) == 0 { return 50 }
+    x := i32(bounds[5])
+    y := i32(bounds[6])
+    mut count := 0
+    mut fixed: tui.Terminal<tui.LiveBackend> = tui.open(.Fixed(tui.Rect {x:4,y:2,w:8,h:2})).unwrap()
+    if fixed.draw(&mut count,embedded_frame).is_err() || unit_at(out,x+4,y+2) != 86 || unit_at(out,0,0) != 35 { return 51 }
+    fixed.backend_mut().close()
+    if position(out,u32(x).bit_or(u32(y+1).shl(16))) == 0 { return 52 }
+    mut embedded: tui.Terminal<tui.LiveBackend> = tui.open(.Inline(2)).unwrap()
+    if embedded.viewport_area().y != 1 || embedded.draw(&mut count,embedded_frame).is_err() { return 53 }
+    mut line := tui.Frame::new(embedded.viewport_area().w,1)
+    line.label(line.area(),"LOG")
+    if embedded.insert_before(&line).is_err() || unit_at(out,x,y+1) != 76 || unit_at(out,x,y+2) != 86 { return 54 }
+    embedded.backend_mut().close()
+    if info(out,addr(&mut bounds[0])) == 0 || i32(bounds[3]) != y+4 || unit_at(out,0,0) != 35 { return 55 }
+    0
+}
+
 fn verify() -> i32 {
     unsafe {
         _ := detach()
@@ -190,6 +225,9 @@ fn verify() -> i32 {
         mut after: [u32;2] = [0;2]; mut restored_info: [i16;11] = [0;11]
         if cursor_info(active,addr(&mut after[0])) == 0 || info(active,addr(&mut restored_info[0])) == 0 { return 47 }
         if saved[0] != after[0] || saved[1] != after[1] || original[2] != restored_info[2] || original[3] != restored_info[3] { return 48 }
+        probe_code := embedded(active)
+        if probe_code != 0 { return probe_code }
+        if mode(stdin,addr(&mut new_in)) == 0 || mode(stdout,addr(&mut new_out)) == 0 || old_in != new_in || old_out != new_out { return 56 }
         _ := close_handle(active)
     }
     0
