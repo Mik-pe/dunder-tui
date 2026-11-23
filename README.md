@@ -54,7 +54,7 @@ Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.6.0", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.7.0", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.
@@ -101,6 +101,21 @@ fn main() -> i32 {
 | `tui.ink(.Cyan).bold()` | Välj textfärg. `.background(.Blue)` och `.inverted()` kan kombineras med färg och fetstil. |
 
 En egen widget är en vanlig funktion som tar `&mut tui.Frame` och en `tui.Rect`. Använd `tui.ink(tui.rgb(0x82efc5))` för RGB eller `tui.ink(.Indexed(197))` för palettfärg. Testa den utan terminal med `tui.Frame::new(20, 4)` och läs en färdig rad med `frame.line(0)`. [Körbara exempel på layout och textklippning](tests/suite.ddr)
+
+### Responsiv layout
+
+En sidomeny kan ta 18 kolumner och lämna resten till innehållet. Spara layouten i appens tillstånd så att den kan återanvända beräkningen mellan bilder.
+
+```dunder
+import tui.layout as layout
+
+mut columns := layout.Layout::horizontal([.Length(18), .Fill(1)]).spacing(1)
+panes := columns.split(frame.area())
+frame.label(panes[0], "Bibliotek")
+frame.label(panes[1], "Mina böcker")
+```
+
+`vertical` delar på höjden. Använd `Percentage(40)`, `Ratio(1,3)`, `Min(8)` eller `Max(24)` för andra storleksregler. `flex(.Center)` centrerar en grupp och `margin(2,1)` lämnar två kolumner och en rad runt den. Negativt mellanrum låter paneler överlappa. För tät omritning ger `columns.arrange(area).regions()` en lånad vy med både paneler och mellanrum. [Bokhyllans responsiva vy](examples/bokhylla/main.ddr) · [Jämförelse med Ratatui](docs/parity.md#layout-i-070)
 
 ## Mätare, diagram och paneler
 
@@ -189,3 +204,5 @@ I en pseudoterminal på en Mac med M5 skickade de tio scenerna 29,9–30,1 bilde
 Korsbygg exempelvis en Windowsapp med `dunder build examples/counter/main.ddr --target x86_64-windows -o counter.exe`.
 
 Text delas vid grafemgränserna i Unicode 17.0. För enskilda teckens cellbredd används Unicode 18.0 med Ratatuis terminalanpassningar. Emoji, kombinerande tecken och flaggor hålls ihop vid radbrytning och klippning. Terminalens typsnitt och Unicode-stöd påverkar hur de visas. [Unicode 17](https://www.unicode.org/Public/17.0.0/ucd/) · [Unicode 18](https://www.unicode.org/Public/18.0.0/ucd/) · [Licens för tabellerna](src/UNICODE-LICENSE.txt)
+
+Biblioteket används också för att prova själva Dunder. [Reproducerade språk- och standardbiblioteksfynd](docs/dunder.md)

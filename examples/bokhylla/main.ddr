@@ -3,11 +3,12 @@ capability stdio
 import tui
 import tui.block as box
 import tui.list as lists
+import tui.layout as layout
 import tui.text as rich
 import std.cmp as cmp
 import sys
 
-struct Shelf { books: lists.List, cursor: lists.ListState, notes: []string }
+struct Shelf { books: lists.List, cursor: lists.ListState, notes: []string, rows: layout.Layout, columns: layout.Layout }
 
 fn book(move title: string, move category: string) -> lists.Item {
     lists.Item::new(rich.Text::new([
@@ -17,17 +18,17 @@ fn book(move title: string, move category: string) -> lists.Item {
 }
 
 fn draw(frame: &mut tui.Frame, shelf: &mut Shelf) {
-    mut area := frame.area()
-    mut main_area := area.take_rows(area.h - 1)
-    width := if main_area.w >= 42 { main_area.w / 2 } else { main_area.w }
-    menu := main_area.take_cols(width)
+    rows := shelf.rows.arrange(frame.area()).regions()
+    columns := shelf.columns.arrange(rows.areas[0]).regions()
+    wide := rows.areas[0].w >= 42
+    menu := if wide { columns.areas[0] } else { rows.areas[0] }
     shelf.books.render_stateful(&mut frame, menu, &mut shelf.cursor)
-    if main_area.w > 0 {
-        detail := frame.panel(main_area, " Anteckning ", tui.ink(.Yellow))
+    if wide {
+        detail := frame.panel(columns.areas[1], " Anteckning ", tui.ink(.Yellow))
         index := cmp.clamp<i32>(shelf.cursor.selected.unwrap_or(0), 0, shelf.notes.len - 1)
         frame.label(detail, shelf.notes[index])
     }
-    frame.label(area, "↑ ↓ välj bok   Home End   q avsluta")
+    frame.label(rows.areas[1], "↑ ↓ välj bok   Home End   q avsluta")
 }
 
 fn update(shelf: &mut Shelf, key: tui.Key) -> bool {
@@ -54,6 +55,7 @@ fn main() -> i32 {
     books.highlight = tui.plain().background_rgb(0x224451)
     books.scroll_padding = 1
     mut shelf := Shelf {
+        rows: layout.Layout::vertical([.Fill(1), .Length(1)]), columns: layout.Layout::horizontal([.Fill(1), .Fill(1)]),
         books: move books, cursor: lists.ListState::new(),
         notes: ["Ta med ut till fyren.", "Läs kapitel tre igen.", "Till bokcirkeln på tisdag.", "Slå upp pärlemormoln."],
     }

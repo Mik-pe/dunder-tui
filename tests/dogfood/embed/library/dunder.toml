@@ -1,0 +1,3 @@
+name = "embed-library"
+root = "src/lib.ddr"
+test_root = "tests/suite.ddr"

@@ -9,8 +9,18 @@ ratatui = { version = "=0.30.2", default-features = false, features = ["crosster
 
 [features]
 allocation-counts = []
+layout-cache = ["ratatui/layout-cache"]
 style-oracle = ["ratatui/underline-color", "ratatui/palette"]
 
 [[example]]
 name = "styles"
 required-features = ["style-oracle"]
+
+[dev-dependencies]
+num-rational = "0.4"
+num-bigint = "0.4"
+num-traits = "0.2"
+
+[[example]]
+name = "layout_bench"
+required-features = ["layout-cache"]

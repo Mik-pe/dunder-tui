@@ -1,6 +1,7 @@
 capability unsafe, stdio
 
 import ..src.tui
+import ..src.layout
 import ..src.list as lists
 import ..src.widgets as ui
 import ..src.text as rich
@@ -62,13 +63,15 @@ fn draw(frame: &mut tui.Frame, probe: &Probe) {
     gauge.label = .Some(rich.Line::raw("OK"))
     gauge.filled_symbol = `=`
     gauge.unfilled_symbol = `.`
-    gauge.render(&mut frame, tui.Rect { x: 0, y: 1, w: 10, h: 1 })
+    mut rows := layout.Layout::vertical([.Length(1), .Length(1), .Length(2), .Fill(1)])
+    parts := rows.split(frame.area())
+    gauge.render(&mut frame, parts[1].cols(10).0)
     mut items := lists.List::new([lists.Item::raw("first"), lists.Item::raw("row A\nrow B")])
     items.marker = rich.Line::raw("> ")
     items.repeat_marker = true
     mut state := lists.ListState::new()
     state.last()
-    items.render_stateful(&mut frame, tui.Rect { x: 0, y: 2, w: 8, h: 2 }, &mut state)
+    items.render_stateful(&mut frame, parts[2].cols(8).0, &mut state)
     assert(state.offset == 1 && state.selected == .Some(1))
 }
 

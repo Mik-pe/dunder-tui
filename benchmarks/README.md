@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Resultat för 0.7.0
+
+En vy med kapslade layouter mäts med fem sorters bildändringar. Ett separat prov mäter en varm layout och tre fall där varje ändring av bredden kräver en ny lösning. [Bildtid, layouttid, minne och terminalutdata](layout.md)
+
 Båda programmen bygger om samma vy på 120 × 40 celler, jämför två återanvända bildbuffertar och kodar uppdateringen till en återanvänd bytebuffert. Vid storleksändring växlar bredden mellan 100 och 120 och hela ytan skickas. Rustprogrammet använder `Buffer::set_stringn`, `Buffer::diff_iter` och `CrosstermBackend::draw` med färgutdata påslagen. Rustberoendena hör till referensprogrammet. [Dunderprogram](render.ddr) · [Rustprogram](reference/src/main.rs)
 
 I version 0.5.0 mäts även en komplett diagramvy på macOS och Linux, både i minnet och med skrivning till pseudoterminal. [Diagramvyns mätningar och körinstruktioner](widgets.md)

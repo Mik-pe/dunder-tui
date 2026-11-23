@@ -209,7 +209,89 @@ fn clamp(n: i32, limit: i32) -> i32 {
     n
 }
 
+impl Eq for Rect {
+    fn eq(&self, other: &Self) -> bool { self.x == other.x && self.y == other.y && self.w == other.w && self.h == other.h }
+}
+
 impl Rect {
+    pub fn right(self) -> i32 { i32(cmp.min<i64>(2147483647, i64(self.x) + i64(cmp.max<i32>(0, self.w)))) }
+    pub fn bottom(self) -> i32 { i32(cmp.min<i64>(2147483647, i64(self.y) + i64(cmp.max<i32>(0, self.h)))) }
+    pub fn is_empty(self) -> bool { self.w <= 0 || self.h <= 0 }
+    pub fn cell_count(self) -> i64 { i64(cmp.max<i32>(0, self.w)) * i64(cmp.max<i32>(0, self.h)) }
+
+    pub fn contains(self, x: i32, y: i32) -> bool {
+        x >= self.x && y >= self.y && x < self.right() && y < self.bottom()
+    }
+
+    pub fn intersects(self, other: Rect) -> bool {
+        self.x < other.right() && self.y < other.bottom() && self.right() > other.x && self.bottom() > other.y
+    }
+
+    pub fn resize(self, width: i32, height: i32) -> Rect {
+        Rect { x: self.x, y: self.y, w: i32(cmp.clamp<i64>(i64(width), 0, 2147483647-i64(self.x))),
+            h: i32(cmp.clamp<i64>(i64(height), 0, 2147483647-i64(self.y))) }
+    }
+
+    pub fn offset(self, dx: i32, dy: i32) -> Rect {
+        w := cmp.max<i32>(0, self.w)
+        h := cmp.max<i32>(0, self.h)
+        Rect { x: i32(cmp.clamp<i64>(i64(self.x)+i64(dx), 0, 2147483647-i64(w))),
+            y: i32(cmp.clamp<i64>(i64(self.y)+i64(dy), 0, 2147483647-i64(h))), w: w, h: h }
+    }
+
+    pub fn outer(self, horizontal: i32, vertical: i32) -> Rect {
+        h := i64(cmp.max<i32>(0, horizontal))
+        v := i64(cmp.max<i32>(0, vertical))
+        x := cmp.max<i64>(0, i64(self.x)-h)
+        y := cmp.max<i64>(0, i64(self.y)-v)
+        r := cmp.clamp<i64>(i64(self.right())+h, x, 2147483647)
+        b := cmp.clamp<i64>(i64(self.bottom())+v, y, 2147483647)
+        Rect { x: i32(x), y: i32(y), w: i32(r-x), h: i32(b-y) }
+    }
+
+    pub fn union(self, other: Rect) -> Rect {
+        x := cmp.min<i32>(self.x, other.x)
+        y := cmp.min<i32>(self.y, other.y)
+        w := cmp.min<i64>(2147483647, i64(cmp.max<i32>(self.right(), other.right())) - i64(x))
+        h := cmp.min<i64>(2147483647, i64(cmp.max<i32>(self.bottom(), other.bottom())) - i64(y))
+        Rect { x: x, y: y, w: i32(w), h: i32(h) }
+    }
+
+    pub fn row_at(self, index: i32) -> Option<Rect> {
+        if index < 0 || i64(index) >= i64(self.bottom())-i64(self.y) { return .None }
+        .Some(Rect { x:self.x, y:self.y+index, w:self.w, h:1 })
+    }
+
+    pub fn column_at(self, index: i32) -> Option<Rect> {
+        if index < 0 || i64(index) >= i64(self.right())-i64(self.x) { return .None }
+        .Some(Rect { x:self.x+index, y:self.y, w:1, h:self.h })
+    }
+
+    pub fn position_at(self, index: i64) -> Option<(i32,i32)> {
+        w := i64(self.right())-i64(self.x)
+        h := i64(self.bottom())-i64(self.y)
+        if index < 0 || index >= w*h { return .None }
+        .Some((self.x+i32(index%w),self.y+i32(index/w)))
+    }
+
+    pub fn clamp_to(self, bounds: Rect) -> Rect {
+        w := i32(cmp.min<i64>(i64(cmp.max<i32>(0, self.w)), i64(bounds.right())-i64(bounds.x)))
+        h := i32(cmp.min<i64>(i64(cmp.max<i32>(0, self.h)), i64(bounds.bottom())-i64(bounds.y)))
+        Rect { x: cmp.clamp<i32>(self.x, bounds.x, bounds.right()-w),
+            y: cmp.clamp<i32>(self.y, bounds.y, bounds.bottom()-h), w: w, h: h }
+    }
+
+    pub fn inner(self, horizontal: i32, vertical: i32) -> Rect {
+        h := cmp.max<i32>(0, horizontal)
+        v := cmp.max<i32>(0, vertical)
+        if i64(self.w) < 2*i64(h) || i64(self.h) < 2*i64(v) { return Rect { x: 0, y: 0, w: 0, h: 0 } }
+        x := i32(cmp.min<i64>(2147483647, i64(self.x)+i64(h)))
+        y := i32(cmp.min<i64>(2147483647, i64(self.y)+i64(v)))
+        w := i32(cmp.min<i64>(i64(self.w-2*h), 2147483647-i64(x)))
+        height := i32(cmp.min<i64>(i64(self.h-2*v), 2147483647-i64(y)))
+        Rect { x: x, y: y, w: w, h: height }
+    }
+
     pub fn intersection(self, other: Rect) -> Rect {
         x := cmp.max<i32>(self.x, other.x)
         y := cmp.max<i32>(self.y, other.y)

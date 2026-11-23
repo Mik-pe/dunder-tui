@@ -1,3 +1,4 @@
+import ..src.layout as layout
 import ..src.list as lists
 import ..src.widgets as widgets
 import ..src.barchart as chart
@@ -482,4 +483,57 @@ import ..src.width
     frame.clear()
     view.render_stateful(&mut frame, frame.area(), &mut state)
     assert(state.offset == 3 && frame.line(0) == "d ")
+}
+
+@test fn constraint_layout_caches_sizes_and_reprojects_all_edges() {
+    area := tui.Rect { x: 2, y: 3, w: 18, h: 8 }
+    mut l := layout.Layout::horizontal([.Length(4), .Fill(1), .Fill(2)]).spacing(1).margin(0,1).cache_capacity(2)
+    mut split := layout.Split::new()
+    for dx in [0, 3, 0, 4] {
+        moved := area.offset(dx, dx)
+        l.split_into(moved, &mut split)
+        assert(split.areas.len == 3 && split.spacers.len == 4)
+        assert(split.areas[0].w == 4 && split.areas[1].w == 4 && split.areas[2].w == 8)
+        assert(split.areas[2].x == moved.x+10 && split.areas[2].y == moved.y+1)
+        assert(split.spacers[1].w == 1 && split.spacers[3].w == 0)
+        assert(l.part(moved,1).unwrap() == l.split(moved)[1])
+        assert(l.arrange(moved).regions().areas[2] == split.areas[2])
+        assert(l.arrange(moved).regions().spacers[1] == split.spacers[1])
+    }
+    l.set_constraints([.Ratio(1,2)])
+    assert(l.part(area,0).unwrap().w == 9 && l.part(area,1).is_none())
+    assert(l.arrange(area).regions().areas.len == 1)
+    l = l.margin(2,0)
+    assert(l.arrange(area).regions().areas[0].w == 7)
+    l = l.margin(0,1)
+    l = l.flex(.End).cache_capacity(0)
+    assert(l.part(area,0).unwrap().x == 11)
+    assert(layout.centered(area,.Length(4),.Length(2)) == tui.Rect { x:9, y:6, w:4, h:2 })
+    mut high := layout.Layout::horizontal([.Min(65535), .Length(7)])
+    assert(high.part(area.resize(100,3),0).unwrap().w == 100)
+    mut many: []layout.Constraint = []
+    for _ in 0..1024 { many.push(.Fill(0)) }
+    l = l.spacing(0)
+    l.set_constraints(move many)
+    parts := l.split(area.resize(2048,8))
+    assert(parts.len == 1024 && parts[1023].w == 2)
+    mut lengths: []layout.Constraint = []
+    for _ in 0..1024 { lengths.push(.Length(5)) }
+    l.set_constraints(move lengths)
+    assert(l.arrange(area.resize(2048,8)).regions().areas[1023].w == 2)
+    l = l.flex(.SpaceEvenly).spacing(3)
+    regions := l.arrange(area.resize(1025,8)).regions()
+    assert(regions.areas[1000].w == 0 && regions.spacers[1000].w == 1)
+}
+
+@test fn rect_translation_growth_and_clipping_preserve_bounds() {
+    a := tui.Rect { x: 4, y: 6, w: 12, h: 3 }
+    assert(a.cell_count() == 36 && !a.is_empty() && a.contains(15,8) && !a.contains(16,8))
+    assert(a.inner(2,1).outer(2,1) == a && a.inner(7,0).is_empty())
+    b := a.offset(-8,1)
+    assert(b.x == 0 && a.intersects(b) && a.intersection(b).cell_count() == 16)
+    assert(a.union(b) == tui.Rect { x:0, y:6, w:16, h:4 })
+    assert(a.resize(40,6).clamp_to(b) == b)
+    e := a.offset(2147483647,2147483647)
+    assert(e.right() == 2147483647 && e.bottom() == 2147483647 && e.resize(30,20) == e)
 }

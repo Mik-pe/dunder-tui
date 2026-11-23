@@ -1,0 +1,85 @@
+host	mode	implementation	case	p50_ns	p95_ns	bytes_frame	min_p50_ns	max_p50_ns	min_p95_ns	max_p95_ns
+macos-arm64	memory	dunder	idle	10000	11000	0	10000	10000	10000	13000
+macos-arm64	memory	dunder	cell	10000	11000	7	10000	11000	11000	13000
+macos-arm64	memory	dunder	scroll	30000	33000	3143	30000	30000	31000	36000
+macos-arm64	memory	dunder	resize	25000	26000	3448	24000	25000	25000	26000
+macos-arm64	memory	dunder	repaint	33000	35000	3143	32000	33000	33000	38000
+macos-arm64	memory	ratatui	idle	20166	21041	19	19958	20542	20333	24583
+macos-arm64	memory	ratatui	cell	20208	23125	26	20166	20667	20375	24167
+macos-arm64	memory	ratatui	scroll	41791	45375	4123	41541	42083	43166	47916
+macos-arm64	memory	ratatui	resize	29125	31959	4234	28000	29583	30917	34125
+macos-arm64	memory	ratatui	repaint	42542	45833	4123	41834	43792	43667	53834
+macos-arm64	pty	dunder	idle	10000	10000	0	10000	10000	10000	13000
+macos-arm64	pty	dunder	cell	13000	15000	7	12000	14000	15000	16000
+macos-arm64	pty	dunder	scroll	54000	58000	3143	54000	55000	58000	60000
+macos-arm64	pty	dunder	resize	47000	51000	3448	47000	47000	51000	53000
+macos-arm64	pty	dunder	repaint	57000	61000	3143	56000	57000	60000	63000
+macos-arm64	pty	ratatui	idle	24375	27458	19	24042	24875	27000	28042
+macos-arm64	pty	ratatui	cell	24625	27250	26	23959	25166	26459	28417
+macos-arm64	pty	ratatui	scroll	67625	74416	4123	64917	70375	72750	88041
+macos-arm64	pty	ratatui	resize	53250	62958	4234	52125	56625	61583	74834
+macos-arm64	pty	ratatui	repaint	68458	74625	4123	66083	69583	74292	87125
+macos-arm64	split	dunder	cached	15	31		15	15	31	31
+macos-arm64	split	ratatui	cached	46	54		41	104	41	143
+macos-arm64	split	dunder	changing	203	218		203	218	218	234
+macos-arm64	split	ratatui	changing	41007	58465		37218	56042	57981	69265
+macos-arm64	split	dunder	constrained	187	203		187	187	203	250
+macos-arm64	split	ratatui	constrained	28796	44157		27068	41813	42580	49455
+macos-arm64	split	dunder	overlap	297593	437875		246890	310812	302546	649296
+macos-arm64	split	ratatui	overlap	136125	169164		122436	157242	166435	236083
+linux-arm64	memory	dunder	idle	11000	11459	0	10916	11584	11333	14417
+linux-arm64	memory	dunder	cell	11250	11708	7	11208	11542	11292	26709
+linux-arm64	memory	dunder	scroll	31000	34083	3143	30500	31375	31750	37459
+linux-arm64	memory	dunder	resize	25375	26000	3448	23250	25708	25292	31958
+linux-arm64	memory	dunder	repaint	33667	37667	3143	33208	34166	33584	41333
+linux-arm64	memory	ratatui	idle	26666	30250	19	25125	48875	25708	117000
+linux-arm64	memory	ratatui	cell	26583	28083	26	25084	48500	26292	107833
+linux-arm64	memory	ratatui	scroll	49875	53583	4123	47875	93667	50792	191083
+linux-arm64	memory	ratatui	resize	36166	40292	4234	35417	65459	38125	122125
+linux-arm64	memory	ratatui	repaint	50208	56250	4123	47875	96083	51250	156708
+linux-arm64	pty	dunder	idle	10917	11125	0	10875	12709	11000	14084
+linux-arm64	pty	dunder	cell	15125	17583	7	14375	15208	17458	18958
+linux-arm64	pty	dunder	scroll	37250	41375	3143	37083	39042	38292	44750
+linux-arm64	pty	dunder	resize	31000	32666	3448	30417	31750	32500	35250
+linux-arm64	pty	dunder	repaint	40084	42834	3143	39750	40458	41417	48500
+linux-arm64	pty	ratatui	idle	31334	35208	19	30709	47666	33791	50375
+linux-arm64	pty	ratatui	cell	31291	35208	26	26292	46708	31708	50625
+linux-arm64	pty	ratatui	scroll	55542	61625	4123	54416	71709	59958	76542
+linux-arm64	pty	ratatui	resize	39791	48208	4234	39083	56833	44333	60208
+linux-arm64	pty	ratatui	repaint	56375	60500	4123	55500	72208	58000	75958
+linux-arm64	split	dunder	cached	39	39		19	39	19	54
+linux-arm64	split	ratatui	cached	82	96		33	83	34	899
+linux-arm64	split	dunder	changing	219	505		211	517	217	630
+linux-arm64	split	ratatui	changing	38637	51561		37733	44399	44794	196872
+linux-arm64	split	dunder	constrained	199	256		192	466	194	621
+linux-arm64	split	ratatui	constrained	27665	39188		27537	41585	28261	59573
+linux-arm64	split	dunder	overlap	222479	315761		218615	249886	302627	329253
+linux-arm64	split	ratatui	overlap	123402	168903		120421	170833	152254	447567
+linux-x86_64-translated	memory	dunder	idle	137000	143750	0	136083	144583	141833	152708
+linux-x86_64-translated	memory	dunder	cell	138334	143916	7	134959	146083	141291	153125
+linux-x86_64-translated	memory	dunder	scroll	326167	342458	3143	324375	345875	333708	383958
+linux-x86_64-translated	memory	dunder	resize	241083	263667	3448	240291	255750	259875	284000
+linux-x86_64-translated	memory	dunder	repaint	315417	327209	3143	314125	320917	320959	333708
+linux-x86_64-translated	memory	ratatui	idle	35708	39083	19	35542	67375	36000	74417
+linux-x86_64-translated	memory	ratatui	cell	35916	37834	26	35625	54750	36041	73875
+linux-x86_64-translated	memory	ratatui	scroll	73875	78000	4123	72792	106166	76625	152625
+linux-x86_64-translated	memory	ratatui	resize	54292	55500	4234	50292	94167	54208	110375
+linux-x86_64-translated	memory	ratatui	repaint	75500	80417	4123	73958	134833	75375	145375
+linux-x86_64-translated	pty	dunder	idle	139042	155333	0	136125	146750	142584	174125
+linux-x86_64-translated	pty	dunder	cell	145000	157458	7	142625	147083	149042	185916
+linux-x86_64-translated	pty	dunder	scroll	337917	366541	3143	331417	339625	342750	463666
+linux-x86_64-translated	pty	dunder	resize	263416	278625	3448	246833	265959	268917	301750
+linux-x86_64-translated	pty	dunder	repaint	326875	343667	3143	324958	329041	334292	366292
+linux-x86_64-translated	pty	ratatui	idle	41584	46042	19	40041	65000	40917	69000
+linux-x86_64-translated	pty	ratatui	cell	41875	46125	26	40250	54417	41208	81375
+linux-x86_64-translated	pty	ratatui	scroll	82458	87958	4123	81292	134375	84625	165625
+linux-x86_64-translated	pty	ratatui	resize	61333	64875	4234	59417	74958	64000	88291
+linux-x86_64-translated	pty	ratatui	repaint	84792	89667	4123	83125	131125	85084	153709
+linux-x86_64-translated	split	dunder	cached	103	104		98	231	102	269
+linux-x86_64-translated	split	ratatui	cached	55	58		52	128	56	133
+linux-x86_64-translated	split	dunder	changing	2460	4896		2430	3940	2762	12144
+linux-x86_64-translated	split	ratatui	changing	49811	77456		48452	54428	52231	88334
+linux-x86_64-translated	split	dunder	constrained	2375	4643		2232	4190	2409	8585
+linux-x86_64-translated	split	ratatui	constrained	37343	52887		36830	38826	38756	59084
+linux-x86_64-translated	split	dunder	overlap	1814877	2220488		1634662	1963610	2116899	2538195
+linux-x86_64-translated	split	ratatui	overlap	162574	197842		148602	196113	156651	493048

@@ -1,0 +1,2 @@
+import ..src.lib
+@test fn load_sample() { assert(lib.sample() == "sample\n") }

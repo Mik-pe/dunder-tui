@@ -1,0 +1,441 @@
+import .tui
+import .layout_solver as lp
+import std.cmp as cmp
+
+pub enum Direction { Horizontal, Vertical }
+pub enum Flex { Start, Center, End, SpaceBetween, SpaceAround, SpaceEvenly, Legacy }
+pub enum Constraint { Length(u16), Percentage(u16), Ratio(u32, u32), Min(u16), Max(u16), Fill(u16) }
+
+pub struct Split { areas: []tui.Rect, spacers: []tui.Rect }
+impl Split { pub fn new() -> Self { Self { areas: [], spacers: [] } } }
+
+struct Entry { extent: i32, edges: []i32, age: u64 }
+pub opaque struct Layout {
+    rules: []Constraint, axis: Direction, flex_mode: Flex, gap: i32, horizontal_margin: i32, vertical_margin: i32,
+    view_bounds: tui.Rect, projected: Split, view_valid: bool,
+    entries: []Entry, capacity: i32, tick: u64, recent: i32,
+}
+
+impl Layout {
+    pub fn new(axis: Direction, move rules: []Constraint) -> Self {
+        Self {
+            rules: move rules, axis: axis, flex_mode: .Start, gap: 0, horizontal_margin: 0, vertical_margin: 0,
+            view_bounds: tui.Rect { x: 0, y: 0, w: 0, h: 0 }, projected: Split::new(), view_valid: false,
+            entries: [], capacity: 500, tick: 0, recent: -1
+        }
+    }
+    pub fn horizontal(move rules: []Constraint) -> Self { Layout::new(.Horizontal, move rules) }
+    pub fn vertical(move rules: []Constraint) -> Self { Layout::new(.Vertical, move rules) }
+    pub fn len(&self) -> i32 { self.rules.len }
+    pub fn set_constraints(&mut self, move rules: []Constraint) { self.rules = move rules; self.invalidate() }
+    fn invalidate(&mut self) { self.entries.clear(); self.recent = -1; self.view_valid = false }
+    pub fn flex(move self, value: Flex) -> Self {
+        mut l := move self
+        if l.flex_mode != value { l.flex_mode = value; l.invalidate() }
+        move l
+    }
+    pub fn spacing(move self, cells: i32) -> Self {
+        mut l := move self
+        gap := cmp.clamp<i32>(cells, -32768, 32767)
+        if l.gap != gap { l.gap = gap; l.invalidate() }
+        move l
+    }
+    pub fn margin(move self, horizontal: i32, vertical: i32) -> Self {
+        mut l := move self
+        l.view_valid = false
+        l.horizontal_margin = cmp.max<i32>(0, horizontal); l.vertical_margin = cmp.max<i32>(0, vertical)
+        move l
+    }
+    pub fn cache_capacity(move self, count: i32) -> Self {
+        mut l := move self
+        l.capacity = cmp.max<i32>(0, count)
+        if l.entries.len > l.capacity { l.invalidate() }
+        move l
+    }
+}
+
+const EDGE: f64 = 1001000999.0
+const SPACER: f64 = 100100100.0
+const BOUND: f64 = 100000000.0
+
+struct Axis { last: i32, extent: f64 }
+
+impl Axis {
+    fn term(&self, row: &mut lp.Row, edge: i32, factor: f64) {
+        if edge == self.last { row.shift(self.extent * factor) }
+        else if edge > 0 { row.term(edge - 1, factor) }
+    }
+    fn span(&self, row: &mut lp.Row, start: i32, factor: f64) {
+        self.term(&mut row, start, -factor)
+        self.term(&mut row, start + 1, factor)
+    }
+    fn size(&self, model: &mut lp.Model, start: i32, rel: lp.Relation, value: f64, weight: f64) {
+        mut row := lp.Row::new(-value)
+        self.span(&mut row, start, 1.0)
+        model.add(move row, rel, weight)
+    }
+    fn compare(&self, model: &mut lp.Model, a: i32, scale_a: f64, b: i32, scale_b: f64, weight: f64) {
+        mut row := lp.Row::new(0.0)
+        self.span(&mut row, a, scale_a)
+        self.span(&mut row, b, -scale_b)
+        model.add(move row, .Equal, weight)
+    }
+}
+
+fn weight(rule: &Constraint, flex: Flex) -> f64 {
+    match rule {
+        .Fill(n) => if n == 0 { 0.000001 } else { f64(n) },
+        .Min(_) => if flex == .Legacy { 0.0 } else { 1.0 },
+        _ => 0.0,
+    }
+}
+
+fn desired(rule: &Constraint, extent: f64) -> f64 {
+    match rule {
+        .Length(v) => f64(v), .Percentage(v) => extent * f64(v) / 100.0,
+        .Ratio(a, b) => extent * f64(a) / f64(cmp.max<u32>(1, b)),
+        .Max(v) => f64(v), .Min(v) => f64(v), .Fill(_) => 0.0,
+    }
+}
+
+fn shrink_rank(rule: &Constraint) -> i32 {
+    match rule { .Min(_) => 0, .Length(_) => 1, .Percentage(_) => 2, .Ratio(_, _) => 3, .Max(_) => 4, .Fill(_) => 5, }
+}
+
+fn growth_cost(rule: &Constraint) -> i32 {
+    match rule { .Min(_) => 1, .Ratio(_, _) => 2, .Percentage(_) => 3, .Length(_) => 4, .Max(_) => 5, .Fill(_) => 0, }
+}
+
+impl Layout {
+    fn direct(&self, extent: i32, edges: &mut []i32) -> bool {
+        n := self.rules.len
+        length := f64(extent)
+        fixed_gaps := self.flex_mode == .Start || self.flex_mode == .End ||
+        self.flex_mode == .Center || self.flex_mode == .Legacy
+        if fixed_gaps && i64(self.gap) * i64(n - 1) >= i64(extent) && n > 1 {
+            mut x := 0
+            edges.push(0)
+            for _ in 0..n { edges.push(x); edges.push(x); x += cmp.min<i32>(extent - x, self.gap) }
+            edges.push(extent)
+            return true
+        }
+        if self.gap < 0 && !fixed_gaps { return false }
+        mut gap := f64(self.gap)
+        mut lead := 0.0
+        if self.flex_mode == .SpaceEvenly || self.flex_mode == .SpaceAround {
+            lead = gap
+            if self.flex_mode == .SpaceAround && n > 1 { gap *= 2.0 }
+        }
+        available := length - 2.0 * lead - gap * f64(n - 1)
+        if available < 0.0 {
+            if self.flex_mode == .SpaceEvenly || self.flex_mode == .SpaceBetween {
+                outer := self.flex_mode == .SpaceEvenly
+                divisions := if outer { n + 1 } else { n - 1 }
+                edges.push(0)
+                for i in 0..n {
+                    x := cell(length * f64(if outer { i + 1 } else { i }) / f64(divisions), extent)
+                    edges.push(x); edges.push(x)
+                }
+                edges.push(extent)
+                return true
+            }
+            return false
+        }
+        if n > 1 && fixed_gaps && self.flex_mode != .Legacy && gap >= 0.0 {
+            first := &self.rules[0]
+            target := desired(&first, length)
+            if target * f64(n) > available {
+                rank := shrink_rank(&first)
+                mut same := true
+                for i in 1..n {
+                    if shrink_rank(&self.rules[i]) != rank || desired(&self.rules[i], length) != target { same = false; break }
+                }
+                if same {
+                    edges.push(0)
+                    for i in 0..n {
+                        edges.push(cell(gap * f64(i) + available * f64(i) / f64(n), extent))
+                        edges.push(cell(gap * f64(i) + available * f64(i + 1) / f64(n), extent))
+                    }
+                    edges.push(extent)
+                    return true
+                }
+            }
+        }
+        mut sizes: []f64 = []
+        sizes.reserve(n)
+        mut used := 0.0
+        mut weights := 0.0
+        mut grow := 0
+        mut zero_fills := 0
+        mut flexible := 0
+        for i in 0..n {
+            rule := &self.rules[i]
+            scale := weight(&rule, self.flex_mode)
+            if scale > 0.0 && scale < 1.0 { zero_fills += 1 }
+            if scale > 0.0 { flexible += 1 }
+            weights += scale
+            v := if scale > 0.0 { 0.0 } else { desired(&rule, length) }
+            used += v; sizes.push(v)
+            if growth_cost(&rule) <= growth_cost(&self.rules[grow]) { grow = i }
+        }
+        if zero_fills > 0 && zero_fills != n { return false }
+        if zero_fills == n { weights = f64(n) }
+        mut extra := available - used
+        if extra < -1e-8 {
+            if self.flex_mode != .Legacy { return false }
+            mut remaining := available
+            for rank in 0..5 {
+                for i in 0..n {
+                    if shrink_rank(&self.rules[i]) == rank {
+                        v := if remaining < sizes[i] { remaining } else { sizes[i] }
+                        sizes[i] = v; remaining -= v
+                    }
+                }
+            }
+            extra = 0.0
+        }
+        if weights > 0.0 {
+            mut pinned := -1
+            for i in 0..n {
+                scale := weight(&self.rules[i], self.flex_mode)
+                if scale == 0.0 { continue }
+                portion := extra * (if zero_fills == n { 1.0 } else { scale }) / weights
+                match &self.rules[i] {
+                    .Min(min) if portion < f64(min) => {
+                        if flexible != 2 || weights > 3.0 || pinned >= 0 || extra < f64(min) { return false }
+                        pinned = i
+                    },
+                    _ => {},
+                }
+                sizes[i] = portion
+            }
+            if pinned >= 0 {
+                sizes[pinned] = desired(&self.rules[pinned], length)
+                for i in 0..n {
+                    if i == pinned || weight(&self.rules[i], self.flex_mode) == 0.0 { continue }
+                    sizes[i] = extra - sizes[pinned]
+                    match &self.rules[i] { .Min(min) if sizes[i] < f64(min) => { return false }, _ => {}, }
+                }
+            }
+        } else {
+            match self.flex_mode {
+                .Legacy => { sizes[grow] += extra },
+                .Start => {}, .End => { lead += extra }, .Center => { lead += extra / 2.0 },
+                .SpaceBetween => {
+                    if n == 1 { sizes[0] += extra } else { gap += extra / f64(n - 1) }
+                },
+                .SpaceEvenly => { gap += extra / f64(n + 1); lead = gap },
+                .SpaceAround => {
+                    if n == 1 { lead += extra / 2.0 } else { gap += extra / f64(n); lead = gap / 2.0 }
+                },
+            }
+        }
+        mut x := lead
+        edges.push(0)
+        for i in 0..n {
+            if x < -1e-8 || x > length + 1e-8 { return false }
+            edges.push(cell(x, extent))
+            x += sizes[i]
+            if x < -1e-8 || x > length + 1e-8 { return false }
+            edges.push(cell(x, extent))
+            x += gap
+        }
+        edges.push(extent)
+        true
+    }
+}
+
+impl Layout {
+    fn spaces(&self, model: &mut lp.Model, axis: Axis) {
+        n := self.rules.len
+        last := 2 * n
+        gap := f64(self.gap)
+        flex := self.flex_mode
+        if flex == .Start || flex == .End || flex == .Center || flex == .Legacy {
+            for i in 1..n { axis.size(&mut model, 2 * i, .Equal, gap, SPACER) }
+            if flex == .Center { axis.compare(&mut model, 0, 1.0, last, 1.0, SPACER) }
+            for end in [0, last] {
+                fixed := flex == .Legacy || (end == 0 && flex == .Start) || (end == last && flex == .End)
+                axis.size(&mut model, end, .Equal, if fixed { 0.0 } else { axis.extent }, if fixed { EDGE } else { 100.0 })
+            }
+            return
+        }
+        between := flex == .SpaceBetween
+        around := flex == .SpaceAround && n > 1
+        start := if between || around { 1 } else { 0 }
+        stop := if between || around { n } else { n + 1 }
+        for i in start..stop {
+            for j in (i + 1)..stop { axis.compare(&mut model, 2 * i, 1.0, 2 * j, 1.0, SPACER) }
+        }
+        if around {
+            axis.compare(&mut model, 2, 1.0, 0, 2.0, SPACER)
+            axis.compare(&mut model, 2, 1.0, last, 2.0, SPACER)
+        }
+        for i in 0..(n + 1) {
+            if between && (i == 0 || i == n) { axis.size(&mut model, 2 * i, .Equal, 0.0, EDGE) }
+            else {
+                axis.size(&mut model, 2 * i, .AtLeast, gap, SPACER)
+                axis.size(&mut model, 2 * i, .Equal, axis.extent, 10.0)
+            }
+        }
+    }
+
+    fn solve(&self, extent: i32) -> []i32 {
+        n := self.rules.len
+        if n == 0 { return [0, extent] }
+        mut edges: []i32 = []
+        edges.reserve(2 * n + 2)
+        if extent == 0 { for _ in 0..(2 * n + 2) { edges.push(0) }; return move edges }
+        if self.direct(extent, &mut edges) { return move edges }
+        edges.clear()
+        axis := Axis { last: 2 * n + 1, extent: f64(extent) }
+        mut model := lp.Model::new(2 * n)
+        for i in 0..(2 * n) {
+            mut cap := lp.Row::new(axis.extent)
+            cap.term(i, -1.0)
+            model.add(move cap, .AtLeast, 0.0)
+        }
+        for i in 0..n { axis.size(&mut model, 2 * i + 1, .AtLeast, 0.0, 0.0) }
+        self.spaces(&mut model, axis)
+        for i in 0..n {
+            p := 2 * i + 1
+            match &self.rules[i] {
+                .Length(v) => { axis.size(&mut model, p, .Equal, f64(v), 10000000.0) },
+                .Percentage(v) => { axis.size(&mut model, p, .Equal, axis.extent * f64(v) / 100.0, 1000000.0) },
+                .Ratio(a, b) => { axis.size(&mut model, p, .Equal, axis.extent * f64(a) / f64(cmp.max<u32>(1, b)), 100000.0) },
+                .Max(v) => { axis.size(&mut model, p, .AtMost, f64(v), BOUND); axis.size(&mut model, p, .Equal, f64(v), 10000.0) },
+                .Min(v) => {
+                    axis.size(&mut model, p, .AtLeast, f64(v), BOUND)
+                    if self.flex_mode == .Legacy { axis.size(&mut model, p, .Equal, f64(v), 10000.0) }
+                    else { axis.size(&mut model, p, .Equal, axis.extent, 1000.0) }
+                },
+                .Fill(_) => { axis.size(&mut model, p, .Equal, axis.extent, 1000.0) },
+            }
+        }
+        for i in 0..n {
+            a := weight(&self.rules[i], self.flex_mode)
+            if a > 0.0 {
+                for j in (i + 1)..n {
+                    b := weight(&self.rules[j], self.flex_mode)
+                    if b > 0.0 { axis.compare(&mut model, 2 * i + 1, b, 2 * j + 1, a, 100.0) }
+                }
+            }
+            if i > 0 && self.flex_mode != .Legacy { axis.compare(&mut model, 2 * i - 1, 1.0, 2 * i + 1, 1.0, 1.0) }
+        }
+        values := model.solve()
+        edges.push(0)
+        for v in &values { edges.push(cell(v, extent)) }
+        edges.push(extent)
+        move edges
+    }
+}
+
+fn cell(v: f64, extent: i32) -> i32 {
+    if v <= 0.0 { return 0 }
+    if v >= f64(extent) { return extent }
+    i32(((v * 100.0).round() / 100.0).round())
+}
+
+impl Layout {
+    fn lookup(&mut self, extent: i32) -> i32 {
+        self.tick += 1
+        if self.capacity > 0 {
+            if self.recent >= 0 && self.entries[self.recent].extent == extent {
+                self.entries[self.recent].age = self.tick
+                return self.recent
+            }
+            for i in 0..self.entries.len {
+                if self.entries[i].extent == extent {
+                    self.recent = i; self.entries[i].age = self.tick
+                    return i
+                }
+            }
+        }
+        entry := Entry { extent: extent, edges: self.solve(extent), age: self.tick }
+        if self.entries.len < cmp.max<i32>(1, self.capacity) { self.recent = self.entries.len; self.entries.push(move entry) }
+        else {
+            mut oldest := 0
+            for i in 1..self.entries.len { if self.entries[i].age < self.entries[oldest].age { oldest = i } }
+            self.entries[oldest] = move entry; self.recent = oldest
+        }
+        self.recent
+    }
+
+    fn project(axis: Direction, area: &tui.Rect, edges: &[]i32, i: i32, part: &mut tui.Rect) {
+        offset := edges[i]
+        length := cmp.max<i32>(0, edges[i + 1] - offset)
+        if axis == .Horizontal {
+            part.x = area.x + offset; part.y = area.y; part.w = length; part.h = area.h
+        } else {
+            part.x = area.x; part.y = area.y + offset; part.w = area.w; part.h = length
+        }
+    }
+
+    pub fn split_into(&mut self, bounds: tui.Rect, out: &mut Split) {
+        area := bounds.inner(self.horizontal_margin, self.vertical_margin)
+        idx := self.lookup(if self.axis == .Horizontal { area.w } else { area.h })
+        Layout::place(self.axis, &area, &self.entries[idx].edges, &mut out)
+    }
+
+    fn place(axis: Direction, area: &tui.Rect, edges: &[]i32, out: &mut Split) {
+        n := edges.len / 2 - 1
+        fit(&mut out.areas, n)
+        fit(&mut out.spacers, n + 1)
+        for i in 0..n {
+            Layout::project(axis, &area, &edges, 2 * i, &mut out.spacers[i])
+            Layout::project(axis, &area, &edges, 2 * i + 1, &mut out.areas[i])
+        }
+        Layout::project(axis, &area, &edges, 2 * n, &mut out.spacers[n])
+    }
+
+    pub fn arrange(&mut self, bounds: tui.Rect) -> &mut Self from self {
+        if !self.view_valid || self.view_bounds != bounds || self.capacity == 0 {
+            area := bounds.inner(self.horizontal_margin, self.vertical_margin)
+            idx := self.lookup(if self.axis == .Horizontal { area.w } else { area.h })
+            Layout::place(self.axis, &area, &self.entries[idx].edges, &mut self.projected)
+            self.view_bounds = bounds
+            self.view_valid = true
+        }
+        &mut self
+    }
+
+    pub fn regions(&self) -> &Split from self { &self.projected }
+
+    pub fn split_with_spacers(&mut self, bounds: tui.Rect) -> Split {
+        mut out := Split::new()
+        self.split_into(bounds, &mut out)
+        move out
+    }
+
+    pub fn split(&mut self, bounds: tui.Rect) -> []tui.Rect {
+        area := bounds.inner(self.horizontal_margin, self.vertical_margin)
+        idx := self.lookup(if self.axis == .Horizontal { area.w } else { area.h })
+        edges := &self.entries[idx].edges
+        mut parts: []tui.Rect = []
+        fit(&mut parts, self.rules.len)
+        for i in 0..self.rules.len { Layout::project(self.axis, &area, &edges, 2 * i + 1, &mut parts[i]) }
+        move parts
+    }
+
+    pub fn part(&mut self, bounds: tui.Rect, index: i32) -> Option<tui.Rect> {
+        if index < 0 || index >= self.rules.len { return .None }
+        area := bounds.inner(self.horizontal_margin, self.vertical_margin)
+        idx := self.lookup(if self.axis == .Horizontal { area.w } else { area.h })
+        mut part := area
+        Layout::project(self.axis, &area, &self.entries[idx].edges, 2 * index + 1, &mut part)
+        .Some(part)
+    }
+}
+
+fn fit(rects: &mut []tui.Rect, count: i32) {
+    if rects.len == count { return }
+    if rects.len > count { rects.truncate(count); return }
+    rects.reserve(count)
+    while rects.len < count { rects.push(tui.Rect { x: 0, y: 0, w: 0, h: 0 }) }
+}
+
+pub fn centered(area: tui.Rect, width: Constraint, height: Constraint) -> tui.Rect {
+    mut horizontal := Layout::horizontal([width]).flex(.Center)
+    mut vertical := Layout::vertical([height]).flex(.Center)
+    vertical.part(horizontal.part(area, 0).unwrap(), 0).unwrap()
+}

@@ -2,12 +2,14 @@
 
 Referensen är taggen `ratatui-v0.30.2`, inklusive de stabila tillvalen. Tabellen följer de publika områdena i den versionen. En genomförd jämförelse anges med sitt konkreta prov. [Referenskod](https://github.com/ratatui/ratatui/tree/ratatui-v0.30.2) · [Publikt API](https://docs.rs/ratatui/0.30.2/ratatui/) · [Funktionsflaggor](https://docs.rs/crate/ratatui/0.30.2/features)
 
+Funktionsparitet styr ordningen. Nästa stora användarflöde är tabeller med rad-, kolumn- och cellmarkering. Därefter följer diagram med axlar, utökad canvas samt vyportar och testbackend. Prestanda mäts tillsammans med beteendet så att en långsammare arbetslast kan prioriteras utifrån vad användaren märker. [Fynd för Dunder-språket och standardbiblioteket](dunder.md)
+
 | Område | Finns i Dunder | Återstår att leverera eller verifiera |
 | --- | --- | --- |
 | Buffer och Cell | Återanvända bildbuffertar, breda tecken, celldiff, exakt och ungefärlig sammanslagning av linjesymboler, färgutdata och avläsning av rader och cellstilar. | Fristående buffertoperationer med origo, ändrad storlek och sammanslagning. Cellernas regler för att hoppa över eller alltid rita. |
 | Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. | Material- och Tailwind-paletter, beständiga dataformat och full täckning för konvertering mellan stilrepresentationer. |
 | Text | Span, Line, Text, Paragraph, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. | Strängbredder för skriftspecifika ligaturer över grafemgränser, full täckning för sammansatta emoji och alla operationer på fristående texttyper. |
-| Layout | Rektanglar, marginal runt en yta, delning av rader och kolumner. | Fler rektangeloperationer, riktning, marginaler per axel, längd-/kvot-/min-/max-/procent-/fyllnadsregler, flex, mellanrum och layoutcache. |
+| Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering och cache. 15 076 jämförda layouter, 1 200 rektangelprov och 1 100 jämförda bilder. | Utökad täckning av överbestämda system med många olika paneler och upprepade ändringar av reglerna. |
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna tecken, individuella kanter, justerade titlar, utfyllnad och skuggor. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. | Tabeller, rader, celler och tillstånd för rad och kolumn. |
 | Övriga widgets | Clear och Fill på Frame, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, Paragraph och RGB-canvas med punkter, linjer och halvblock. | Chart, kalender med datumstilar, logotyp och maskot. Canvas med koordinatgränser, lager, markörer, former, kartor och etiketter. |
 | Egna widgets och tester | Funktioner ritar på en Frame. Tillstånd kan uppdateras vid ritning med `run_stateful`. En Frame kan testas utan terminal. | Gemensamma gränssnitt för widgets med eget tillstånd och utbytbara backends, testbackend med skrollhistorik och markör. |
@@ -83,3 +85,23 @@ På macOS och Linux kan bokhyllans publika exempel provas i en pseudoterminal. P
 dunder build --locked --offline examples/bokhylla/main.ddr -o build/bokhylla
 dunder run --locked --offline tests/bokhylla_terminal.ddr -- build/bokhylla
 ```
+
+## Layout i 0.7.0
+
+Provet jämför alla paneler och mellanrum, även tomma ytor och överlappande grannar. De 14 096 grundfallen omfattar en kombinationstabell och 2 000 deterministiskt genererade layouter. Ytterligare 980 prov når bland annat 65 535 kolumner, stora fyllnadsvikter, nollvikter, högsta möjliga kvottäljare och mycket stora mellanrum. Rektangelprovet jämför marginaler, förflyttning, storleksändring, snitt, union, inpassning, positioner och rad- och kolumnåtkomst i 1 200 fall. Mätvyn jämför tecken och stilar i samtliga 1 100 bilder. [Dunderprov](../tests/layout_reference.ddr) · [Rustreferens](../benchmarks/reference/examples/layout.rs) · [Mätningar](../benchmarks/layout.md)
+
+När flera placeringar uppfyller motstridiga regler lika väl kan även två Ratatui-processer välja olika rektanglar. För varje avvikelse räknar jämförelseprogrammet ut det lägsta möjliga viktade felet med exakta rationella tal. Det löser sedan samma problem två gånger med båda programmens avrundade cellgränser som extra villkor. Båda måste nå samma minimum och alla mellanrum måste kunna återskapas från kanterna. [Ratatuis beskrivning av motstridiga villkor](https://docs.rs/ratatui/0.30.2/ratatui/layout/struct.Layout.html) · [Kontroll med exakt aritmetik](../benchmarks/reference/src/layout_optimum.rs)
+
+I Dunder har rektanglar signerade 32-bitarskoordinater. En separat gränskontroll visar också en skillnad för `Min(65535)` bredvid `Length(7)` på 100 kolumner. Dunder låter minimikravet få alla 100 kolumner. Ratatui 0.30.2 konverterar minimikravet till ett signerat 16-bitarstal och lämnar sju kolumner åt grannen.
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/layout_reference.ddr -o build/layout-check
+cargo build --locked --release --manifest-path benchmarks/reference/Cargo.toml --features layout-cache --example layout --target-dir build/rust
+build/layout-check | build/rust/release/examples/layout
+for mode in --limits --geometry --frames; do
+    build/layout-check "$mode" | build/rust/release/examples/layout "$mode"
+done
+```
+
+Biblioteket löser vanliga fördelningar direkt. För kombinationer som behöver vägas mot varandra använder det en egen gles simplexmetod. Varje layout kan spara lösningar för upp till 500 olika innermått som standard. `cache_capacity(0)` stänger av återanvändningen. `arrange(area).regions()` lånar resultatet fram till nästa ändring av layouten, `split(area)` ger appen egna rektanglar och `split_into(area, &mut out)` fyller en buffert som appen återanvänder. Alla dessa anrop kan användas offline.

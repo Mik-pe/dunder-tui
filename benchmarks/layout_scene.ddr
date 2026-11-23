@@ -1,0 +1,39 @@
+import ..src.tui
+import ..src.layout
+
+pub struct Scene {
+    colors: [tui.Color; 4],
+    bands: layout.Layout, columns: layout.Layout, tracks: layout.Layout,
+}
+
+impl Scene {
+    pub fn new() -> Self {
+        Self {
+            colors: [.Cyan, .Yellow, .Blue, .Green],
+            bands: layout.Layout::vertical([.Length(1), .Fill(1), .Length(1)]),
+            columns: layout.Layout::horizontal([.Length(13), .Percentage(25), .Fill(2), .Fill(1)]).spacing(1),
+            tracks: layout.Layout::vertical([.Ratio(1, 4), .Ratio(1, 4), .Ratio(1, 4), .Ratio(1, 4)]),
+        }
+    }
+
+    pub fn draw(&mut self, frame: &mut tui.Frame, mode: string, n: i32) {
+        rows := self.bands.arrange(frame.area()).regions()
+        panes := self.columns.arrange(rows.areas[1]).regions()
+        marker := if mode == "cell" && n % 2 == 1 { `+` } else { `-` }
+        frame.fill(rows.areas[0].resize(1, 1), marker, tui.plain())
+        bg := if mode == "repaint" && n % 2 == 1 { tui.plain().background(.Magenta) } else { tui.plain().background(.Black) }
+        phase := if mode == "scroll" { n } else { 0 }
+        for j in 0..panes.areas.len {
+            steps := self.tracks.arrange(panes.areas[j]).regions()
+            style := bg.foreground(self.colors[j])
+            for k in 0..steps.areas.len {
+                block := &steps.areas[k]
+                for y in 0..block.h {
+                    glyph := rune(".= -"[(y + j + k + phase) % 4])
+                    frame.fill(tui.Rect { x: block.x, y: block.y + y, w: block.w, h: 1 }, glyph, style)
+                }
+            }
+        }
+        frame.label(rows.areas[2], "Tracks")
+    }
+}

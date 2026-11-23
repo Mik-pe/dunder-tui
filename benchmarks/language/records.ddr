@@ -1,0 +1,37 @@
+capability stdio
+import sys
+
+struct Entry { column: i32, coefficient: f64 }
+@c_layout
+struct FlatEntry { column: i32, coefficient: f64 }
+
+fn records() -> i64 {
+    mut terms: []Entry = []
+    terms.reserve(4096)
+    mut sum: i64 = 0
+    for pass in 0..4 {
+        terms.clear()
+        for i in 0..4096 { terms.push(Entry { column: i, coefficient: f64((pass + i) % 7) }) }
+        for t in &terms { sum += i64(t.column) + i64(t.coefficient) }
+    }
+    sum
+}
+
+fn flat_records() -> i64 {
+    mut terms: []FlatEntry = []
+    terms.reserve(4096)
+    mut sum: i64 = 0
+    for pass in 0..4 {
+        terms.clear()
+        for i in 0..4096 { terms.push(FlatEntry { column: i, coefficient: f64((pass + i) % 7) }) }
+        for t in &terms { sum += i64(t.column) + i64(t.coefficient) }
+    }
+    sum
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 1 }
+    checksum := match sys.arg(1) { "plain" => records(), "flat" => flat_records(), _ => { return 1 }, }
+    print(checksum)
+    0
+}

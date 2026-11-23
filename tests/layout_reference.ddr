@@ -1,0 +1,152 @@
+capability stdio
+import ..src.layout as lay
+import ..src.tui
+import std.bytes as bytes
+import ..benchmarks.layout_scene
+import .widget_cells as cells
+import sys
+
+fn rules(kind: i32) -> []lay.Constraint {
+    match kind {
+        0 => [], 1 => [.Length(4)], 2 => [.Ratio(1, 3)], 3 => [.Min(3)], 4 => [.Percentage(37)],
+        5 => [.Fill(3)], 6 => [.Max(8)], 7 => [.Fill(1), .Fill(2), .Fill(3)],
+        8 => [.Length(2), .Fill(1), .Length(4)], 9 => [.Percentage(35), .Ratio(1, 4), .Max(9)],
+        10 => [.Min(3), .Min(8), .Fill(2)], 11 => [.Length(5), .Length(5), .Length(5)],
+        12 => [.Max(1), .Max(7), .Max(2)], 13 => [.Percentage(50), .Percentage(50), .Length(3)],
+        14 => [.Ratio(1, 0), .Ratio(0, 0), .Fill(0)], 15 => [.Fill(0), .Fill(3), .Fill(1)],
+        16 => [.Min(4), .Max(2), .Length(9), .Ratio(2, 3)], 17 => [.Length(2), .Length(9), .Length(1)],
+        18 => [.Ratio(1, 3), .Ratio(1, 3), .Ratio(1, 3)], 19 => [.Length(0), .Percentage(0), .Fill(0)],
+        20 => [.Percentage(140), .Min(3)], 21 => [.Min(20), .Min(5), .Min(3)],
+        22 => [.Ratio(31, 97), .Fill(2), .Max(7), .Min(1), .Fill(3)],
+        _ => [.Fill(1), .Length(5), .Max(3), .Min(2), .Percentage(13), .Ratio(2, 9)],
+    }
+}
+fn triple(r: &lay.Constraint) -> string {
+    match r {
+        .Length(a) => f"0 {a} 0", .Percentage(a) => f"1 {a} 0", .Ratio(a, b) => f"2 {a} {b}",
+        .Min(a) => f"3 {a} 0", .Max(a) => f"4 {a} 0", .Fill(a) => f"5 {a} 0",
+    }
+}
+fn rect(out: &mut []u8, r: tui.Rect) { bytes.append_utf8(&mut out, f" {r.x} {r.y} {r.w} {r.h}") }
+
+fn emit(layout: &mut lay.Layout, area: tui.Rect, prefix: string, spec: &[]lay.Constraint) {
+    split := layout.split_with_spacers(area)
+    mut row := f"{prefix} {area.x} {area.y} {area.w} {area.h} {spec.len}".bytes()
+    for r in spec { bytes.append_utf8(&mut row, " " + triple(&r)) }
+    for r in &split.areas { rect(&mut row, r) }
+    for r in &split.spacers { rect(&mut row, r) }
+    print(bytes.decode(&row).unwrap())
+}
+
+fn random(seed: &mut i64, limit: i32) -> i32 {
+    seed = (seed * 48271) % 2147483647
+    i32(seed % i64(limit))
+}
+
+fn mixed() {
+    mut seed: i64 = 31
+    modes: [lay.Flex; 7] = [.Start, .Center, .End, .SpaceBetween, .SpaceAround, .SpaceEvenly, .Legacy]
+    for trial in 0..2000 {
+        d := random(&mut seed, 2); m := random(&mut seed, 7); gap := random(&mut seed, 15) - 5
+        w := random(&mut seed, 130); h := random(&mut seed, 71)
+        mx := random(&mut seed, 4); my := random(&mut seed, 4)
+        n := 1 + random(&mut seed, 8)
+        mut spec: []lay.Constraint = []
+        for _ in 0..n {
+            k := random(&mut seed, 6)
+            a := u16(random(&mut seed, if k == 1 { 160 } else { 27 }))
+            b := u32(random(&mut seed, 19))
+            rule: lay.Constraint = match k {
+                0 => .Length(a), 1 => .Percentage(a), 2 => .Ratio(u32(a), b), 3 => .Min(a),
+                4 => .Max(a), _ => .Fill(a),
+            }
+            spec.push(rule)
+        }
+        axis: lay.Direction = if d == 0 { .Horizontal } else { .Vertical }
+        mut layout := lay.Layout::new(axis, spec.clone()).flex(modes[m]).spacing(gap).margin(mx, my)
+        emit(&mut layout, tui.Rect { x: trial % 7, y: trial % 11, w: w, h: h }, f"{d} {m} {gap} {mx} {my}", &spec)
+    }
+}
+
+fn limits() {
+    modes: [lay.Flex; 7] = [.Start, .Center, .End, .SpaceBetween, .SpaceAround, .SpaceEvenly, .Legacy]
+    for k in 0..7 {
+        spec: []lay.Constraint = match k {
+            0 => [.Ratio(4294967295, 4294967294), .Fill(1)],
+            1 => [.Ratio(4294967295, 1), .Max(65535)],
+            2 => [.Fill(65535), .Fill(65534), .Length(3)],
+            3 => [.Length(9), .Fill(0), .Min(30), .Fill(65535)],
+            4 => [.Max(65535), .Percentage(65535)],
+            5 => [.Fill(0), .Fill(0), .Fill(0)],
+            _ => [.Length(2), .Length(2), .Fill(1)],
+        }
+        for m in 0..7 {
+            for gap in [-32767, -1, 0, 32767, 60000] {
+                mut l := lay.Layout::horizontal(spec.clone()).flex(modes[m]).spacing(gap)
+                for w in [3, 37, 320, 65535] {
+                    emit(&mut l, tui.Rect { x: 0, y: 0, w: w, h: 3 }, f"0 {m} {gap} 0 0", &spec)
+                }
+            }
+        }
+    }
+}
+
+fn geometry() {
+    mut seed: i64 = 53
+    for _ in 0..1200 {
+        a := tui.Rect { x: random(&mut seed, 40), y: random(&mut seed, 40), w: random(&mut seed, 60), h: random(&mut seed, 60) }
+        b := tui.Rect { x: random(&mut seed, 40), y: random(&mut seed, 40), w: random(&mut seed, 60), h: random(&mut seed, 60) }
+        dx := random(&mut seed, 125) - 62; dy := random(&mut seed, 125) - 62
+        mx := random(&mut seed, 7); my := random(&mut seed, 7)
+        ix := random(&mut seed, 64)
+        pos := i64(random(&mut seed, 3700))
+        mut line := f"{dx} {dy} {mx} {my} {ix} {pos}".bytes()
+        for r in [a, b, a.inner(mx, my), a.outer(mx, my), a.offset(dx, dy), a.resize(b.w, b.h), a.union(b), a.intersection(b), a.clamp_to(b)] {
+            rect(&mut line, r)
+        }
+        for part in [a.row_at(ix), a.column_at(ix)] {
+            match part { .Some(r) => { rect(&mut line, r) }, .None => { bytes.append_utf8(&mut line, " -1 -1 -1 -1") }, }
+        }
+        (x, y) := a.position_at(pos).unwrap_or((-1, -1))
+        bytes.append_utf8(&mut line, f" {x} {y} {a.right()} {a.bottom()} {a.cell_count()}")
+        for flag in [a.is_empty(), a.intersects(b), a.contains(b.x, b.y)] { bytes.append_utf8(&mut line, if flag { " 1" } else { " 0" }) }
+        print(bytes.decode(&line).unwrap())
+    }
+}
+
+fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--geometry" { geometry(); return }
+    if sys.arg_count() == 2 && sys.arg(1) == "--limits" { limits(); return }
+    if sys.arg_count() == 2 && sys.arg(1) == "--frames" {
+        mut scene := layout_scene.Scene::new()
+        for mode in ["idle", "cell", "scroll", "resize", "repaint"] {
+            for n in 0..220 {
+                mut frame := tui.Frame::new(if mode == "resize" && n % 2 == 0 { 80 } else { 96 }, 24)
+                scene.draw(&mut frame, mode, n)
+                cells.snapshot(&frame)
+            }
+        }
+        return
+    }
+    modes: [lay.Flex; 7] = [.Start, .Center, .End, .SpaceBetween, .SpaceAround, .SpaceEvenly, .Legacy]
+    for k in 0..24 {
+        for m in 0..7 {
+            for gap in [-3, 0, 1, 4] {
+                spec := rules(k)
+                for d in 0..2 {
+                    direction: lay.Direction = if d == 0 { .Horizontal } else { .Vertical }
+                    hmargin := (k + m) % 3
+                    vmargin := (k + 2 * m) % 3
+                    mut layout := lay.Layout::new(direction, spec.clone()).flex(modes[m]).spacing(gap).margin(hmargin, vmargin)
+                    for size in [0, 1, 2, 4, 7, 13, 21, 77, 120] {
+                        w := if d == 0 { size } else { 10 }
+                        h := if d == 0 { 10 } else { size }
+                        area := tui.Rect { x: 3, y: 5, w: w, h: h }
+                        emit(&mut layout, area, f"{d} {m} {gap} {hmargin} {vmargin}", &spec)
+                    }
+                }
+            }
+        }
+    }
+    mixed()
+}

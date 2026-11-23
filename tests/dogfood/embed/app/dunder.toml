@@ -1,0 +1,4 @@
+name = "embed-app"
+root = "main.ddr"
+[dependencies]
+lib = { path = "../library" }
