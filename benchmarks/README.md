@@ -22,7 +22,7 @@ De sista tre fallen ritar kursiv, understruken text med RGB-förgrund och RGB-ba
 | Arbetslaster | Dunder allokeringsanrop / begärda byte | Rust allokeringsanrop / begärda byte | Högsta RSS Dunder / Rust, byte |
 | --- | ---: | ---: | ---: |
 | Fem textfall | 156 / 709 330 | 1 178 / 2 585 257 | 1 835 008 / 2 818 048 |
-| Tre stilfall | 123 / 408 621 | 1 595 / 1 441 167 | 1 785 856 / 2 572 288 |
+| Tre stilfall | 123 / 408 621 | 1 595 / 1 441 167 | 1 802 240 / 2 572 288 |
 
 Allokeringsproven kördes utan bildklocka. Dunders runtime räknar även återanvändning från poolen, som stod för 121 respektive 93 anrop. Rust räknar anrop via den globala allokeraren, inklusive omallokering. RSS kommer från en separat körning med `/usr/bin/time -l`.
 
