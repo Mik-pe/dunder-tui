@@ -2,7 +2,7 @@
 
 Referensen är taggen `ratatui-v0.30.2`, inklusive de stabila tillvalen. Tabellen följer de publika områdena i den versionen. En genomförd jämförelse anges med sitt konkreta prov. [Referenskod](https://github.com/ratatui/ratatui/tree/ratatui-v0.30.2) · [Publikt API](https://docs.rs/ratatui/0.30.2/ratatui/) · [Funktionsflaggor](https://docs.rs/crate/ratatui/0.30.2/features)
 
-Funktionsparitet styr ordningen. Nästa stora användarflöde är tabeller med rad-, kolumn- och cellmarkering. Därefter följer diagram med axlar, utökad canvas samt vyportar och testbackend. Prestanda mäts tillsammans med beteendet så att en långsammare arbetslast kan prioriteras utifrån vad användaren märker. [Fynd för Dunder-språket och standardbiblioteket](dunder.md)
+Funktionsparitet styr ordningen. Nästa användarflöde är diagram med axlar och en canvas med koordinatgränser, markörer och lager. Därefter följer vyportar och testbackend. Prestanda mäts tillsammans med beteendet så att en långsammare arbetslast kan prioriteras utifrån vad användaren märker. [Fynd för Dunder-språket och standardbiblioteket](dunder.md)
 
 | Område | Finns i Dunder | Återstår att leverera eller verifiera |
 | --- | --- | --- |
@@ -10,7 +10,7 @@ Funktionsparitet styr ordningen. Nästa stora användarflöde är tabeller med r
 | Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. | Material- och Tailwind-paletter, beständiga dataformat och full täckning för konvertering mellan stilrepresentationer. |
 | Text | Span, Line, Text, Paragraph, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. | Strängbredder för skriftspecifika ligaturer över grafemgränser, full täckning för sammansatta emoji och alla operationer på fristående texttyper. |
 | Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering och cache. 15 076 jämförda layouter, 1 200 rektangelprov och 1 100 jämförda bilder. | Utökad täckning av överbestämda system med många olika paneler och upprepade ändringar av reglerna. |
-| Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna tecken, individuella kanter, justerade titlar, utfyllnad och skuggor. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. | Tabeller, rader, celler och tillstånd för rad och kolumn. |
+| Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna tecken, individuella kanter, justerade titlar, utfyllnad och skuggor. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
 | Övriga widgets | Clear och Fill på Frame, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, Paragraph och RGB-canvas med punkter, linjer och halvblock. | Chart, kalender med datumstilar, logotyp och maskot. Canvas med koordinatgränser, lager, markörer, former, kartor och etiketter. |
 | Egna widgets och tester | Funktioner ritar på en Frame. Tillstånd kan uppdateras vid ritning med `run_stateful`. En Frame kan testas utan terminal. | Gemensamma gränssnitt för widgets med eget tillstånd och utbytbara backends, testbackend med skrollhistorik och markör. |
 | Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, ANSI och Win32. | Fast och infogad vyport, innehåll ovanför vyn, markörstyrning från Frame, regionrensning och regionskrollning, fönstrets pixelmått, livscykel- och felprov. |
@@ -105,3 +105,21 @@ done
 ```
 
 Biblioteket löser vanliga fördelningar direkt. För kombinationer som behöver vägas mot varandra använder det en egen gles simplexmetod. Varje layout kan spara lösningar för upp till 500 olika innermått som standard. `cache_capacity(0)` stänger av återanvändningen. `arrange(area).regions()` lånar resultatet fram till nästa ändring av layouten, `split(area)` ger appen egna rektanglar och `split_into(area, &mut out)` fyller en buffert som appen återanvänder. Alla dessa anrop kan användas offline.
+
+## Tabeller i 0.8.0
+
+Provet kör 20 åtgärder för varje kombination av storlek, tabellkonfiguration och datamängd. Efter varje åtgärd jämförs de ritade cellerna, stilarna, första synliga raden och vald rad och kolumn. Det täcker bland annat tomma och ojämna tabeller, radmarginaler, kolumnspann, alla sju flexlägen, ändrade kolumnbredder, markeringssymboler och byte av data medan en cell är vald. [Dunderprov](../tests/table_reference.ddr) · [Ratatui-prov](../benchmarks/reference/examples/tables.rs)
+
+I en körning matchade 30 752 av 33 600 bilder hela referensbufferten direkt. För 2 144 bilder valde layoutlösarna olika likvärdiga höjder för sidhuvud, innehåll och sidfot. Provet kontrollerar båda lösningarnas optimala fel med exakt aritmetik och ritar om med Ratatui på de kontrollerade höjderna. I 704 bilder skrev referensen utanför tabellens inneryta. Där jämförs hela bilden med en avgränsad Ratatui-buffert och kontrollkanten måste vara intakt. Alla 33 600 tillstånd matchade. Antalet likvärdiga layouter kan variera mellan körningar.
+
+Ytterligare 1 320 bilder med 4 096 rader matchade referensen cell för cell i prestandaprovets sex arbetslaster. Terminalprovet startar tidtabellen som en egen process, navigerar i båda led, krymper fönstret till två rader och kontrollerar återställningen. [Terminalprov](../tests/table_terminal.ddr) · [Bildtid och terminalutdata](../benchmarks/tables.md)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/table_reference.ddr -o build/table-check
+cargo build --locked --release --manifest-path benchmarks/reference/Cargo.toml --features layout-cache --example tables --target-dir build/rust
+build/table-check | build/rust/release/examples/tables
+build/table-check --benchmark | build/rust/release/examples/tables --benchmark
+dunder build --locked --offline --example avganger -o build/avganger
+dunder run --locked --offline tests/table_terminal.ddr -- build/avganger
+```

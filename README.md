@@ -4,29 +4,31 @@ Bygg interaktiva terminalappar i Dunder för macOS, Linux och Windows. Skriv en 
 
 ## Prova
 
-Vill du se animationerna direkt? Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i en terminal. Samma paket innehåller signalvisualiseraren `signal` och den skrollbara `bokhylla`. [Ladda ner för macOS, Linux eller Windows](https://github.com/Mik-pe/dunder-tui/releases/latest)
+Vill du se animationerna direkt? Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i en terminal. Samma paket innehåller signalvisualiseraren `signal`, boklistan `bokhylla` och tidtabellen `avganger`. [Ladda ner för macOS, Linux eller Windows](https://github.com/Mik-pe/dunder-tui/releases/latest)
 
-Med [Dunder](https://github.com/Mik-pe/dunder#installera-och-kör) 0.10 eller 0.11 installerat kan du köra räknaren direkt i en terminal.
+Med Dunder 0.11.1 installerat kan du starta exemplen med deras namn. [Installera Dunder](https://github.com/Mik-pe/dunder#installera-och-kör)
 
 ```sh
 git clone https://github.com/Mik-pe/dunder-tui.git
 cd dunder-tui
-dunder run examples/counter/main.ddr
+dunder run --example counter
 ```
 
-Tryck ↑ eller ↓ för att ändra talet och `q` för att avsluta. Kör `dunder run examples/bokhylla/main.ddr` för att bläddra bland flerradiga bokposter med piltangenterna. Gör fönstret smalare så får boklistan hela bredden.
+Tryck ↑ eller ↓ för att ändra talet och `q` för att avsluta. Kör `dunder run --example bokhylla` för att bläddra bland flerradiga bokposter med piltangenterna. Gör fönstret smalare så får boklistan hela bredden.
+
+Lista alla exempel med `dunder --list-examples`. På Dunder 0.10.0 och 0.11.0 kan du ange filen direkt, exempelvis `dunder run examples/motion/main.ddr`.
 
 ## Animationer
 
 Kör galleriet med tio animationer. Välj en scen med ← och → eller siffrorna 1–9 och 0. Mellanslag pausar och återupptar. Avsluta med `q`.
 
 ```sh
-dunder run examples/motion/main.ddr
+dunder run --example motion
 ```
 
 ![Tio animationer från galleriet](docs/motion.webp)
 
-Starta en viss scen med exempelvis `dunder run examples/motion/main.ddr -- koi`. Lista scenerna med `dunder run examples/motion/main.ddr -- --list`.
+Starta en viss scen med exempelvis `dunder run --example motion -- koi`. Lista scenerna med `dunder run --example motion -- --list`.
 
 | Tangent | Scen | Tangent | Scen |
 | --- | --- | --- | --- |
@@ -43,7 +45,7 @@ För en egen animation tar `tui.animate(&mut state, 30, draw, update, tick)` han
 Växla mellan vågform och frekvensspektrum med Tab. Piltangenterna ändrar frekvens och amplitud. Den turkosa mätaren visar signalens effektivvärde. Varje stapel i spektrumet beräknas från samma 128 sampel som vågformen. Mellanslag fryser bilden.
 
 ```sh
-dunder run examples/signal/main.ddr
+dunder run --example signal
 ```
 
 Signalen syntetiseras i appen och kräver ingen ljudenhet. [Källkod](examples/signal/main.ddr)
@@ -54,7 +56,7 @@ Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.7.0", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.8.0", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.
@@ -154,6 +156,23 @@ cursor.first()
 ```
 
 Rita med `books.render_stateful(&mut frame, area, &mut cursor)`. Anropa `cursor.next()` och `cursor.previous()` från tangenthanteraren. När vyn krymper justerar listan `cursor.offset` så att hela den markerade posten syns om den ryms. `cursor.last()` hittar sista posten vid nästa ritning, även om innehållet har bytts med `books.set_items(...)`. En lista från nederkanten använder `books.direction = .BottomToTop`. [Bokhyllans källkod](examples/bokhylla/main.ddr) · [Mätning med 16 384 poster](benchmarks/lists.md)
+
+## Tabeller
+
+Kör `dunder run --example avganger` för en tidtabell med flerradiga avgångar. Piltangenterna byter rad eller kolumn. Home och End hoppar till första eller sista avgången. [Exemplets källkod](examples/avganger/main.ddr)
+
+```dunder
+import tui.table as table
+
+mut departures := table.Table::new([table.Row::strings(["19:42","Malmö C"]),
+    table.Row::strings(["20:08","Åre"])],[.Length(7),.Fill(1)])
+departures.header = .Some(table.Row::strings(["Tid","Destination"]))
+departures.cell_highlight = tui.plain().background_rgb(0x25384c).bold()
+mut cursor := table.TableState::new()
+cursor.select_cell(.Some((0,1)))
+```
+
+Spara tabell och markering i appens tillstånd. Rita med `departures.render_stateful(&mut frame, area, &mut cursor)`. En `Cell` kan innehålla rik text och spänna över flera kolumner. Ange `row.height` för flerradigt innehåll. Ändra en befintlig cell med `set_cell` och ersätt hela datamängden med `set_rows`. [Tabellprov](docs/parity.md#tabeller-i-080)
 
 ## Rik text och radbrytning
 

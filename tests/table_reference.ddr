@@ -1,0 +1,105 @@
+capability stdio
+import ..benchmarks.table_scene
+import sys
+import ..src.table as t
+import ..src.tui
+import ..src.block as box
+import ..src.text as rich
+import ..src.layout
+import .widget_cells as cells
+
+fn rows(dataset: i32) -> []t.Row {
+    if dataset == 0 { return [] }
+    if dataset == 1 { return [t.Row::strings(["A","B","C"]),t.Row::strings(["D"]),t.Row::new([]),t.Row::strings(["1","2","3"])] }
+    mut word := t.Cell::new(rich.Text::new([
+        rich.Line::new([rich.Span::styled("茶",tui.ink(.Cyan)),rich.Span::raw("é")]).align(.Right),
+        rich.Line::raw("line").align(.Center),
+    ]))
+    word.style = tui.ink(.Yellow).italic()
+    if dataset == 3 { word.column_span = 2 }
+    mut a := t.Row::new([move word,t.Cell::raw("XY"),t.Cell::raw("Z")])
+    a.height = 2; a.top_margin = 1; a.style = tui.plain().background(.Black)
+    mut b := t.Row::new([t.Cell::raw("skip").spanning(0),t.Cell::raw("one\ntwo"),t.Cell::raw("end").spanning(9)])
+    b.height = 3; b.bottom_margin = 1
+    mut zero := t.Row::strings(["0"]); zero.height = 0
+    mut large := t.Row::strings(["Tall\nrow","B"]); large.height = 7
+    [move a,move b,move zero,move large,t.Row::strings(["last"])]
+}
+
+fn widths(k: i32) -> []layout.Constraint {
+    match k%4 {
+        0 => [], 1 => [.Length(3),.Fill(1),.Min(2)], 2 => [.Percentage(35),.Ratio(1,3)],
+        _ => [.Length(2),.Length(3),.Length(1),.Fill(1)],
+    }
+}
+
+fn run(w: i32,h: i32,k: i32,dataset: i32) {
+    mut view := t.Table::new(rows(dataset),widths(k))
+    view.style = tui.plain().background(.Black)
+    view.row_highlight = tui.ink(.Magenta).inverted()
+    view.column_highlight = tui.plain().background(.Blue).dim()
+    view.cell_highlight = tui.plain().background(.Yellow).italic()
+    view.marker = if k%2 == 0 { rich.Text::raw(">") } else { rich.Text::raw("界>\n!").styled(tui.ink(.Red)) }
+    view.column_spacing = u16(k%3)
+    modes: [layout.Flex;7] = [.Start,.Center,.End,.SpaceBetween,.SpaceAround,.SpaceEvenly,.Legacy]
+    view.flex = modes[k%7]
+    view.highlight_spacing = match (k/2)%3 { 0 => .Always, 1 => .WhenSelected, _ => .Never, }
+    if k%3 != 0 {
+        mut header := t.Row::new([t.Cell::raw("H").spanning(2),t.Cell::raw("name"),t.Cell::raw("N")])
+        header.style = tui.ink(.Cyan); header.top_margin = u16(k%2)
+        view.header = .Some(move header)
+    }
+    if k%4 != 0 {
+        mut foot := t.Row::strings(["F","end"])
+        foot.style = tui.ink(.Red); foot.bottom_margin = u16(k%2)
+        view.footer = .Some(move foot)
+    }
+    if k%5 == 0 { view.block = box.Block::bordered().title("T") }
+    head := k%3 != 0; foot := k%4 != 0
+    mut bands := layout.Layout::vertical([
+        .Length(if head { u16(k%2) } else { 0 }),.Length(if head { 1 } else { 0 }),.Length(0),
+        .Min(0),.Length(0),.Length(if foot { 1 } else { 0 }),.Length(if foot { u16(k%2) } else { 0 }),
+    ])
+    mut state := t.TableState::new()
+    for step in 0..20 {
+        match step {
+            1 => { state.previous() }, 2 => { state.previous_column() }, 3 => { state.first(); state.next_column() },
+            4 => { state.scroll_down_by(2) }, 5 => { state.select_cell(.Some((1,0))) },
+            6 => { state.scroll_right_by(7) }, 7 => { state.scroll_left_by(1); state.offset = 99 },
+            8 => { state.select(.None); state.offset = 2 }, 9 => { state.select_column(.None) },
+            10 => { state.scroll_up_by(4); state.first_column() }, 11 => { state.last_column(); state.last() },
+            12 => { view.set_rows(rows((dataset+1)%4)) }, 13 => { state.next(); state.next_column() },
+            14 => { state.select_cell(.None) }, 15 => { state.select_cell(.Some((2,2))) },
+            16 => { view.set_widths(widths(k+1)) }, 17 => { view.set_rows(rows(dataset)); state.offset = 3 },
+            18 => { state.previous(); state.previous_column() }, 19 => { state.select(.None) }, _ => {},
+        }
+        width := if step == 7 { w/2 } else { w }
+        height := if step == 4 || step == 13 { h/2 } else { h }
+        area := tui.Rect { x:1, y:1, w:width, h:height }
+        mut frame := cells.seeded(width,height)
+        view.render_stateful(&mut frame,area,&mut state)
+        a := &bands.arrange(view.block.inner(area)).regions().areas
+        print(f"{state.offset} {state.selected.unwrap_or(-1)} {state.selected_column.unwrap_or(-1)} {a[0].h} {a[1].h} {a[2].h} {a[3].h} {a[4].h} {a[5].h} {a[6].h}")
+        cells.snapshot(&frame)
+    }
+}
+
+fn benchmark() {
+    mut scene := table_scene.Scene::new(4096)
+    for mode in ["idle", "cell", "scroll", "resize", "repaint", "jump"] {
+        for n in 0..220 {
+            w := if mode == "resize" && n % 2 == 0 { 80 } else { 96 }
+            mut frame := tui.Frame::new(w, 24)
+            scene.draw(&mut frame, mode, n)
+            print(f"{scene.state.offset} {scene.state.selected.unwrap_or(-1)} {scene.state.selected_column.unwrap_or(-1)}")
+            cells.snapshot(&frame)
+        }
+    }
+}
+
+fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--benchmark" { benchmark(); return }
+    for w in [0,1,3,7,14,27] { for h in [0,1,3,6,11] {
+        for k in 0..14 { for dataset in 0..4 { run(w,h,k,dataset) } }
+    } }
+}

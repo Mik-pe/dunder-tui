@@ -1,4 +1,5 @@
 import ..src.layout as layout
+import ..src.table as table
 import ..src.list as lists
 import ..src.widgets as widgets
 import ..src.barchart as chart
@@ -536,4 +537,49 @@ import ..src.width
     assert(a.resize(40,6).clamp_to(b) == b)
     e := a.offset(2147483647,2147483647)
     assert(e.right() == 2147483647 && e.bottom() == 2147483647 && e.resize(30,20) == e)
+}
+
+@test fn table_selection_survives_an_empty_view_and_tracks_replaced_data() {
+    mut tall := table.Row::strings(["long"])
+    tall.height = 2
+    tall.top_margin = 1
+    mut view := table.Table::new([table.Row::strings(["1","a"]), move tall, table.Row::strings(["3","c"])], [])
+    mut state := table.TableState::new()
+    state.last()
+    state.last_column()
+    mut frame := tui.Frame::new(8, 3)
+    view.render_stateful(&mut frame, frame.area().resize(0,0), &mut state)
+    assert(state.selected.unwrap() > 2)
+    view.render_stateful(&mut frame, frame.area(), &mut state)
+    cell := state.selected_cell().unwrap()
+    assert(cell.0 == 2 && cell.1 == 1 && state.offset == 2)
+    view.set_rows([table.Row::strings(["only"])])
+    view.set_widths([.Fill(1)])
+    assert(view.set_cell(0,0,table.Cell::raw("changed")))
+    assert(!view.set_cell(0,1,table.Cell::raw("bad")) && !view.set_cell(-1,0,table.Cell::raw("bad")))
+    frame.clear()
+    view.render_stateful(&mut frame,frame.area(),&mut state)
+    assert(state.selected == .Some(0) && state.selected_column == .Some(0) && state.offset == 0)
+    assert(frame.line(0) == "changed ")
+    view.set_rows([])
+    view.render_stateful(&mut frame,frame.area(),&mut state)
+    assert(state.selected.is_none() && state.selected_column.is_none() && state.offset == 0)
+}
+
+@test fn table_spans_and_cell_highlights_respect_neighboring_glyphs() {
+    mut view := table.Table::new([table.Row::new([table.Cell::raw("hidden").spanning(0),
+        table.Cell::raw("a界z").spanning(65535)])],[.Length(2),.Length(2)])
+    view.column_spacing = 0
+    view.row_highlight = tui.plain().bold()
+    view.column_highlight = tui.ink(.Green)
+    view.cell_highlight = tui.ink(.Cyan).underlined()
+    mut state := table.TableState::new()
+    state.select_cell(.Some((0,1)))
+    mut frame := tui.Frame::new(6,2)
+    frame.fill(frame.area(), `.`, tui.plain())
+    view.render_stateful(&mut frame,tui.Rect { x:1, y:0, w:4, h:1 },&mut state)
+    assert(frame.line(0) == ".a界z." && frame.line(1) == "......")
+    assert(frame.style_at(2,0).unwrap().has(.Bold) && !frame.style_at(2,0).unwrap().has(.Underlined))
+    target := frame.style_at(4,0).unwrap()
+    assert(target.get_foreground() == .Some(tui.Color.Cyan) && target.has(.Underlined) && target.has(.Bold))
 }

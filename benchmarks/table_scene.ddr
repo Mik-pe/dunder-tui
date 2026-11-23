@@ -1,0 +1,41 @@
+import ..src.tui
+import ..src.table
+import ..src.text as rich
+
+pub struct Scene { view: table.Table, state: table.TableState }
+
+impl Scene {
+    pub fn new(count: i32) -> Self {
+        mut rows: []table.Row = []
+        rows.reserve(count)
+        for i in 0..count {
+            mut lines: []rich.Line = [rich.Line::raw(f"Track {i}")]
+            if i % 3 == 0 { lines.push(rich.Line::raw("  茶 / é").styled(tui.ink(.Cyan))) }
+            mut row := table.Row::new([table.Cell::raw(i.str()), table.Cell::new(rich.Text::new(move lines)),
+                table.Cell::raw("OPEN"), table.Cell::raw((i%12+1).str())])
+            if i % 3 == 0 { row.height = 2 }
+            rows.push(move row)
+        }
+        mut view := table.Table::new(move rows,[.Length(7),.Fill(1),.Length(10),.Length(5)])
+        view.header = .Some(table.Row::strings(["ID","Track","Status","Bay"]))
+        view.footer = .Some(table.Row::strings(["","Departures"]))
+        view.marker = rich.Text::raw("› ")
+        view.row_highlight = tui.plain().background(.Blue).bold()
+        view.column_highlight = tui.ink(.Yellow)
+        view.cell_highlight = tui.ink(.Cyan)
+        Scene { view: move view, state: table.TableState::new() }
+    }
+
+    pub fn draw(&mut self, f: &mut tui.Frame, mode: string, n: i32) {
+        if n == 0 { self.state = table.TableState::new() }
+        selected := if mode == "scroll" { 40 + n } else if mode == "jump" && n % 2 == 1 { self.view.len() - 6 } else { 40 }
+        self.state.select_cell(.Some((selected,1)))
+        mut area := f.area()
+        bounds := area.take_rows(area.h - 1)
+        style := if mode == "repaint" && n % 2 == 1 { tui.plain().background(.Magenta) } else { tui.plain().background(.Black) }
+        f.apply_style(bounds, style)
+        self.view.render_stateful(&mut f, bounds, &mut self.state)
+        symbol := if mode == "cell" && n % 2 == 1 { `+` } else { `-` }
+        f.fill(area.take_cols(1), symbol, tui.plain())
+    }
+}

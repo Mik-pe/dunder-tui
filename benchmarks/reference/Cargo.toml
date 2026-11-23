@@ -24,3 +24,7 @@ num-traits = "0.2"
 [[example]]
 name = "layout_bench"
 required-features = ["layout-cache"]
+
+[[example]]
+name = "table_bench"
+required-features = ["layout-cache"]

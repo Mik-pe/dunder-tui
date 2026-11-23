@@ -13,6 +13,8 @@ Genomgången omfattar arbetshistoriken från de första terminalbackendarna till
 | 7 | **Anslut ett barns stdio till ett redan öppet handtag.** `std.process.Stdio` erbjuder Inherit, Pipe och Null. PTY-provet måste tillfälligt byta förälderns fd 0 och 1 med `dup2` medan barnet startas. | Stöd ett valt handtag per barnström med klara äganderegler. Prova två samtidiga barn med olika PTY och oförändrad förälder. Den nativa Windows-motsvarigheten behöver eget prov. [PTY-start](../tools/pty.ddr) · [Processgränssnitt](https://github.com/Mik-pe/dunder/blob/d723527/stdlib/process.ddr) |
 | 8 | **Små poster i täta arrayer.** I ett isolerat prov byggs 4 × 4 096 poster med två skalärfält. Båda representationerna gav summan 33 595 386. På 0.11.1 gjorde båda 16 387 allokeringsanrop. Vanliga poster behövde 4 099 färska allokeringar och `@c_layout` behövde fyra. | Använd provet för att följa temporära postvärden vid `push` och undersöka tät lagring även för vanliga värdeposter. Redovisa poolåterbruk och färska allokeringar var för sig. [Körbart prov](../benchmarks/language/records.ddr) · [Dunders minnesmodell](https://github.com/Mik-pe/dunder/blob/d723527/docs/memory.md) |
 
+Tabellarbetet i 0.8.0 gav ett nionde fynd. Med två generiska fält av samma typ lägger `dunder fmt` i 0.11.1 in mellanslag runt vinkelparenteserna på sista fältet. Alla nio punkter finns nu med prov eller acceptanskriterier i språkets arbetslista. [Dunders nästa steg](https://github.com/Mik-pe/dunder/blob/eaf0971d24467e91bfa565507dede10732e795b4/docs/next-steps.md)
+
 ## Återskapa
 
 Kör paketeringsprovet från repots rot. Första kommandot ska lyckas. Med de granskade kompilatorerna ger det andra E3099. Båda använder enbart lokala filer.

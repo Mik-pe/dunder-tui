@@ -403,6 +403,14 @@ impl Frame {
     }
 
     pub fn apply_style(&mut self, area: Rect, overlay: Style) {
+        self.style_range(area,&overlay,true)
+    }
+
+    pub fn style_glyphs(&mut self, area: Rect, overlay: Style) {
+        self.style_range(area,&overlay,false)
+    }
+
+    fn style_range(&mut self, area: Rect, overlay: &Style, include_left_overlap: bool) {
         if area.w <= 0 || area.h <= 0 || overlay.empty() { return }
         left := clamp(area.x, self.bounds.w)
         top := clamp(area.y, self.bounds.h)
@@ -413,7 +421,8 @@ impl Frame {
         mut result := self.composite(last, &overlay)
         for y in top..bottom {
             row := y * self.bounds.w
-            first := self.head(row + left)
+            mut first := self.head(row + left)
+            if !include_left_overlap && first < row + left { first += self.advance(first) }
             final_head := self.head(row + right - 1)
             end := final_head + self.advance(final_head)
             for i in first..end {

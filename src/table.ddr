@@ -1,0 +1,265 @@
+import .tui
+import .block
+import .layout
+import .list
+import .text as rich
+import std.cmp as cmp
+
+pub struct Cell { content: rich.Text, style: tui.Style, column_span: u16 }
+
+impl Cell {
+    pub fn new(move content: rich.Text) -> Self { Self { content: move content, style: tui.plain(), column_span: 1 } }
+    pub fn raw(move value: string) -> Self { Cell::new(rich.Text::raw(move value)) }
+    pub fn spanning(move self, count: u16) -> Self { mut cell := move self; cell.column_span = count; move cell }
+
+    fn draw(&self, frame: &mut tui.Frame, area: tui.Rect) {
+        frame.apply_style(area, self.style)
+        self.content.render(&mut frame, area)
+    }
+}
+
+pub struct Row { cells: []Cell, style: tui.Style, height: u16, top_margin: u16, bottom_margin: u16 }
+
+impl Row {
+    pub fn new(move cells: []Cell) -> Self {
+        Self { cells: move cells, style: tui.plain(), height: 1, top_margin: 0, bottom_margin: 0 }
+    }
+    pub fn strings(move values: []string) -> Self {
+        mut cells: []Cell = []
+        cells.reserve(values.len)
+        for value in move values { cells.push(Cell::raw(move value)) }
+        Row::new(move cells)
+    }
+    fn total_height(&self) -> i32 {
+        cmp.min<i32>(65535, i32(self.height) + i32(self.top_margin) + i32(self.bottom_margin))
+    }
+}
+
+const LAST: i32 = 2147483647
+
+pub struct TableState { offset: i32, selected: Option<i32>, selected_column: Option<i32> }
+
+fn shifted(current: Option<i32>, amount: i32) -> i32 {
+    i32(cmp.clamp<i64>(i64(current.unwrap_or(0)) + i64(amount), 0, i64(LAST)))
+}
+
+impl TableState {
+    pub fn new() -> Self { Self { offset: 0, selected: .None, selected_column: .None } }
+    pub fn selected_cell(&self) -> Option<(i32,i32)> {
+        if self.selected.is_none() || self.selected_column.is_none() { return .None }
+        .Some((self.selected.unwrap(), self.selected_column.unwrap()))
+    }
+    pub fn select(&mut self, index: Option<i32>) { self.selected = index; if index.is_none() { self.offset = 0 } }
+    pub fn select_column(&mut self, index: Option<i32>) { self.selected_column = index }
+    pub fn select_cell(&mut self, position: Option<(i32,i32)>) {
+        match position {
+            .Some(pos) => { self.select(.Some(pos.0)); self.select_column(.Some(pos.1)) },
+            .None => { self.select(.None); self.select_column(.None) },
+        }
+    }
+    pub fn first(&mut self) { self.select(.Some(0)) }
+    pub fn last(&mut self) { self.select(.Some(LAST)) }
+    pub fn first_column(&mut self) { self.select_column(.Some(0)) }
+    pub fn last_column(&mut self) { self.select_column(.Some(LAST)) }
+    pub fn next(&mut self) { if self.selected.is_some() { self.scroll_down_by(1) } else { self.first() } }
+    pub fn previous(&mut self) { if self.selected.is_some() { self.scroll_up_by(1) } else { self.last() } }
+    pub fn next_column(&mut self) { if self.selected_column.is_some() { self.scroll_right_by(1) } else { self.first_column() } }
+    pub fn previous_column(&mut self) { if self.selected_column.is_some() { self.scroll_left_by(1) } else { self.last_column() } }
+    pub fn scroll_down_by(&mut self, n: u16) { self.select(.Some(shifted(self.selected,i32(n)))) }
+    pub fn scroll_up_by(&mut self, n: u16) { self.select(.Some(shifted(self.selected,-i32(n)))) }
+    pub fn scroll_right_by(&mut self, n: u16) { self.select_column(.Some(shifted(self.selected_column,i32(n)))) }
+    pub fn scroll_left_by(&mut self, n: u16) { self.select_column(.Some(shifted(self.selected_column,-i32(n)))) }
+}
+
+pub opaque struct Rows { entries: []Row, starts: []i64, column_count: i32 }
+
+impl Rows {
+    fn new(move rows: []Row) -> Self {
+        mut starts: []i64 = []
+        starts.reserve(rows.len + 1)
+        starts.push(0)
+        mut y: i64 = 0
+        mut n := 0
+        for row in &rows {
+            y += i64(row.total_height())
+            starts.push(y)
+            n = cmp.max<i32>(n,row.cells.len)
+        }
+        Self { entries: move rows, starts: move starts, column_count: n }
+    }
+
+    fn visible(&self, state: &TableState, height: i32) -> (i32,i32) {
+        last := self.entries.len - 1
+        selected := state.selected.unwrap_or(-1)
+        mut first := cmp.clamp<i32>(state.offset, 0, last)
+        if selected >= 0 { first = cmp.min<i32>(first, selected) }
+        ceiling := self.starts[first] + i64(height)
+        mut end := first
+        mut hi := self.entries.len
+        while end < hi {
+            mid := end + (hi - end) / 2
+            if self.starts[mid] + i64(self.entries[mid].height) <= ceiling { end = mid + 1 } else { hi = mid }
+        }
+        if selected >= end {
+            end = selected + 1
+            floor := self.starts[end] - i64(height)
+            hi = end
+            while first < hi {
+                mid := first + (hi-first)/2
+                if self.starts[mid] < floor { first = mid+1 } else { hi = mid }
+            }
+        }
+        if end < self.entries.len && self.starts[end] - self.starts[first] < i64(height) { end += 1 }
+        (first,end)
+    }
+}
+
+pub opaque struct Columns {
+    widths: []layout.Constraint, parts: layout.Layout, ready: bool,
+    spacing: u16, flex: layout.Flex, automatic_count: i32, automatic_width: i32,
+}
+
+impl Columns {
+    fn new(move widths: []layout.Constraint) -> Self {
+        for rule in &widths { match rule { .Percentage(p) => { assert(p <= 100) }, _ => {}, } }
+        Self { widths: move widths, parts: layout.Layout::horizontal([]), ready: false,
+            spacing: 0, flex: .Start, automatic_count: -1, automatic_width: -1 }
+    }
+
+    fn prepare(&mut self, area: tui.Rect, gutter: i32, count: i32, spacing: u16, flex: layout.Flex) {
+        automatic := self.widths.len == 0
+        width := if automatic { cmp.min<i32>(65535,area.w/cmp.max<i32>(1,count)) } else { 0 }
+        if !self.ready || self.spacing != spacing || self.flex != flex ||
+            (automatic && (self.automatic_count != count || self.automatic_width != width)) {
+            mut widths: []layout.Constraint = []
+            if automatic {
+                widths.reserve(count)
+                for _ in 0..count { widths.push(.Length(u16(width))) }
+            } else { widths = self.widths.clone() }
+            self.parts = layout.Layout::horizontal(move widths).spacing(i32(spacing)).flex(flex)
+            self.ready = true; self.spacing = spacing; self.flex = flex
+            self.automatic_width = width; self.automatic_count = count
+        }
+        _ := self.parts.arrange(tui.Rect { x:area.x+gutter, y:0, w:area.w-gutter, h:1 })
+    }
+}
+
+pub opaque struct Bands { parts: layout.Layout, sizes: [u16;6], ready: bool }
+
+fn band_sizes(row: &Option<Row>) -> (u16,u16,u16) {
+    match row { .Some(r) => (r.top_margin,r.height,r.bottom_margin), .None => (0,0,0), }
+}
+
+impl Bands {
+    fn prepare(&mut self, area: tui.Rect, header: &Option<Row>, footer: &Option<Row>) {
+        (a,b,c) := band_sizes(&header)
+        (d,e,f) := band_sizes(&footer)
+        sizes := [a,b,c,d,e,f]
+        mut changed := !self.ready
+        for i in 0..6 { if sizes[i] != self.sizes[i] { changed = true } }
+        if changed {
+            self.parts.set_constraints([.Length(a),.Length(b),.Length(c),.Min(0),.Length(d),.Length(e),.Length(f)])
+            self.sizes = sizes; self.ready = true
+        }
+        _ := self.parts.arrange(area)
+    }
+}
+
+pub struct Table {
+    rows: Rows, columns: Columns, bands: Bands, header: Option<Row>, footer: Option<Row>, block: block.Block,
+    style: tui.Style, row_highlight: tui.Style, column_highlight: tui.Style, cell_highlight: tui.Style,
+    marker: rich.Text, highlight_spacing: list.HighlightSpacing, column_spacing: u16, flex: layout.Flex,
+}
+
+impl Table {
+    pub fn new(move rows: []Row, move widths: []layout.Constraint) -> Self {
+        Self { rows: Rows::new(move rows), columns: Columns::new(move widths),
+            bands: Bands { parts: layout.Layout::vertical([]), sizes:[0;6], ready:false },
+            header: .None, footer: .None, block: block.Block::new(), style: tui.plain(),
+            row_highlight: tui.plain(), column_highlight: tui.plain(), cell_highlight: tui.plain(),
+            marker: rich.Text::raw(""), highlight_spacing: .WhenSelected, column_spacing: 1, flex: .Start }
+    }
+    pub fn set_rows(&mut self, move rows: []Row) { self.rows = Rows::new(move rows) }
+    pub fn set_widths(&mut self, move widths: []layout.Constraint) { self.columns = Columns::new(move widths) }
+    pub fn len(&self) -> i32 { self.rows.entries.len }
+    pub fn column_count(&self) -> i32 {
+        mut n := self.rows.column_count
+        match &self.header { .Some(r) => { n = cmp.max<i32>(n,r.cells.len) }, .None => {}, }
+        match &self.footer { .Some(r) => { n = cmp.max<i32>(n,r.cells.len) }, .None => {}, }
+        n
+    }
+    pub fn set_cell(&mut self, row: i32, column: i32, move cell: Cell) -> bool {
+        if row < 0 || row >= self.len() || column < 0 || column >= self.rows.entries[row].cells.len { return false }
+        self.rows.entries[row].cells[column] = move cell
+        true
+    }
+
+    pub fn render(&mut self, frame: &mut tui.Frame, bounds: tui.Rect) {
+        mut state := TableState::new()
+        self.render_stateful(&mut frame,bounds,&mut state)
+    }
+
+    pub fn render_stateful(&mut self, frame: &mut tui.Frame, bounds: tui.Rect, state: &mut TableState) {
+        frame.apply_style(bounds,self.style)
+        area := self.block.render(&mut frame,bounds)
+        if area.is_empty() { return }
+        if self.len() == 0 { state.select(.None) }
+        else if state.selected.is_some() { state.select(.Some(cmp.clamp<i32>(state.selected.unwrap(),0,self.len()-1))) }
+        n := self.column_count()
+        if n == 0 { state.select_column(.None) }
+        else if state.selected_column.is_some() { state.select_column(.Some(cmp.clamp<i32>(state.selected_column.unwrap(),0,n-1))) }
+        reserved := self.highlight_spacing == .Always || (self.highlight_spacing == .WhenSelected && state.selected.is_some())
+        gutter := if reserved { cmp.min<i32>(area.w,self.marker.width()) } else { 0 }
+        self.columns.prepare(area,gutter,n,self.column_spacing,self.flex)
+        self.bands.prepare(area,&self.header,&self.footer)
+        bands := &self.bands.parts.regions().areas
+        cols := &self.columns.parts.regions().areas
+        match &self.header { .Some(row) => { draw_band(&row,&mut frame,bands[1],&cols) }, .None => {}, }
+        match &self.footer { .Some(row) => { draw_band(&row,&mut frame,bands[5],&cols) }, .None => {}, }
+        if self.len() == 0 { return }
+        body := bands[3]
+        (first,end) := self.rows.visible(&state,body.h)
+        state.offset = first
+        mut selected_row: Option<tui.Rect> = .None
+        for i in first..end {
+            row := &self.rows.entries[i]
+            relative := self.rows.starts[i]-self.rows.starts[first]+i64(row.top_margin)
+            y := body.y+i32(cmp.min<i64>(relative,i64(body.h)))
+            line := tui.Rect { x:body.x, y:y, w:body.w, h:cmp.min<i32>(i32(row.height),body.bottom()-y) }
+            frame.apply_style(line,row.style)
+            if state.selected == .Some(i) {
+                selected_row = .Some(line)
+                if gutter > 0 { self.marker.render(&mut frame,line.cols(gutter).0) }
+            }
+            draw_cells(&row,&mut frame,line,&cols,i32(self.column_spacing))
+        }
+        match selected_row { .Some(r) => { frame.apply_style(r,self.row_highlight) }, .None => {}, }
+        c := state.selected_column.unwrap_or(-1)
+        if c >= 0 && c < cols.len {
+            column := tui.Rect { x:cols[c].x, y:body.y, w:cols[c].w, h:body.h }
+            frame.style_glyphs(column,self.column_highlight)
+            match selected_row { .Some(r) => { frame.style_glyphs(column.intersection(r),self.cell_highlight) }, .None => {}, }
+        }
+    }
+}
+
+fn draw_band(row: &Row, frame: &mut tui.Frame, area: tui.Rect, cols: &[]tui.Rect) {
+    frame.apply_style(area,row.style)
+    for i in 0..cmp.min<i32>(row.cells.len,cols.len) {
+        row.cells[i].draw(&mut frame,tui.Rect { x:cols[i].x, y:area.y, w:cols[i].w, h:area.h })
+    }
+}
+
+fn draw_cells(row: &Row, frame: &mut tui.Frame, area: tui.Rect, cols: &[]tui.Rect, spacing: i32) {
+    mut c := 0
+    for cell in &row.cells {
+        if c >= cols.len { break }
+        if cell.column_span == 0 { continue }
+        end := c+cmp.min<i32>(cols.len-c,i32(cell.column_span))
+        mut width := i64(end-c-1)*i64(spacing)
+        for i in c..end { width += i64(cols[i].w) }
+        w := i32(cmp.min<i64>(width,i64(area.right()-cols[c].x)))
+        cell.draw(&mut frame,tui.Rect { x:cols[c].x, y:area.y, w:w, h:area.h })
+        c = end
+    }
+}

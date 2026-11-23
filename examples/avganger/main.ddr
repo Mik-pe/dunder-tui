@@ -1,0 +1,79 @@
+capability stdio
+import tui
+import tui.table as table
+import tui.text as rich
+import std.cmp as cmp
+import sys
+
+struct Board { departures: table.Table, cursor: table.TableState, names: []string }
+
+fn departure(move time: string, move destination: string, move service: string, move platform: string) -> table.Row {
+    mut clock := table.Cell::raw(move time)
+    clock.style = tui.plain().foreground_rgb(0x91e8d7).bold()
+    label := rich.Text::new([
+        rich.Line::raw(move destination).styled(tui.plain().bold()),
+        rich.Line::raw(move service).styled(tui.plain().foreground_rgb(0x92a1be)),
+    ])
+    mut row := table.Row::new([move clock, table.Cell::new(move label), table.Cell::raw(move platform)])
+    row.height = 2
+    move row
+}
+
+fn board() -> Board {
+    services := [
+        ("19:42", "Malmö C", "Snälltåget", "4"),
+        ("20:08", "Åre", "Nattåg", "8"),
+        ("20:36", "Göteborg C", "Intercity", "3"),
+        ("21:12", "Umeå C", "Nattåg", "6"),
+        ("22:04", "Luleå C", "Nattåg", "5"),
+        ("23:17", "Kiruna", "Nattåg", "7"),
+    ]
+    mut names: []string = []
+    mut rows: []table.Row = []
+    for (time,destination,service,platform) in move services {
+        names.push(destination.clone())
+        rows.push(departure(move time,move destination,move service,move platform))
+    }
+    mut departures := table.Table::new(move rows,[.Length(7),.Fill(1),.Length(5)])
+    mut header := table.Row::strings(["Tid","Destination","Spår"])
+    header.style = tui.plain().foreground_rgb(0xffd085)
+    departures.header = .Some(move header)
+    departures.marker = rich.Text::raw("▸ ")
+    departures.style = tui.plain().foreground_rgb(0xe3eaf6).background_rgb(0x131925)
+    departures.row_highlight = tui.plain().background_rgb(0x25384c)
+    departures.column_highlight = tui.plain().foreground_rgb(0xb9f4ec)
+    departures.cell_highlight = tui.plain().foreground_rgb(0x122326).background_rgb(0x8ee2cb).bold()
+    mut cursor := table.TableState::new()
+    cursor.select_cell(.Some((0,1)))
+    Board { departures:move departures, cursor:move cursor, names:move names }
+}
+
+fn draw(frame: &mut tui.Frame, board: &mut Board) {
+    mut space := frame.area()
+    title := space.take_rows(1)
+    frame.text(title," Avgångar",tui.plain().foreground_rgb(0xffd085).bold())
+    body := space.take_rows(space.h-2)
+    board.departures.render_stateful(&mut frame,body,&mut board.cursor)
+    row := cmp.clamp<i32>(board.cursor.selected.unwrap_or(0),0,board.names.len-1)
+    fields: [string;3] = ["Tid","Destination","Spår"]
+    col := cmp.clamp<i32>(board.cursor.selected_column.unwrap_or(0),0,fields.len-1)
+    frame.text(space.take_rows(1),board.names[row]+" · "+fields[col],tui.plain().foreground_rgb(0x8ee2cb))
+    frame.label(space,"↑ ↓ rad   ← → kolumn   Home End   q avsluta")
+}
+
+fn update(board: &mut Board, key: tui.Key) -> bool {
+    match key {
+        .Up => { board.cursor.previous() }, .Down => { board.cursor.next() },
+        .Right => { board.cursor.next_column() }, .Left => { board.cursor.previous_column() },
+        .Home => { board.cursor.first() }, .End => { board.cursor.last() },
+        .Escape => { return false }, .Char(c) if c == `q` => { return false }, _ => {},
+    }
+    true
+}
+
+fn main() -> i32 {
+    mut app := board()
+    match tui.run_stateful(&mut app,draw,update) {
+        .Ok => 0, .Err(message) => { _ := sys.eprint(message); 1 },
+    }
+}

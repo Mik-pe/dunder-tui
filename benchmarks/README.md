@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Resultat för 0.8.0
+
+En tabell med 4 096 avgångar mäts i sex arbetslaster, med skrollning och hopp mellan ändarna. [Bildtid, minne och terminalutdata](tables.md)
+
 ## Resultat för 0.7.0
 
 En vy med kapslade layouter mäts med fem sorters bildändringar. Ett separat prov mäter en varm layout och tre fall där varje ändring av bredden kräver en ny lösning. [Bildtid, layouttid, minne och terminalutdata](layout.md)

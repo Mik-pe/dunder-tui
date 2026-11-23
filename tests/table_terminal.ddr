@@ -1,0 +1,31 @@
+capability unsafe, stdio, process
+import .terminal_driver as driver
+import ..tools.pty
+import sys
+
+fn exercise(master: i32, slave: i32, screen: &mut driver.Screen) -> bool {
+    unsafe {
+        if !driver.wait_for(master,&mut screen,6,"Malmö C · Destination","\x1b[?1049h") { return false }
+        if !driver.send(master,"\x1b[B") || !driver.wait_for(master,&mut screen,6,"Åre · Destination","") { return false }
+        if !driver.send(master,"\x1b[C") || !driver.wait_for(master,&mut screen,6,"Åre · Spår","") { return false }
+        if !driver.send(master,"\x1b[F") || !driver.wait_for(master,&mut screen,6,"Kiruna · Spår","") { return false }
+        if !pty.resize(slave,32,7) { return false }
+        screen = driver.Screen::new(32,7)
+        if !driver.wait_for(master,&mut screen,5,"Kiruna · Spår","") || !screen.contains(2,"Kiruna") { return false }
+        if !driver.send(master,"\x1b[H") || !driver.wait_for(master,&mut screen,5,"Malmö C · Spår","") { return false }
+        if !pty.resize(slave,32,2) { return false }
+        screen = driver.Screen::new(32,2)
+        if !driver.wait_for(master,&mut screen,1,"Malmö C · Spår","") { return false }
+        if !driver.send(master,"\x1b[F") || !driver.wait_for(master,&mut screen,1,"Kiruna · Spår","") { return false }
+        if !driver.send(master,"q") || !driver.wait_for(master,&mut screen,0,"","\x1b[?1049l") { return false }
+    }
+    true
+}
+
+fn main() -> i32 {
+    if sys.arg_count() == 2 && (target_is("macos") || target_is("linux")) {
+        unsafe { if driver.test(sys.arg(1),66,8,exercise) { print("avganger terminal OK"); return 0 } }
+    }
+    _ := sys.eprint("Run on macOS or Linux with the avganger executable as argument.")
+    1
+}

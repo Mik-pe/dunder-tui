@@ -1,6 +1,7 @@
 capability unsafe, stdio
 
 import ..src.tui
+import ..src.table
 import ..src.layout
 import ..src.list as lists
 import ..src.widgets as ui
@@ -73,6 +74,13 @@ fn draw(frame: &mut tui.Frame, probe: &Probe) {
     state.last()
     items.render_stateful(&mut frame, parts[2].cols(8).0, &mut state)
     assert(state.offset == 1 && state.selected == .Some(1))
+    mut grid := table.Table::new([table.Row::strings(["A","01"]),table.Row::strings(["B","02"])],[.Length(3),.Fill(1)])
+    grid.marker = rich.Text::raw(">")
+    grid.cell_highlight = tui.ink(.LightCyan).background(.Blue)
+    mut cursor := table.TableState::new()
+    cursor.select_cell(.Some((1,1)))
+    grid.render_stateful(&mut frame,parts[3].resize(12,2),&mut cursor)
+    assert(cursor.selected == .Some(1) && cursor.selected_column == .Some(1))
 }
 
 fn update(probe: &mut Probe, key: tui.Key) -> bool {
@@ -105,6 +113,11 @@ fn update(probe: &mut Probe, key: tui.Key) -> bool {
         }
         mut attr: u16 = 0
         if read_attr(out, addr(&mut attr), 1, coord, addr(&mut n)) == 0 || attr.bit_and(7) != 3 || attr.shr(4).bit_and(15) != 9 { probe.failure = 31; return false }
+        table_row := u32(bounds[5]).bit_or(u32(i32(bounds[6])+5).shl(16))
+        if read_text(out,addr(&mut meter[0]),7,table_row,addr(&mut n)) == 0 || n != 7 { probe.failure = 38; return false }
+        table_line := ">B   02"
+        for i in 0..7 { if meter[i] != u16(table_line[i]) { probe.failure = 39; return false } }
+        if read_attr(out,addr(&mut attr),1,table_row+5,addr(&mut n)) == 0 || attr.bit_and(255) != 27 { probe.failure = 40; return false }
         if probe.step == 0 {
             mut rect: [i16; 4] = [bounds[5], bounds[6], i16(i32(bounds[7]) - 1), bounds[8]]
             if set_window(out, 1, addr(&rect[0])) == 0 { probe.failure = 32; return false }
