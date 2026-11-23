@@ -1,0 +1,54 @@
+capability stdio
+import std.time as clock
+import sys
+
+const TABLE: [i32; 32] = [
+    214, 697, 915, 868, 556, 1210, 368, 492,
+    351, 1176, 505, 800, 830, 595, 95, 561,
+    762, 698, 369, 1006, 147, 254, 96, 904,
+    216, 494, 507, 255, 969, 187, 371, 290,
+]
+
+fn local(index: i32) -> i32 {
+    table: [i32; 32] = [
+        214, 697, 915, 868, 556, 1210, 368, 492,
+        351, 1176, 505, 800, 830, 595, 95, 561,
+        762, 698, 369, 1006, 147, 254, 96, 904,
+        216, 494, 507, 255, 969, 187, 371, 290,
+    ]
+    table[index]
+}
+
+fn shared(index: i32) -> i32 { TABLE[index] }
+
+fn sum_local(seed: i32) -> i64 {
+    mut total: i64 = 0
+    for i in 0..1048576 { total += i64(local((i + seed).bit_and(31))) }
+    total
+}
+
+fn sum_const(seed: i32) -> i64 {
+    mut total: i64 = 0
+    for i in 0..1048576 { total += i64(shared((i + seed).bit_and(31))) }
+    total
+}
+
+fn main() {
+    if sys.arg_count() == 2 {
+        match sys.arg(1) {
+            "local" => print(sum_local(0)),
+            "shared" => print(sum_const(0)),
+            _ => { panic("expected local or shared") },
+        }
+        return
+    }
+    for round in 0..12 {
+        for step in 0..2 {
+            use_local := (round + step) % 2 == 0
+            start := clock.monotonic_ns()
+            sum := if use_local { sum_local(round) } else { sum_const(round) }
+            elapsed := clock.monotonic_ns() - start
+            print(f"{round} {use_local} {elapsed} {sum}")
+        }
+    }
+}
