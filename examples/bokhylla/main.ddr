@@ -1,6 +1,7 @@
 capability stdio
 
 import tui
+import .editor
 import tui.block as box
 import tui.list as lists
 import tui.layout as layout
@@ -8,7 +9,7 @@ import tui.text as rich
 import std.cmp as cmp
 import sys
 
-struct Shelf { books: lists.List, cursor: lists.ListState, notes: []string, rows: layout.Layout, columns: layout.Layout }
+struct Shelf { edit: Option<editor.Editor>, books: lists.List, cursor: lists.ListState, notes: []string, rows: layout.Layout, columns: layout.Layout }
 
 fn book(move title: string, move category: string) -> lists.Item {
     lists.Item::new(rich.Text::new([
@@ -18,7 +19,13 @@ fn book(move title: string, move category: string) -> lists.Item {
 }
 
 fn draw(frame: &mut tui.Frame, shelf: &mut Shelf) {
-    rows := shelf.rows.arrange(frame.area()).regions()
+    mut content := frame.area()
+    if shelf.edit.is_some() && content.h >= 3 {
+        field_area := content.take_rows(content.h-1)
+        frame.label(content,"Enter spara   Esc avbryt")
+        content = field_area
+    }
+    rows := shelf.rows.arrange(content).regions()
     columns := shelf.columns.arrange(rows.areas[0]).regions()
     wide := rows.areas[0].w >= 42
     menu := if wide { columns.areas[0] } else { rows.areas[0] }
@@ -28,13 +35,30 @@ fn draw(frame: &mut tui.Frame, shelf: &mut Shelf) {
         index := cmp.clamp<i32>(shelf.cursor.selected.unwrap_or(0), 0, shelf.notes.len - 1)
         frame.label(detail, shelf.notes[index])
     }
-    frame.label(rows.areas[1], "↑ ↓ välj bok   Home End   q avsluta")
+    match &shelf.edit {
+        .Some(field) => { field.draw(&mut frame,rows.areas[1]) },
+        .None => { frame.label(rows.areas[1], "↑ ↓ välj bok   e redigera   q avsluta") },
+    }
 }
 
 fn update(shelf: &mut Shelf, key: tui.Key) -> bool {
+    index := cmp.clamp<i32>(shelf.cursor.selected.unwrap_or(0),0,shelf.notes.len-1)
+    match replace(&mut shelf.edit,.None) {
+        .Some(field) => {
+            mut draft := move field
+            match key {
+                .Enter => { shelf.notes[index] = draft.text },
+                .Escape => {},
+                _ => { draft.key(key); shelf.edit = .Some(move draft) },
+            }
+            return true
+        },
+        .None => {},
+    }
     match key {
         .Up => { shelf.cursor.previous() },
         .Down => { shelf.cursor.next() },
+        .Char(c) if c == `e` => { shelf.edit = .Some(editor.Editor::new(shelf.notes[index].clone())) },
         .Home => { shelf.cursor.first() },
         .End => { shelf.cursor.last() },
         .Char(c) if c == `q` => { return false },
@@ -56,7 +80,7 @@ fn main() -> i32 {
     books.scroll_padding = 1
     mut shelf := Shelf {
         rows: layout.Layout::vertical([.Fill(1), .Length(1)]), columns: layout.Layout::horizontal([.Fill(1), .Fill(1)]),
-        books: move books, cursor: lists.ListState::new(),
+        edit: .None, books: move books, cursor: lists.ListState::new(),
         notes: ["Ta med ut till fyren.", "Läs kapitel tre igen.", "Till bokcirkeln på tisdag.", "Slå upp pärlemormoln."],
     }
     shelf.cursor.first()

@@ -1,0 +1,77 @@
+import ..src.tui
+import ..src.testing as test
+import std.bytes as bytes
+
+struct Scene { seed: i32, phase: i32 }
+fn draw(f: &mut tui.Frame, s: &mut Scene) {
+    area := f.area()
+    for y in 0..area.h {
+        for x in 0..area.w {
+            v := (x+3*y+s.seed+s.phase)%7
+            if v == 0 { continue }
+            style := if v%2 == 0 { tui.ink(.Red).bold() } else { tui.ink(.Cyan).background(.Blue) }
+            f.styled_rune(x,y,area.w,rune(65+v),&style)
+        }
+    }
+    if s.phase%3 != 0 {
+        f.set_cursor_position(0,0)
+        f.set_cursor_position((s.phase+s.seed)%area.w,(s.phase+2*s.seed)%area.h)
+    }
+}
+
+fn serialize(out: &mut []u8, frame: &tui.Frame, y: i32) {
+    for x in 0..frame.area().w {
+        s := frame.style_at(x,y).unwrap()
+        bytes.append_utf8(&mut out,frame.symbol_at(x,y).unwrap())
+        out.push(u8(66+s.get_foreground().unwrap().code()))
+        out.push(u8(66+s.get_background().unwrap().code()))
+        out.push(if s.has(.Bold) { b'B' } else { b'-' })
+    }
+}
+
+fn snapshot(b: &test.TestBackend, frame: u64, seed: i32, step: i32) {
+    area := b.buffer().area()
+    cursor := b.cursor_position()
+    visible := if b.cursor_visible() { 1 } else { 0 }
+    mut out: []u8 = []
+    bytes.append_utf8(&mut out,f"{seed} {step} {frame} {area.w} {area.h} {visible} {cursor.0} {cursor.1} {b.scrollback().len()} ")
+    for y in 0..area.h { serialize(&mut out,&b.buffer(),y) }
+    for y in 0..b.scrollback().len() { serialize(&mut out,&b.scrollback().row(y),0) }
+    print(bytes.decode(&out).unwrap())
+}
+
+fn main() {
+    for seed in 0..60 {
+        mut w := 3+seed%8
+        mut h := 2+seed%6
+        mut t := tui.Terminal<test.TestBackend>::new(test.TestBackend::new(w,h))
+        mut s := Scene { seed: seed, phase: seed }
+        assert(t.draw(&mut s,draw).is_ok())
+        for step in 0..45 {
+            k := (step*7+seed)%15
+            first := if step%2 == 0 { 0 } else { (step+seed)%h }
+            end := first+1+(seed+step*3)%(h-first)
+            n := (seed+step)%(h+3)
+            match k {
+                0 | 1 | 2 => { s.phase += 1; assert(t.draw(&mut s,draw).is_ok()) },
+                3 => { assert(t.draw(&mut s,draw).is_ok()) },
+                4 => { t.backend_mut().scroll_up(first,end,n) },
+                5 => { t.backend_mut().scroll_down(first,end,n) },
+                6 => { t.backend_mut().append_lines(n) },
+                7 => {
+                    w = 3+(seed+step)%8; h = 2+(seed+step)%6
+                    t.backend_mut().resize(w,h)
+                    t.backend_mut().set_cursor_position(0,0)
+                },
+                8 => { t.backend_mut().set_cursor_position((seed+step)%w,(seed+step*2)%h); t.backend_mut().show_cursor() },
+                9 => { t.backend_mut().hide_cursor() },
+                10 => { t.backend_mut().clear_region(.CurrentLine) },
+                11 => { t.backend_mut().clear_region(.All) },
+                12 => { t.backend_mut().clear_region(.BeforeCursor) },
+                13 => { t.backend_mut().clear_region(.AfterCursor) },
+                _ => { t.backend_mut().clear_region(.UntilNewLine) },
+            }
+            snapshot(&t.backend(),t.completed().count(),seed,step)
+        }
+    }
+}

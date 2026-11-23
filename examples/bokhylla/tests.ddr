@@ -1,0 +1,26 @@
+import .editor
+import tui
+
+@test fn navigation_and_edits_respect_grapheme_boundaries() {
+    mut e := editor.Editor::new("A界é🇸🇪")
+    e.key(.Left)
+    assert(e.caret == "A界é".len)
+    e.key(.Backspace)
+    assert(e.text == "A界🇸🇪" && e.caret == "A界".len)
+    e.key(.Home); e.key(.Right); e.key(.Delete)
+    assert(e.text == "A🇸🇪" && e.caret == 1)
+    e.key(.Char(`ø`)); e.key(.End); e.key(.Backspace)
+    assert(e.text == "Aø" && e.caret == e.text.len)
+}
+
+@test fn narrow_field_keeps_the_hardware_cursor_inside_its_last_column() {
+    mut e := editor.Editor::new("A界Z")
+    mut f := tui.Frame::new(4,1)
+    area := tui.Rect { x:1,y:0,w:3,h:1 }
+    e.draw(&mut f,area)
+    assert(f.line(0) == " Z  " && f.cursor_position() == .Some((2,0)))
+    e.key(.Left); f.clear(); e.draw(&mut f,area)
+    assert(f.line(0) == " 界Z" && f.cursor_position() == .Some((3,0)))
+    e.key(.Home); f.clear(); e.draw(&mut f,area)
+    assert(f.line(0) == " A界" && f.cursor_position() == .Some((1,0)))
+}

@@ -1074,6 +1074,7 @@ dependencies = [
  "num-rational",
  "num-traits",
  "ratatui",
+ "ratatui-crossterm",
 ]
 
 [[package]]

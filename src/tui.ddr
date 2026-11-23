@@ -343,7 +343,7 @@ const ZERO_CLUSTER: i32 = 0x110001
 const WIDE: i32 = 0x200000
 const WRITTEN_SPACE: i32 = 0x1fffff
 
-pub opaque struct Frame { bounds: Rect, glyphs: []i32, styles: []i64, decorations: []i64, clusters: []string, cluster_cells: []i32 }
+pub opaque struct Frame { bounds: Rect, cursor_x: i32, cursor_y: i32, number: u64, glyphs: []i32, styles: []i64, decorations: []i64, clusters: []string, cluster_cells: []i32 }
 
 impl Frame {
     pub fn new(w: i32, h: i32) -> Self {
@@ -355,10 +355,24 @@ impl Frame {
         glyphs.reserve(n)
         styles.reserve(n)
         for _ in 0..n { glyphs.push(0); styles.push(0) }
-        Self { bounds: Rect { x: 0, y: 0, w: cols, h: rows }, glyphs: glyphs, styles: styles, decorations: [], clusters: [], cluster_cells: [] }
+        Self { bounds: Rect { x: 0, y: 0, w: cols, h: rows }, cursor_x: -1, cursor_y: 0, number: 0, glyphs: glyphs, styles: styles, decorations: [], clusters: [], cluster_cells: [] }
     }
 
     pub fn area(&self) -> Rect { self.bounds }
+
+    pub fn count(&self) -> u64 { self.number }
+
+    pub fn set_cursor_position(&mut self, x: i32, y: i32) {
+        self.cursor_x = clamp(x,65535)
+        self.cursor_y = clamp(y,65535)
+    }
+
+    pub fn hide_cursor(&mut self) { self.cursor_x = -1 }
+
+    pub fn cursor_position(&self) -> Option<(i32,i32)> {
+        if self.cursor_x < 0 { .None } else { .Some((self.cursor_x,self.cursor_y)) }
+    }
+
 
     fn encode(&mut self, style: Style) -> i64 {
         packed := style.brush().packed()
@@ -753,6 +767,90 @@ impl Frame {
         bytes.decode(&out).unwrap()
     }
 
+    fn copy_glyph(&mut self, source: &Frame, i: i32, x: i32, y: i32, room: i32) -> i32 {
+        value := source.glyphs[i]
+        if value < 0 { return 1 }
+        span := source.advance(i)
+        if span > room { return span }
+        key := source.styles[i]
+        brush := if key >= 0 { key } else {
+            d := source.decoration(key)
+            self.style_key(d.packed,d.underline)
+        }
+        code := value.bit_and(WIDE-1)+32
+        if code == CLUSTER || code == ZERO_CLUSTER {
+            self.put_cluster(x,y,source.clusters[i].clone(),if code == ZERO_CLUSTER { 0 } else { span },brush)
+        } else {
+            self.put(x,y,if value == WRITTEN_SPACE { 32 } else { code },span,brush)
+            if value == 0 { self.glyphs[y*self.bounds.w+x] = 0 }
+        }
+        span
+    }
+
+    pub fn copy_region(&mut self, source: &Frame, region: Rect, x: i32, y: i32) {
+        from := region.intersection(source.bounds)
+        if from.is_empty() { return }
+        left := cmp.max<i64>(i64(from.x),i64(region.x)-i64(x))
+        top := cmp.max<i64>(i64(from.y),i64(region.y)-i64(y))
+        right := cmp.min<i64>(i64(from.right()),i64(region.x)-i64(x)+i64(self.bounds.w))
+        bottom := cmp.min<i64>(i64(from.bottom()),i64(region.y)-i64(y)+i64(self.bounds.h))
+        if right <= left || bottom <= top { return }
+        for row in i32(top)..i32(bottom) {
+            dy := i32(i64(y)+i64(row)-i64(region.y))
+            mut col := i32(left)
+            while col < i32(right) {
+                dx := i32(i64(x)+i64(col)-i64(region.x))
+                col += self.copy_glyph(&source,row*source.bounds.w+col,dx,dy,i32(right)-col)
+            }
+        }
+    }
+
+    pub fn resize(&mut self, w: i32, h: i32) {
+        if self.bounds.w == w && self.bounds.h == h { return }
+        mut resized := Frame::new(w,h)
+        limit := cmp.min<i32>(self.glyphs.len,resized.glyphs.len)
+        mut i := 0
+        while i < limit {
+            x := i%resized.bounds.w
+            i += resized.copy_glyph(&self,i,x,i/resized.bounds.w,cmp.min<i32>(limit-i,resized.bounds.w-x))
+        }
+        resized.cursor_x = self.cursor_x
+        resized.cursor_y = self.cursor_y
+        resized.number = self.number
+        self = move resized
+    }
+
+    pub fn erase(&mut self, region: Rect) {
+        area := self.bounds.intersection(region)
+        for y in area.y..area.bottom() {
+            for x in area.x..area.right() {
+                i := y*self.bounds.w+x
+                self.erase_span(i)
+                self.glyphs[i] = 0
+                self.styles[i] = 0
+            }
+        }
+    }
+
+    pub fn apply_diff(&mut self, frame: &Frame, previous: &Frame) {
+        full := self.bounds != frame.bounds || frame.bounds != previous.bounds
+        if self.bounds != frame.bounds { self = Frame::new(frame.bounds.w,frame.bounds.h) }
+        shared := if full { i64(0) } else { frame.shared_style_floor(&previous) }
+        for y in 0..frame.bounds.h {
+            row := y*frame.bounds.w
+            if !full && frame.same_row(&previous,row,shared) { continue }
+            mut x := 0
+            while x < frame.bounds.w {
+                i := row+x
+                if full || frame.changed(&previous,i) { x += self.copy_glyph(&frame,i,x,y,frame.bounds.w-x) }
+                else { x += frame.advance(i) }
+            }
+        }
+        self.cursor_x = frame.cursor_x
+        self.cursor_y = frame.cursor_y
+        self.number = frame.number
+    }
+
     pub fn clear(&mut self) {
         self.decorations.clear()
         for i in &self.cluster_cells { self.clusters[i] = "" }
@@ -820,6 +918,7 @@ impl Frame {
     }
 
     pub fn ansi_diff(&self, previous: &Frame, out: &mut []u8) {
+        start_len := out.len
         full := self.bounds.w != previous.bounds.w || self.bounds.h != previous.bounds.h
         shared_floor := if full { i64(0) } else { self.shared_style_floor(&previous) }
         mut current: i64 = 0
@@ -847,6 +946,12 @@ impl Frame {
             }
         }
         if current != 0 { bytes.append_utf8(&mut out, "\x1b[0m") }
+        if self.cursor_x >= 0 {
+            if out.len != start_len || self.cursor_x != previous.cursor_x || self.cursor_y != previous.cursor_y {
+                paint.cursor(&mut out,self.cursor_x,self.cursor_y)
+            }
+            if previous.cursor_x < 0 { bytes.append_utf8(&mut out,"\x1b[?25h") }
+        } else if previous.cursor_x != -1 { bytes.append_utf8(&mut out,"\x1b[?25l") }
     }
 
     fn paint_windows(&self, previous: &Frame, term: &terminal.Session) -> bool {
@@ -881,7 +986,11 @@ impl Frame {
 
     fn present(&self, term: &terminal.Session, previous: &Frame, output: &mut []u8) -> bool {
         if target_is("windows") {
-            if !term.win.vt { return self.paint_windows(&previous, &term) }
+            if !term.win.vt {
+                if !self.paint_windows(&previous,&term) { return false }
+                return windows.cursor(&term.win,cmp.min<i32>(self.cursor_x,self.bounds.w-1),
+                    cmp.min<i32>(self.cursor_y,self.bounds.h-1),previous.cursor_x)
+            }
         }
         output.clear()
         self.ansi_diff(&previous, &mut output)
@@ -997,7 +1106,76 @@ impl GlyphData {
 
 pub enum Key { Char(rune), Up, Down, Left, Right, Home, End, Delete, Backspace, Tab, Enter, Escape }
 
-enum Renderer<S> { Draw(fn(&mut Frame, &S)), Stateful(fn(&mut Frame, &mut S)) }
+pub trait Backend {
+    fn size(&mut self) -> (i32,i32)
+    fn present(&mut self, frame: &Frame, previous: &Frame) -> Result<(),string>
+}
+
+pub opaque struct Terminal<B> where B: Backend {
+    device: B, buffers: [Frame;2], front: i32, number: u64, invalid: bool,
+}
+
+enum Renderer<S> {
+    Draw(fn(&mut Frame,&S)), Stateful(fn(&mut Frame,&mut S))
+}
+
+impl Terminal<B> {
+    pub fn new(move device: B) -> Self {
+        Self { device: move device, buffers: [Frame::new(0,0),Frame::new(0,0)], front: 0, number: 0, invalid: true }
+    }
+
+    pub fn backend(&self) -> &B from self { &self.device }
+    pub fn backend_mut(&mut self) -> &mut B from self { &mut self.device }
+    pub fn completed(&self) -> &Frame from self { &self.buffers[self.front] }
+    pub fn invalidate(&mut self) { self.invalid = true }
+
+    pub fn draw<S>(&mut self, state: &mut S, render: fn(&mut Frame,&mut S)) -> Result<(),string> {
+        (w,h) := self.device.size()
+        self.prepare(w,h)?
+        render(&mut self.buffers[1-self.front],&mut state)
+        self.commit()
+    }
+
+    pub fn try_draw<S>(&mut self, state: &mut S, render: fn(&mut Frame,&mut S)->Result<(),string>) -> Result<(),string> {
+        (w,h) := self.device.size()
+        self.prepare(w,h)?
+        render(&mut self.buffers[1-self.front],&mut state)?
+        self.commit()
+    }
+
+    fn prepare(&mut self, w: i32, h: i32) -> Result<(),string> {
+        if w < 0 || h < 0 || w > 4096 || h > 4096 || i64(w)*i64(h) > 1048576 { return .Err("Invalid terminal viewport size.") }
+        back := 1-self.front
+        if self.buffers[back].bounds.w != w || self.buffers[back].bounds.h != h { self.buffers[back] = Frame::new(w,h) }
+        else { self.buffers[back].clear() }
+        self.buffers[back].hide_cursor()
+        self.buffers[back].number = self.number
+        .Ok
+    }
+
+    fn commit(&mut self) -> Result<(),string> {
+        back := 1-self.front
+        result := if self.invalid {
+            mut unknown := Frame::new(0,0)
+            unknown.cursor_x = -2
+            self.device.present(&self.buffers[back],&unknown)
+        } else { self.device.present(&self.buffers[back],&self.buffers[self.front]) }
+        if result.is_err() { self.invalid = true; return result }
+        self.invalid = false
+        self.front = back
+        self.number = self.number.wrapping_add(u64(1))
+        .Ok
+    }
+}
+
+struct LiveBackend { session: terminal.Session, output: []u8 }
+
+impl Backend for LiveBackend {
+    fn size(&mut self) -> (i32,i32) { self.session.size() }
+    fn present(&mut self, frame: &Frame, previous: &Frame) -> Result<(),string> {
+        if frame.present(&self.session,&previous,&mut self.output) { .Ok } else { .Err("Could not write the frame.") }
+    }
+}
 
 pub fn run<S>(state: &mut S, draw: fn(&mut Frame, &S), update: fn(&mut S, Key) -> bool) -> Result<(), string> {
     drive<S>(&mut state, Renderer<S>.Draw(draw), update, .None, fn(_state: &mut S, _elapsed: i64) -> bool { false })
@@ -1018,21 +1196,18 @@ pub fn animate_stateful<S>(state: &mut S, fps: i32, draw: fn(&mut Frame, &mut S)
 fn drive<S>(state: &mut S, renderer: Renderer<S>, update: fn(&mut S, Key) -> bool, rate: Option<i32>, tick: fn(&mut S, i64) -> bool) -> Result<(), string> {
     fps := rate.unwrap_or(0)
     if rate.is_some() && (fps < 1 || fps > 1000) { return .Err("Frame rate must be between 1 and 1000.") }
-    mut term := terminal.session()
-    (cols, rows) := term.size()
-    if cols <= 0 || rows <= 0 || !term.open() { return .Err("An interactive terminal is required on stdin and stdout.") }
-    defer { term.close() }
-    if !term.enter() { return .Err("Could not enter the alternate screen.") }
-    mut previous := Frame::new(0, 0)
-    mut frame := Frame::new(0, 0)
-    mut output: []u8 = []
+    mut term := Terminal<LiveBackend>::new(LiveBackend { session: terminal.session(), output: [] })
+    (cols, rows) := term.device.size()
+    if cols <= 0 || rows <= 0 || !term.device.session.open() { return .Err("An interactive terminal is required on stdin and stdout.") }
+    defer { term.device.session.close() }
+    if !term.device.session.enter() { return .Err("Could not enter the alternate screen.") }
     start := if fps > 0 { clock.monotonic_ns() } else { i64(0) }
     if start < 0 { return .Err("Could not read the animation clock.") }
     interval := if fps == 0 { i64(0) } else { i64(1000000000) / i64(fps) }
     mut next_tick := start + interval
     mut dirty := true
     while true {
-        (next_w, next_h) := term.size()
+        (next_w, next_h) := term.device.size()
         if next_w <= 0 || next_h <= 0 { return .Err("Could not read the terminal size.") }
         if next_w > 4096 || next_h > 4096 || i64(next_w) * i64(next_h) > 1048576 { return .Err("Terminal viewport is too large.") }
         if interval > 0 {
@@ -1043,15 +1218,14 @@ fn drive<S>(state: &mut S, renderer: Renderer<S>, update: fn(&mut S, Key) -> boo
                 next_tick += ((now - next_tick) / interval + 1) * interval
             }
         }
-        if dirty || next_w != previous.bounds.w || next_h != previous.bounds.h {
-            if frame.bounds.w != next_w || frame.bounds.h != next_h { frame = Frame::new(next_w, next_h) }
-            else { frame.clear() }
+        if dirty || next_w != term.completed().area().w || next_h != term.completed().area().h {
+            term.prepare(next_w,next_h)?
+            frame := &mut term.buffers[1-term.front]
             match &renderer {
-                .Draw(draw) => { draw(&mut frame, &state) },
-                .Stateful(draw) => { draw(&mut frame, &mut state) },
+                .Draw(draw) => { draw(&mut frame,&state) },
+                .Stateful(draw) => { draw(&mut frame,&mut state) },
             }
-            if !frame.present(&term, &previous, &mut output) { return .Err("Could not write the frame.") }
-            frame = replace(&mut previous, move frame)
+            term.commit()?
             dirty = false
         }
         mut wait_ms := 125
@@ -1061,7 +1235,7 @@ fn drive<S>(state: &mut S, renderer: Renderer<S>, update: fn(&mut S, Key) -> boo
             left := next_tick - now
             wait_ms = if left <= 0 { 0 } else { clamp(i32((left + 999999) / 1000000), 125) }
         }
-        match term.next(wait_ms) {
+        match term.device.session.next(wait_ms) {
             .Idle => {},
             .Error => { return .Err("Could not read terminal input.") },
             .Quit => { return .Ok },

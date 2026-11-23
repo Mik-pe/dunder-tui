@@ -1,5 +1,6 @@
 capability unsafe, stdio, process
 import ..tools.pty
+import ..src.width
 import std.bytes as bytes
 import std.text as text
 import std.time as clock
@@ -8,18 +9,21 @@ import sys
 @extern("c", "tcgetattr")
 unsafe fn attributes(fd: i32, buf: ptr) -> i32
 
-pub struct Screen { w: i32, h: i32, x: i32, y: i32, cells: []rune }
+pub struct Screen { w: i32, h: i32, x: i32, y: i32, cursor_visible: bool, cells: []rune }
 
 impl Screen {
     pub fn new(w: i32, h: i32) -> Self {
         mut cells: []rune = []
         cells.reserve(w * h)
         for _ in 0..(w * h) { cells.push(` `) }
-        Self { w: w, h: h, x: 0, y: 0, cells: move cells }
+        Self { w: w, h: h, x: 0, y: 0, cursor_visible: true, cells: move cells }
     }
     pub fn contains(&self, row: i32, value: string) -> bool {
         mut line: []u8 = []
-        for x in 0..self.w { bytes.append_utf8(&mut line, self.cells[row*self.w+x].str()) }
+        for x in 0..self.w {
+            c := self.cells[row*self.w+x]
+            if i32(c) != 0 { bytes.append_utf8(&mut line,c.str()) }
+        }
         text.contains(bytes.decode(&line).unwrap(), value)
     }
     fn apply(&mut self, batch: string) {
@@ -30,6 +34,7 @@ impl Screen {
             i += 1
             if i32(c) == 27 && i < chars.len && chars[i] == `[` {
                 i += 1
+                mut private_mode := false
                 mut previous := 0
                 mut number := 0
                 while i < chars.len {
@@ -37,7 +42,8 @@ impl Screen {
                     i += 1
                     if v >= `0` && v <= `9` { number = number * 10 + i32(v) - 48; continue }
                     if v == `;` { previous = number; number = 0; continue }
-                    if v == `?` { continue }
+                    if v == `?` { private_mode = true; continue }
+                    if private_mode && number == 25 && (v == `h` || v == `l`) { self.cursor_visible = v == `h` }
                     if v == `H` {
                         self.y = if previous > 0 { previous - 1 } else { 0 }
                         self.x = if number > 0 { number - 1 } else { 0 }
@@ -47,14 +53,23 @@ impl Screen {
                     break
                 }
             } else if i32(c) >= 32 {
-                if self.y >= 0 && self.y < self.h && self.x >= 0 && self.x < self.w { self.cells[self.y*self.w + self.x] = c }
-                self.x += 1
+                cols := width.columns(i32(c))
+                if cols <= 0 { continue }
+                if self.y >= 0 && self.y < self.h && self.x >= 0 && self.x+cols <= self.w {
+                    self.cells[self.y*self.w+self.x] = c
+                    for dx in 1..cols { self.cells[self.y*self.w+self.x+dx] = rune(0) }
+                }
+                self.x += cols
             }
         }
     }
 }
 
 pub unsafe fn wait_for(master: i32, screen: &mut Screen, row: i32, expected: string, control: string) -> bool {
+    wait_state(master,&mut screen,row,expected,control,-1,-1,-1)
+}
+
+pub unsafe fn wait_state(master: i32, screen: &mut Screen, row: i32, expected: string, control: string, x: i32, y: i32, visible: i32) -> bool {
     mut fd: []u8 = [u8(master), u8(master.shr(8)), u8(master.shr(16)), u8(master.shr(24)), 1, 0, 0, 0]
     deadline := clock.monotonic_ns() + 3000000000
     mut pending: []u8 = []
@@ -75,7 +90,8 @@ pub unsafe fn wait_for(master: i32, screen: &mut Screen, row: i32, expected: str
         screen.apply(batch)
         if !control_seen { control_seen = text.contains(batch, control) }
         pending.clear()
-        if control_seen && screen.contains(row, expected) { return true }
+        if control_seen && screen.contains(row, expected) && (x < 0 || (screen.x == x && screen.y == y)) &&
+            (visible < 0 || screen.cursor_visible == (visible == 1)) { return true }
     }
     _ := sys.eprint(f"missing {expected} in row {row}")
     false
@@ -87,6 +103,10 @@ pub unsafe fn send(master: i32, key: string) -> bool {
 }
 
 pub unsafe fn test(program: string,w:i32,h:i32,exercise: fn(i32,i32,&mut Screen)->bool) -> bool {
+    test_with_args(program,[],w,h,exercise)
+}
+
+pub unsafe fn test_with_args(program: string, move args: []string,w:i32,h:i32,exercise: fn(i32,i32,&mut Screen)->bool) -> bool {
     mut master := -1
     mut slave := -1
     if !pty.open(&mut master, &mut slave, u16(w), u16(h)) { return false }
@@ -94,7 +114,7 @@ pub unsafe fn test(program: string,w:i32,h:i32,exercise: fn(i32,i32,&mut Screen)
     mut before: [u64; 16] = [0; 16]
     mut after: [u64; 16] = [0; 16]
     if attributes(slave, addr(&mut before[0])) != 0 { return false }
-    result := pty.launch(program, [], slave, false)
+    result := pty.launch(program,move args,slave,false)
     if result.is_err() { return false }
     mut child := result.unwrap()
     mut finished := false

@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Två kompilatorfynd från den utbytbara terminalbackenden
+
+Två olika specialiseringar av samma generiska typ kan var för sig använda en generisk metod som anropar en annan. Tillsammans får det andra anropet E2003, oberoende av ordningen. Terminalen delar nu upp arbetet i förberedelse, ritning och publicering. En separat reproduktion på två rader visar att `unwrap()` på `Result<(),string>` ger E1002 även utan generiska metoder i användarens kod. Båda fallen har verifierats med den publicerade Dunder 0.11.2 på macOS ARM64. [Metodprov](../tests/dogfood/compiler/nested_methods.ddr) · [Resultatprov](../tests/dogfood/compiler/unwrap_unit.ddr)
+
 ## Kontrollerat med den publicerade 0.11.2
 
 Åtta av de nio tidigare punkterna har fått ändrat beteende i Dunder. Bibliotekets eget test och en fristående konsument läser nu samma inbäddade text och byte. En muterande metod kan lämna en delad vy. En fortsatt mutation medan vyn används ger E4003. För ett temporärt lån visar E4005 också var adressen tas i diffkoden. Formateraren bevarar båda generiska fälten. Standardbibliotekets lånade grafem matchar 766 Unicode-prov, och UTF-8-avkodaren skiljer en delad tangentsekvens från ogiltiga byte. [Dunder 0.11.2](https://github.com/Mik-pe/dunder/releases/tag/v0.11.2) · [Textprov](../tests/stdlib_text.ddr)

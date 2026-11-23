@@ -1,0 +1,20 @@
+capability stdio
+import ..src.tui
+import sys
+
+fn render(frame: &mut tui.Frame, step: &i32) {
+    bounds := frame.area()
+    frame.label(bounds,if step < 3 { "ABC" } else { "XYZ" })
+    if step == 0 { frame.set_cursor_position(1,1) }
+    else if step < 4 {
+        frame.set_cursor_position(0,0)
+        frame.set_cursor_position(7,2)
+    } else if step == 5 { frame.set_cursor_position(bounds.w-1,bounds.h-1) }
+}
+fn update(step: &mut i32, key: tui.Key) -> bool {
+    match key { .Char(c) if c == `q` => false, _ => { step += 1; true }, }
+}
+fn main() -> i32 {
+    mut step := 0
+    match tui.run(&mut step,render,update) { .Ok => 0, .Err(message) => { _ := sys.eprint(message); 1 }, }
+}

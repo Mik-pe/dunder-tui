@@ -7,9 +7,12 @@ publish = false
 [dependencies]
 ratatui = { version = "=0.30.2", default-features = false, features = ["crossterm"] }
 
+ratatui-crossterm = { version = "=0.1.2", default-features = false, optional = true }
+
 [features]
 allocation-counts = []
 layout-cache = ["ratatui/layout-cache"]
+terminal-oracle = ["dep:ratatui-crossterm", "ratatui-crossterm/scrolling-regions"]
 style-oracle = ["ratatui/underline-color", "ratatui/palette"]
 
 [[example]]
@@ -32,3 +35,7 @@ required-features = ["layout-cache"]
 [[example]]
 name = "chart_bench"
 required-features = ["layout-cache"]
+
+[[example]]
+name = "terminal"
+required-features = ["terminal-oracle"]

@@ -1,0 +1,60 @@
+import tui
+import std.cmp as cmp
+
+pub struct Editor { text: string, caret: i32 }
+
+impl Editor {
+    pub fn new(move text: string) -> Self {
+        end := text.len
+        Self { text: move text, caret: end }
+    }
+
+    fn adjacent(&self) -> (i32,i32) {
+        glyphs := tui.GlyphRun::new(self.text.clone())
+        mut left := 0; mut offset := 0
+        for i in 0..glyphs.count() {
+            offset += glyphs.symbol_at(i).len
+            if offset > self.caret { return (left,offset) }
+            if offset < self.caret { left = offset }
+        }
+        (left,self.text.len)
+    }
+
+    pub fn key(&mut self, key: tui.Key) {
+        (left,right) := self.adjacent()
+        match key {
+            .Home => { self.caret = 0; return }, .End => { self.caret = self.text.len; return },
+            .Left => { self.caret = left; return }, .Right => { self.caret = right; return },
+            .Backspace => { self.text = self.text[0..left]+self.text[self.caret..self.text.len]; self.caret = left },
+            .Delete => { self.text = self.text[0..self.caret]+self.text[right..self.text.len] },
+            .Char(c) => {
+                inserted := c.str()
+                self.text = self.text[0..self.caret]+inserted+self.text[self.caret..self.text.len]
+                self.caret += inserted.len
+            },
+            _ => { return },
+        }
+        if self.caret == 0 { return }
+        mut offset := 0
+        run := tui.GlyphRun::new(self.text.clone())
+        for i in 0..run.count() {
+            offset += run.symbol_at(i).len
+            if offset >= self.caret { self.caret = offset; return }
+        }
+    }
+
+    pub fn draw(&self, frame: &mut tui.Frame, area: tui.Rect) {
+        if area.is_empty() { return }
+        glyphs := tui.GlyphRun::new(self.text.clone())
+        mut last := 0; mut offset := 0; mut columns := 0
+        while offset < self.caret && last < glyphs.count() {
+            offset += glyphs.symbol_at(last).len
+            columns += glyphs.width_at(last)
+            last += 1
+        }
+        mut first := 0
+        while columns >= area.w && first < last { columns -= glyphs.width_at(first); first += 1 }
+        glyphs.render(&mut frame,area,first,glyphs.count(),tui.ink(.LightCyan))
+        frame.set_cursor_position(area.x+cmp.min<i32>(area.w-1,columns),area.y)
+    }
+}

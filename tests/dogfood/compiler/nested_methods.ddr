@@ -1,0 +1,10 @@
+struct Runner<D> { device: D }
+impl Runner<D> {
+    fn inner<S>(&self, value: S) -> S { value }
+    fn outer<S>(&self, value: S) -> S { self.inner(value) }
+}
+fn main() {
+    a := Runner<i32> { device: 3 }
+    b := Runner<bool> { device: true }
+    assert(a.outer(7) == 7 && b.outer(8) == 8)
+}

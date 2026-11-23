@@ -24,6 +24,8 @@ unsafe fn mode(handle: ptr, out: ptr) -> i32
 unsafe fn enqueue(handle: ptr, records: ptr, count: u32, written: ptr) -> i32
 @extern("kernel32.dll", "ReadConsoleOutputCharacterW")
 unsafe fn read_text(handle: ptr, data: ptr, count: u32, coord: u32, read: ptr) -> i32
+@extern("kernel32.dll", "GetConsoleCursorInfo")
+unsafe fn cursor_info(handle: ptr, out: ptr) -> i32
 @extern("kernel32.dll", "GetConsoleScreenBufferInfo")
 unsafe fn info(handle: ptr, out: ptr) -> i32
 @extern("kernel32.dll", "CloseHandle")
@@ -61,6 +63,7 @@ fn tick(probe: &mut Probe, elapsed: i64) -> bool {
 
 fn draw(frame: &mut tui.Frame, probe: &Probe) {
     if !probe.started { return }
+    if probe.step != 1 { frame.set_cursor_position(1,1); frame.set_cursor_position(3+probe.step,2) }
     frame.text(frame.area(), "Å" + probe.step.str(), tui.ink(.Rgb(0, 255, 255)).background(.LightBlue).underlined())
     mut gauge := ui.LineGauge::new(0.5)
     gauge.label = .Some(rich.Line::raw("OK"))
@@ -105,6 +108,9 @@ fn update(probe: &mut Probe, key: tui.Key) -> bool {
         out := open_file(addr(&device[0]), 0xc0000000, 3, ptr(0), 3, 0, ptr(0))
         defer { _ := close_handle(out) }
         if info(out, addr(&mut bounds[0])) == 0 { probe.failure = 20; return false }
+        mut cursor: [u32;2] = [0;2]
+        if cursor_info(out,addr(&mut cursor[0])) == 0 || (cursor[1] != 0) != (probe.step != 1) { probe.failure = 44; return false }
+        if probe.step != 1 && (i32(bounds[2]) != 3+probe.step || bounds[3] != 2) { probe.failure = 45; return false }
         if probe.step == 1 && i32(bounds[7]) - i32(bounds[5]) + 1 != probe.width { probe.failure = 30; return false }
         coord := u32(bounds[5]).bit_or(u32(bounds[6]).shl(16))
         if read_text(out, addr(&mut chars[0]), 2, coord, addr(&mut n)) == 0 || n != 2 ||
@@ -164,6 +170,8 @@ fn verify() -> i32 {
         mut old_in: u32 = 0
         mut old_out: u32 = 0
         if mode(stdin, addr(&mut old_in)) == 0 || mode(stdout, addr(&mut old_out)) == 0 { return 13 }
+        mut saved: [u32;2] = [0;2]; mut original: [i16;11] = [0;11]
+        if cursor_info(stdout,addr(&mut saved[0])) == 0 || info(stdout,addr(&mut original[0])) == 0 { return 46 }
         mut sentinel: u16 = 35
         mut n: u32 = 0
         if stamp(stdout, addr(&sentinel), 1, 0, addr(&mut n)) == 0 || n != 1 { return 19 }
@@ -179,6 +187,9 @@ fn verify() -> i32 {
         active := open_file(addr(&device_out[0]), 0xc0000000, 3, ptr(0), 3, 0, ptr(0))
         mut restored: u16 = 0
         if read_text(active, addr(&mut restored), 1, 0, addr(&mut n)) == 0 || restored != sentinel { return 33 }
+        mut after: [u32;2] = [0;2]; mut restored_info: [i16;11] = [0;11]
+        if cursor_info(active,addr(&mut after[0])) == 0 || info(active,addr(&mut restored_info[0])) == 0 { return 47 }
+        if saved[0] != after[0] || saved[1] != after[1] || original[2] != restored_info[2] || original[3] != restored_info[3] { return 48 }
         _ := close_handle(active)
     }
     0

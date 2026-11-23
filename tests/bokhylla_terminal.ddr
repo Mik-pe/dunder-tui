@@ -6,6 +6,14 @@ import sys
 fn exercise(master: i32, slave: i32, screen: &mut driver.Screen) -> bool {
     unsafe {
         if !driver.wait_for(master, &mut screen, 1, "Ta med ut till fyren.", "\x1b[?1049h") { return false }
+        if !driver.send(master,"e") || !driver.wait_for(master,&mut screen,6,"Ta med ut till fyren.","\x1b[?25h") { return false }
+        if !screen.cursor_visible || screen.x != 21 || screen.y != 6 { return false }
+        if !driver.send(master,"\x1b[H") || !driver.wait_for(master,&mut screen,6,"Ta med","\x1b[7;1H") { return false }
+        if !driver.send(master,"界") || !driver.wait_for(master,&mut screen,6,"界","\x1b[7;3H") { return false }
+        if !driver.send(master,"é") || !driver.wait_for(master,&mut screen,6,"","\x1b[7;4H") { return false }
+        if !driver.send(master,"\x7f") || !driver.wait_for(master,&mut screen,6,"","\x1b[7;3H") { return false }
+        if !driver.send(master,"\r") || !driver.wait_for(master,&mut screen,1,"界Ta med ut till fyren.","\x1b[?25l") { return false }
+        if screen.cursor_visible { return false }
         if !driver.send(master, "\x1b[B") || !driver.wait_for(master, &mut screen, 1, "Läs kapitel tre igen.", "") { return false }
         if !driver.send(master, "\x1b[F") || !driver.wait_for(master, &mut screen, 1, "Slå upp pärlemormoln.", "") { return false }
         if !pty.resize(slave, 31, 6) { return false }

@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Resultat för 0.10.0
+
+Terminalprovet kör de publika ritanropen i Dunder och Ratatui med samma diagram och synlig markör. Det kontrollerar de 1 100 fullständiga bilderna och mäter även skrivning till en pseudoterminal. [Bildtid, minne och terminalbyte](terminal.md)
+
 ## Resultat för 0.9.0
 
 Ett diagram med tre dataserier mäts i fem arbetslaster med samma färdiga celler för båda implementationerna. [Bildtider, terminalutdata och minne](charts.md)

@@ -1,0 +1,154 @@
+import .tui
+import std.cmp as cmp
+
+const HISTORY_LIMIT: i32 = 65535
+
+pub enum ClearType { All, AfterCursor, BeforeCursor, CurrentLine, UntilNewLine }
+
+pub opaque struct Scrollback { rows: []tui.Frame, first: i32, blank: tui.Frame }
+
+impl Scrollback {
+    fn new(width: i32) -> Self { Self { rows: [], first: 0, blank: tui.Frame::new(width,1) } }
+
+    pub fn len(&self) -> i32 { self.rows.len }
+
+    fn stored(&self, y: i32) -> &tui.Frame from self {
+        assert(y >= 0 && y < self.rows.len)
+        &self.rows[(self.first+y)%self.rows.len]
+    }
+
+    pub fn row(&self, y: i32) -> &tui.Frame from self {
+        stored := self.stored(y)
+        if stored.area().w == 0 { &self.blank } else { &stored }
+    }
+
+    fn push(&mut self, move row: tui.Frame) {
+        if self.rows.len < HISTORY_LIMIT { self.rows.push(move row) }
+        else {
+            self.rows[self.first] = move row
+            self.first = (self.first+1)%HISTORY_LIMIT
+        }
+    }
+
+    fn resize(&mut self, width: i32) {
+        before := self.blank.area().w
+        if before == width { return }
+        mut resized := Self::new(width)
+        for y in 0..self.rows.len {
+            mut line := tui.Frame::new(0,0)
+            mut x := 0
+            while x < width && before > 0 {
+                offset := i64(y)*i64(width)+i64(x)
+                source_y := i32(offset/i64(before))
+                if source_y >= self.rows.len { break }
+                source_x := i32(offset%i64(before))
+                count := cmp.min<i32>(width-x,before-source_x)
+                source := self.stored(source_y)
+                if source.area().w != 0 {
+                    if line.area().w == 0 { line = tui.Frame::new(width,1) }
+                    line.copy_region(&source,tui.Rect { x:source_x,y:0,w:count,h:1 },x,0)
+                }
+                x += count
+            }
+            resized.push(move line)
+        }
+        self = move resized
+    }
+}
+
+pub opaque struct TestBackend {
+    screen: tui.Frame, history: Scrollback, x: i32, y: i32, visible: bool,
+}
+
+impl TestBackend {
+    pub fn new(width: i32, height: i32) -> Self {
+        screen := tui.Frame::new(width,height)
+        history := Scrollback::new(screen.area().w)
+        Self { screen: move screen, history: move history, x: 0, y: 0, visible: false }
+    }
+
+    pub fn buffer(&self) -> &tui.Frame from self { &self.screen }
+    pub fn scrollback(&self) -> &Scrollback from self { &self.history }
+    pub fn cursor_visible(&self) -> bool { self.visible }
+    pub fn cursor_position(&self) -> (i32,i32) { (self.x,self.y) }
+    pub fn show_cursor(&mut self) { self.visible = true }
+    pub fn hide_cursor(&mut self) { self.visible = false }
+
+    pub fn set_cursor_position(&mut self, x: i32, y: i32) {
+        self.x = cmp.clamp<i32>(x,0,65535)
+        self.y = cmp.clamp<i32>(y,0,65535)
+    }
+
+    pub fn resize(&mut self, width: i32, height: i32) {
+        self.screen.resize(width,height)
+        self.history.resize(self.screen.area().w)
+    }
+
+    pub fn clear_region(&mut self, kind: ClearType) {
+        area := self.screen.area()
+        if area.is_empty() { return }
+        x := cmp.min<i32>(self.x,area.w-1)
+        y := cmp.min<i32>(self.y,area.h-1)
+        match kind {
+            .All => { self.screen.clear() },
+            .CurrentLine => { self.screen.erase(tui.Rect { x:0,y:y,w:area.w,h:1 }) },
+            .UntilNewLine => { self.screen.erase(tui.Rect { x:x,y:y,w:area.w-x,h:1 }) },
+            .AfterCursor => {
+                self.screen.erase(tui.Rect { x:x,y:y,w:area.w-x,h:1 })
+                self.screen.erase(tui.Rect { x:0,y:y+1,w:area.w,h:area.h-y-1 })
+            },
+            .BeforeCursor => {
+                self.screen.erase(tui.Rect { x:0,y:0,w:area.w,h:y })
+                self.screen.erase(tui.Rect { x:0,y:y,w:x+1,h:1 })
+            },
+        }
+    }
+
+    pub fn scroll_up(&mut self, first: i32, end: i32, rows: i32) { self.scroll(first,end,rows,true) }
+    pub fn scroll_down(&mut self, first: i32, end: i32, rows: i32) { self.scroll(first,end,rows,false) }
+
+    fn scroll(&mut self, first: i32, end: i32, rows: i32, up: bool) {
+        area := self.screen.area()
+        top := cmp.clamp<i32>(first,0,area.h)
+        bottom := cmp.clamp<i32>(end,top,area.h)
+        count := cmp.clamp<i32>(rows,0,65535)
+        if count == 0 || area.w == 0 { return }
+        shift := cmp.min<i32>(count,bottom-top)
+        if up && top == 0 {
+            for y in 0..shift {
+                mut line := tui.Frame::new(area.w,1)
+                line.copy_region(&self.screen,tui.Rect { x:0,y:y,w:area.w,h:1 },0,0)
+                self.history.push(move line)
+            }
+            for _ in shift..count { self.history.push(tui.Frame::new(0,0)) }
+        }
+        if shift == 0 { return }
+        mut retained := tui.Frame::new(area.w,bottom-top-shift)
+        start := if up { top+shift } else { top }
+        retained.copy_region(&self.screen,tui.Rect { x:0,y:start,w:area.w,h:retained.area().h },0,0)
+        self.screen.erase(tui.Rect { x:0,y:top,w:area.w,h:bottom-top })
+        self.screen.copy_region(&retained,retained.area(),0,if up { top } else { top+shift })
+    }
+
+    pub fn append_lines(&mut self, rows: i32) {
+        area := self.screen.area()
+        count := cmp.clamp<i32>(rows,0,65535)
+        bottom := cmp.max<i32>(0,area.h-1)
+        remaining := cmp.max<i32>(0,bottom-self.y)
+        if count > remaining { self.scroll_up(0,area.h,count-remaining) }
+        self.x = cmp.min<i32>(self.x+1,cmp.max<i32>(0,area.w-1))
+        self.y = cmp.min<i32>(self.y+count,bottom)
+    }
+}
+
+impl tui.Backend for TestBackend {
+    fn size(&mut self) -> (i32,i32) { (self.screen.area().w,self.screen.area().h) }
+    fn present(&mut self, frame: &tui.Frame, previous: &tui.Frame) -> Result<(),string> {
+        self.screen.apply_diff(&frame,&previous)
+        match frame.cursor_position() {
+            .Some(pos) => { self.set_cursor_position(pos.0,pos.1); self.show_cursor() },
+            .None => { self.hide_cursor() },
+        }
+        .Ok
+    }
+}

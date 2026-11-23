@@ -62,7 +62,7 @@ Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.9.0", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.10.0", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.
@@ -95,6 +95,33 @@ fn main() -> i32 {
 ```
 
 `draw` får en tom bild vid start, efter en tangent och när fönstret byter storlek. Returnera `false` från `update` för att lämna appen. Ctrl+C avslutar också. Om in- eller utmatningen är omdirigerad returnerar `run` ett fel.
+
+## Markör och testterminal
+
+Anropa `frame.set_cursor_position(x,y)` där markören ska synas. Det sista anropet i en bild bestämmer positionen. I nästa bild är markören dold tills ritfunktionen begär den igen. `frame.count()` börjar på noll och räknar visade bilder. I `bokhylla` öppnar **e** den valda bokens anteckning för redigering. Piltangenterna flyttar markören ett grafem i taget, Enter behåller texten i sessionen och Esc återgår till boken. [Redigeraren](examples/bokhylla/editor.ddr)
+
+Samma ritfunktion går att prova utan en ansluten terminal.
+
+```dunder
+import tui
+import tui.testing as testing
+
+fn draw(frame: &mut tui.Frame, text: &mut string) {
+    frame.label(frame.area(),text)
+    frame.set_cursor_position(2,0)
+}
+
+fn main() {
+    mut terminal := tui.Terminal<testing.TestBackend>::new(testing.TestBackend::new(8,2))
+    mut text := "Hej"
+    assert(terminal.draw(&mut text,draw).is_ok())
+    assert(terminal.backend().buffer().line(0) == "Hej     ")
+    assert(terminal.backend().cursor_visible())
+    assert(terminal.backend().cursor_position() == (2,0))
+}
+```
+
+Implementera `tui.Backend` med `size` och `present` för att ansluta en egen utmatning. `present` får aktuell och föregående bild. `frame.ansi_diff(&previous,&mut output)` skriver ändrade celler och markörkommandon till en bytebuffert. Med `try_draw` kan ritfunktionen returnera ett fel före utmatningen. Om backenden rapporterar ett skrivfel får den en hel bild nästa gång. `completed()` ger den senast lyckade bilden. Anropa `invalidate()` för att tvinga fram en hel omritning efter externa ändringar. [Backend med felprov](tests/suite.ddr) · [Testterminalens skrollhistorik](src/testing.ddr)
 
 ## Bygg en vy
 

@@ -1,3 +1,4 @@
+import ..src.testing
 import ..src.layout as layout
 import ..src.table as table
 import ..src.list as lists
@@ -660,4 +661,90 @@ import ..src.width
     assert(frame.line(0) == " 界.!" && frame.style_at(1,0).unwrap().get_foreground() == .Some(tui.Color.Yellow))
     s := frame.style_at(4,0).unwrap()
     assert(s.get_foreground() == .Some(tui.Color.Magenta) && s.get_underline_color() == .Some(tui.Color.Red) && s.has(.Underlined))
+}
+struct FailingTerminal { device: testing.TestBackend, fail: bool, writes: i32 }
+
+impl tui.Backend for FailingTerminal {
+    fn size(&mut self) -> (i32,i32) { self.device.size() }
+    fn present(&mut self, frame: &tui.Frame, previous: &tui.Frame) -> Result<(),string> {
+        self.writes += 1
+        self.device.present(&frame,&previous)?
+        if self.fail { return .Err("write interrupted") }
+        .Ok
+    }
+}
+
+fn draw_number(frame: &mut tui.Frame, n: &mut i32) {
+    frame.label(frame.area(),n.str())
+    if n != 0 { frame.set_cursor_position(1,0) }
+}
+
+fn reject_number(frame: &mut tui.Frame, n: &mut i32) -> Result<(),string> {
+    draw_number(&mut frame,&mut n)
+    .Err("rejected")
+}
+
+@test fn failed_render_and_partial_write_keep_the_last_committed_frame() {
+    mut t := tui.Terminal<FailingTerminal>::new(FailingTerminal { device: testing.TestBackend::new(3,2), fail: false, writes: 0 })
+    mut n := 0
+    assert(t.draw(&mut n,draw_number).is_ok())
+    n = 1
+    assert(t.try_draw(&mut n,reject_number).unwrap_err() == "rejected")
+    assert(t.backend().writes == 1 && t.completed().line(0) == "0  ")
+    t.backend_mut().fail = true
+    assert(t.draw(&mut n,draw_number).unwrap_err() == "write interrupted")
+    assert(t.backend().device.buffer().line(0) == "1  " && t.backend().device.cursor_visible())
+    assert(t.completed().count() == 0 && t.completed().line(0) == "0  ")
+    t.backend_mut().fail = false
+    n = 0
+    assert(t.draw(&mut n,draw_number).is_ok())
+    assert(t.completed().count() == 1 && t.backend().device.buffer().line(0) == "0  " && !t.backend().device.cursor_visible())
+    t.backend_mut().device.clear_region(.All)
+    t.invalidate()
+    assert(t.draw(&mut n,draw_number).is_ok() && t.backend().device.buffer().line(0) == "0  ")
+}
+
+@test fn cell_transfers_preserve_clusters_and_decoration_keys() {
+    mut src := tui.Frame::new(6,2)
+    brush := tui.ink(.LightCyan).background(.Blue).underlined().underline_color(.Indexed(172))
+    src.text(src.area(),"A界éZ",brush)
+    mut dest := tui.Frame::new(6,3)
+    dest.copy_region(&src,tui.Rect {x:1,y:0,w:4,h:1},1,1)
+    assert(dest.line(1) == " 界éZ ")
+    assert(dest.symbol_at(2,1).unwrap() == "" && dest.style_at(1,1).unwrap().get_underline_color() == .Some(.Indexed(172)))
+    dest.resize(3,6)
+    assert(dest.line(2) == " 界" && dest.symbol_at(0,3).unwrap() == "é")
+    dest.erase(tui.Rect {x:2,y:2,w:1,h:1})
+    assert(dest.line(2) == "   " && dest.style_at(1,2).unwrap().get_foreground() == .Some(.Default))
+    dest.resize(0,0)
+    assert(dest.area().is_empty())
+}
+
+@test fn cursor_transitions_have_no_output_on_idle_and_restore_after_cell_writes() {
+    mut a := tui.Frame::new(5,2); mut b := tui.Frame::new(5,2)
+    mut out: []u8 = [b'#']
+    b.set_cursor_position(2,1)
+    b.ansi_diff(&a,&mut out)
+    assert(bytes.decode(&out).unwrap() == "#\x1b[2;3H\x1b[?25h")
+    a.set_cursor_position(2,1); out.clear(); out.push(b'#')
+    b.ansi_diff(&a,&mut out)
+    assert(out.len == 1)
+    b.label(b.area(),"X"); b.ansi_diff(&a,&mut out)
+    assert(bytes.decode(&out).unwrap() == "#\x1b[1;1HX\x1b[2;3H")
+    a.label(a.area(),"X"); b.hide_cursor(); out.clear()
+    b.ansi_diff(&a,&mut out)
+    assert(bytes.decode(&out).unwrap() == "\x1b[?25l")
+}
+
+@test fn scrollback_evicts_the_oldest_rows_and_retains_newest_content() {
+    mut t := tui.Terminal<testing.TestBackend>::new(testing.TestBackend::new(2,1))
+    mut n := 7
+    assert(t.draw(&mut n,draw_number).is_ok())
+    t.backend_mut().scroll_up(0,1,65535)
+    assert(t.backend().scrollback().len() == 65535 && t.backend().scrollback().row(0).line(0) == "7 ")
+    n = 8
+    assert(t.draw(&mut n,draw_number).is_ok())
+    t.backend_mut().append_lines(1)
+    assert(t.backend().scrollback().len() == 65535 && t.backend().scrollback().row(0).line(0) == "  ")
+    assert(t.backend().scrollback().row(65534).line(0) == "8 ")
 }

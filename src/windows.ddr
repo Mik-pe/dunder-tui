@@ -98,6 +98,17 @@ pub fn open(state: &mut State) -> bool {
     false
 }
 
+pub fn cursor(state: &State, x: i32, y: i32, previous_x: i32) -> bool {
+    visible := x >= 0
+    unsafe {
+        if visible && position(state.screen,u32(x).bit_or(u32(y).shl(16))) == 0 { return false }
+        if previous_x != -2 && visible == (previous_x >= 0) { return true }
+        mut info: [u32;2] = [25,if visible { u32(1) } else { u32(0) }]
+        return cursor_info(state.screen,addr(&info[0])) != 0
+    }
+    false
+}
+
 pub fn restore(state: &mut State) {
     unsafe {
         _ := set_mode(handle(-10), state.in_mode)

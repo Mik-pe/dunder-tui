@@ -2,18 +2,18 @@
 
 Referensen är taggen `ratatui-v0.30.2`, inklusive de stabila tillvalen. Tabellen följer de publika områdena i den versionen. En genomförd jämförelse anges med sitt konkreta prov. [Referenskod](https://github.com/ratatui/ratatui/tree/ratatui-v0.30.2) · [Publikt API](https://docs.rs/ratatui/0.30.2/ratatui/) · [Funktionsflaggor](https://docs.rs/crate/ratatui/0.30.2/features)
 
-Funktionsparitet styr ordningen. Nästa användarflöde är vyportar, markörstyrning och en testbackend för program som kombinerar vanlig terminalutskrift med en interaktiv vy. Prestanda mäts tillsammans med beteendet så att en långsammare arbetslast kan prioriteras utifrån vad användaren märker. [Fynd för Dunder-språket och standardbiblioteket](dunder.md)
+Funktionsparitet styr ordningen. Nästa användarflöde är fasta och infogade vyportar för program som kombinerar vanlig terminalutskrift med en interaktiv vy. Prestanda mäts tillsammans med beteendet så att en långsammare arbetslast kan prioriteras utifrån vad användaren märker. [Fynd för Dunder-språket och standardbiblioteket](dunder.md)
 
 | Område | Finns i Dunder | Återstår att leverera eller verifiera |
 | --- | --- | --- |
-| Buffer och Cell | Återanvända bildbuffertar, breda tecken, celldiff, exakt och ungefärlig sammanslagning av linjesymboler, färgutdata och avläsning av rader och cellstilar. | Fristående buffertoperationer med origo, ändrad storlek och sammanslagning. Cellernas regler för att hoppa över eller alltid rita. |
+| Buffer och Cell | Återanvända bildbuffertar, breda tecken, celldiff, exakt och ungefärlig sammanslagning av linjesymboler, färgutdata och avläsning av rader och cellstilar. Rektangulär kopiering, linjär storleksändring och tillämpning av en diff. | Buffertar med förskjutet origo samt sammanslagning till den gemensamma omslutande rektangeln. Cellernas regler för att hoppa över eller alltid rita. |
 | Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. | Material- och Tailwind-paletter, beständiga dataformat och full täckning för konvertering mellan stilrepresentationer. |
 | Text | Span, Line, Text, Paragraph, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. | Strängbredder för skriftspecifika ligaturer över grafemgränser, full täckning för sammansatta emoji och alla operationer på fristående texttyper. |
 | Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering och cache. 15 076 jämförda layouter, 1 200 rektangelprov och 1 100 jämförda bilder. | Utökad täckning av överbestämda system med många olika paneler och upprepade ändringar av reglerna. |
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna tecken, individuella kanter, justerade titlar, utfyllnad och skuggor. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
 | Övriga widgets | Clear och Fill på Frame, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. | Kalender med datumstilar, logotyp och maskot. |
-| Egna widgets och tester | Funktioner ritar på en Frame. Tillstånd kan uppdateras vid ritning med `run_stateful`. En Frame kan testas utan terminal. | Gemensamma gränssnitt för widgets med eget tillstånd och utbytbara backends, testbackend med skrollhistorik och markör. |
-| Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, ANSI och Win32. | Fast och infogad vyport, innehåll ovanför vyn, markörstyrning från Frame, regionrensning och regionskrollning, fönstrets pixelmått, livscykel- och felprov. |
+| Egna widgets och tester | Funktioner ritar på en Frame. Tillstånd kan uppdateras vid ritning med `run_stateful`. Egna backends kan anslutas till Terminal. TestBackend har skrollhistorik, markör, fem rensningslägen och regionskrollning. | Gemensamma widgetgränssnitt och bredare testning av specialiserade terminalbackends. |
+| Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, markörstyrning från Frame, bildräknare, ANSI och Win32. Avbruten ritning och omskrivning efter backendfel har provats. | Fast och infogad vyport, innehåll ovanför vyn, regionrensning och regionskrollning i de fysiska backendarna, fönstrets pixelmått och fler felprov för terminallivscykeln. |
 | Stabil Rust-integration | Jämförelseprogrammen använder den låsta Rustreferensen. Dunder-appar byggs offline. | Kontrollera Dunder-motsvarigheter till bekvämlighetsmakron, serialisering, cachning och backendval där dessa påverkar appens beteende. |
 | Effektivitet och plattformar | Tid, minne, allokeringar och faktiska terminalbyte för en widgetvy på macOS och Linux. Pseudoterminalprov på macOS och Linux ARM64/x86-64. Win32-prov under Wine. | Nativ Windows x64, fler arbetslaster med komplex layout, lägre kostnad för dynamiska färgvärden och paritet på fysisk x86-64. |
 
@@ -145,3 +145,20 @@ build/chart-check --benchmark | build/rust/release/examples/charts --benchmark
 ```
 
 Kartdata ligger i paketet och kan återskapas med `dunder run tools/coastlines.ddr -- world.dat world_110m.txt`. Generatorn läser originalens koordinater och skriver en Dundermodul till standardutgången. Lågupplösningsserien utelämnar slutpunkten (−69,31°, −52,81°) för att matcha referensens urval. [Lågupplösta data](https://gnuplotting.org/data/world.dat) · [Högupplösta data från Natural Earth](https://gnuplotting.org/data/world_110m.txt) · [Data och villkor](../src/COASTLINE-NOTICES.txt)
+
+## Terminal, markör och skrollhistorik i 0.10.0
+
+I 60 körningar med 45 operationer vardera jämförs skärmens och skrollhistorikens celler, för- och bakgrund, fetstil, markörens synlighet och position samt numret på senast visad bild. Proven ritar om, byter storlek, flyttar markören, rensar fem slags områden, lägger till rader och skrollar regioner i båda riktningar. Alla 2 700 tillstånd matchar Ratatui 0.30.2 med stöd för skrollregioner. Separata prov täcker 65 535 sparade rader, kombinerande tecken, breda tecken, understrykningsfärg och återhämtning efter skrivfel. [Dunderprov](../tests/terminal_reference.ddr) · [Ratatui-prov](../benchmarks/reference/examples/terminal.rs) · [Bibliotekstester](../tests/suite.ddr)
+
+Samma PTY-drivrutin kör en Dunderapp och en Ratatui-app med Crossterm. Den läser både text och markör efter förflyttning utan celländringar, omritning under en synlig markör, döljning och storleksändring. Den kontrollerar att terminalens läge återställs när programmet avslutas. Detta har körts på macOS ARM64 och båda Linuxmålen. Win32-provet under Wine läser dessutom den aktiva och den återställda skärmbuffertens markörinformation från konsolens API. [PTY-prov](../tests/cursor_terminal.ddr) · [Windowsprov](../tests/windows_console.ddr) · [Tid, byte, minne och allokeringar](../benchmarks/terminal.md)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/terminal_reference.ddr -o build/terminal-states
+dunder build --locked --offline tests/cursor_app.ddr -o build/cursor-app
+dunder build --locked --offline tests/cursor_terminal.ddr -o build/cursor-pty
+cargo build --locked --release --manifest-path benchmarks/reference/Cargo.toml --features terminal-oracle --example terminal --target-dir build/rust
+build/terminal-states | build/rust/release/examples/terminal
+build/cursor-pty build/cursor-app
+build/cursor-pty build/rust/release/examples/terminal --live
+```

@@ -1,0 +1,2 @@
+fn operation() -> Result<(),string> { .Ok }
+fn main() { operation().unwrap() }
