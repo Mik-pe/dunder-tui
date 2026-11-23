@@ -1,0 +1,36 @@
+capability stdio
+import std.bytes as bytes
+import std.time as clock
+
+fn drain(count:i32, shift:bool) -> (i64,i64) {
+    mut data: []u8 = []
+    data.reserve(count)
+    for i in 0..count { data.push(u8(i%256)) }
+    mut total:i64 = 0
+    start := clock.monotonic_ns()
+    if shift {
+        while data.len > 0 {
+            total += i64(data[0])
+            bytes.consume_prefix(&mut data,1)
+        }
+    } else {
+        for head in 0..data.len { total += i64(first(&data[head..data.len])) }
+        data.clear()
+    }
+    (clock.monotonic_ns()-start,total)
+}
+
+fn first(input:&[]u8) -> u8 { input[0] }
+
+fn main() {
+    for size in [4096,8192,16384] {
+        for round in 0..8 {
+            for step in 0..2 {
+                shift := (round+step)%2 == 0
+                (ns,sum) := drain(size,shift)
+                assert(sum == i64(size/256)*32640)
+                print(f"{size} {round} {shift} {ns} {sum}")
+            }
+        }
+    }
+}
