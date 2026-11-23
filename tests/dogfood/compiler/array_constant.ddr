@@ -1,0 +1,3 @@
+const INK: [u32; 2] = [0xabcdef, 0x123456]
+
+fn main() { assert(INK[1] == 0x123456) }

@@ -1,0 +1,4 @@
+struct Scale { light: u32, dark: u32 }
+const INK: Scale = Scale { light: 0xabcdef, dark: 0x123456 }
+
+fn main() { assert(INK.dark == 0x123456) }
