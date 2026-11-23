@@ -1,0 +1,27 @@
+import ..src.tui
+import std.bytes as bytes
+
+pub fn snapshot(frame: &tui.Frame) {
+    mut out: []u8 = []
+    for y in 0..frame.area().h {
+        for x in 0..frame.area().w {
+            ch := frame.symbol_at(x,y).unwrap()
+            if ch == "" { out.push(b'~'); continue }
+            s := frame.style_at(x,y).unwrap()
+            out.push(u8(66 + s.get_foreground().unwrap().code()))
+            out.push(u8(66 + s.get_background().unwrap().code()))
+            flags := (if s.has(.Bold) { 1 } else { 0 }) + (if s.has(.Italic) { 2 } else { 0 }) +
+                (if s.has(.Reversed) { 4 } else { 0 }) + (if s.has(.Dim) { 8 } else { 0 })
+            out.push(u8(65 + flags))
+            bytes.append_utf8(&mut out, ch)
+            out.push(b'|')
+        }
+    }
+    print(bytes.decode(&out).unwrap())
+}
+
+pub fn seeded(w: i32, h: i32) -> tui.Frame {
+    mut frame := tui.Frame::new(w + 2, h + 2)
+    frame.fill(frame.area(), `.`, tui.ink(.Green).background(.Blue).bold())
+    move frame
+}

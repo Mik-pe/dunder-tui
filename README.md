@@ -4,7 +4,7 @@ Bygg interaktiva terminalappar i Dunder för macOS, Linux och Windows. Skriv en 
 
 ## Prova
 
-Vill du se animationerna direkt? Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i en terminal. Samma paket innehåller signalvisualiseraren `signal`. [Ladda ner för macOS, Linux eller Windows](https://github.com/Mik-pe/dunder-tui/releases/tag/v0.5.0)
+Vill du se animationerna direkt? Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i en terminal. Samma paket innehåller signalvisualiseraren `signal` och den skrollbara `bokhylla`. [Ladda ner för macOS, Linux eller Windows](https://github.com/Mik-pe/dunder-tui/releases/latest)
 
 Med [Dunder](https://github.com/Mik-pe/dunder#installera-och-kör) 0.10 eller 0.11 installerat kan du köra räknaren direkt i en terminal.
 
@@ -14,7 +14,7 @@ cd dunder-tui
 dunder run examples/counter/main.ddr
 ```
 
-Tryck ↑ eller ↓ för att ändra talet och `q` för att avsluta. Kör `dunder run examples/bokhylla/main.ddr` för ett exempel med två paneler och en rullande lista. Prova att göra fönstret lägre än listan.
+Tryck ↑ eller ↓ för att ändra talet och `q` för att avsluta. Kör `dunder run examples/bokhylla/main.ddr` för att bläddra bland flerradiga bokposter med piltangenterna. Gör fönstret smalare så får boklistan hela bredden.
 
 ## Animationer
 
@@ -54,7 +54,7 @@ Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.5.0", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.6.0", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.
@@ -120,6 +120,25 @@ level.render(&mut frame, area)
 | `tui.block` | Ramar med egna kanttecken, flera titlar, marginal innanför kanten och skuggor. Delade kanter kan slås ihop. |
 
 `area.take_rows(n)` tar ut de första raderna och låter `area` fortsätta direkt under dem. `take_cols(n)` gör motsvarande för kolumner. Använd `frame.fill_symbol(area, "🌊", style)` för att upprepa hela grafem eller `frame.clear_area(area)` för att tömma ytan före en överlagring. [Exempel med flikar, paneler och diagram](examples/signal/main.ddr)
+
+## Listor med markering
+
+Spara listan och dess skrolltillstånd i din app. En post kan innehålla flera rader, färgade textspann och breda tecken.
+
+```dunder
+import tui
+import tui.list as lists
+import tui.text as rich
+
+mut books := lists.List::new([lists.Item::raw("Nattåget\nRoman"), lists.Item::raw("Molnatlas\nNatur")])
+books.marker = rich.Line::raw("▸ ")
+books.highlight = tui.plain().background_rgb(0x224451)
+books.scroll_padding = 1
+mut cursor := lists.ListState::new()
+cursor.first()
+```
+
+Rita med `books.render_stateful(&mut frame, area, &mut cursor)`. Anropa `cursor.next()` och `cursor.previous()` från tangenthanteraren. När vyn krymper justerar listan `cursor.offset` så att hela den markerade posten syns om den ryms. `cursor.last()` hittar sista posten vid nästa ritning, även om innehållet har bytts med `books.set_items(...)`. En lista från nederkanten använder `books.direction = .BottomToTop`. [Bokhyllans källkod](examples/bokhylla/main.ddr) · [Mätning med 16 384 poster](benchmarks/lists.md)
 
 ## Rik text och radbrytning
 

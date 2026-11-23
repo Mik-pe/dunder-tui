@@ -23,39 +23,44 @@ impl Span {
 
 struct Token { span: i32, start: i32, end: i32, cells: i32, space: bool }
 
-pub opaque struct Line {
-    spans: []Span, starts: []i32, ends: []i32, groups: []i32, count: i32, columns: i32, style: tui.Style, alignment: Alignment,
-}
+pub opaque struct Line { spans: []Span, columns: i32, style: tui.Style, alignment: Alignment }
 
 impl Line {
     pub fn raw(move value: string) -> Self { Line::new([Span::raw(move value)]) }
-
     pub fn new(move spans: []Span) -> Self {
+        mut columns := 0
+        for span in &spans { columns += span.width() }
+        Self { spans: move spans, columns: columns, style: tui.plain(), alignment: .Inherit }
+    }
+    pub fn styled(move self, style: tui.Style) -> Self { mut line := move self; line.style = style; move line }
+    pub fn align(move self, alignment: Alignment) -> Self { mut line := move self; line.alignment = alignment; move line }
+    pub fn width(&self) -> i32 { self.columns }
+}
+
+struct ParagraphLine { content: Line, starts: []i32, ends: []i32, groups: []i32, count: i32 }
+
+impl ParagraphLine {
+    fn new(move line: Line) -> Self {
         mut starts: []i32 = []
         mut ends: []i32 = []
         mut groups: []i32 = []
         mut was_space := false
         mut count := 0
         mut columns := 0
-        for i in 0..spans.len {
+        for i in 0..line.spans.len {
             starts.push(count)
-            count += spans[i].count()
-            for j in 0..spans[i].count() {
-                columns += spans[i].glyphs.width_at(j)
-                space := spans[i].glyphs.space_at(j)
+            count += line.spans[i].count()
+            for j in 0..line.spans[i].count() {
+                columns += line.spans[i].glyphs.width_at(j)
+                space := line.spans[i].glyphs.space_at(j)
                 if ends.len > 0 && space != was_space { groups.push(ends.len) }
                 ends.push(if space { -1 - columns } else { columns })
                 was_space = space
             }
         }
         groups.push(ends.len)
-        Self { spans: move spans, starts: move starts, ends: move ends, groups: move groups, count: count, columns: columns,
-            style: tui.plain(), alignment: .Inherit }
+        Self { content: move line, starts: move starts, ends: move ends, groups: move groups, count: count }
     }
-
-    pub fn styled(move self, style: tui.Style) -> Self { mut line := move self; line.style = style; move line }
-    pub fn align(move self, alignment: Alignment) -> Self { mut line := move self; line.alignment = alignment; move line }
-    pub fn width(&self) -> i32 { self.columns }
 
     fn before(&self, at: i32) -> i32 {
         if at == 0 { return 0 }
@@ -65,7 +70,7 @@ impl Line {
 
     fn span_at(&self, at: i32) -> i32 {
         mut first := 0
-        mut end := self.spans.len
+        mut end := self.content.spans.len
         while first + 1 < end {
             mid := first + (end - first) / 2
             if self.starts[mid] <= at { first = mid } else { end = mid }
@@ -76,7 +81,7 @@ impl Line {
     fn token(&self, at: i32) -> Token {
         first := self.span_at(at)
         index := at - self.starts[first]
-        span := &self.spans[first]
+        span := &self.content.spans[first]
         Token { span: first, start: index, end: index + 1, cells: span.glyphs.width_at(index), space: span.glyphs.space_at(index) }
     }
 }
@@ -111,12 +116,16 @@ impl Text {
     pub fn height(&self) -> i32 { self.lines.len }
 }
 
-pub opaque struct Paragraph { text: Text, style: tui.Style, alignment: Alignment, wrap_mode: Wrap, top: i32, left: i32 }
+pub opaque struct Paragraph { lines: []ParagraphLine, text_style: tui.Style, style: tui.Style, alignment: Alignment, wrap_mode: Wrap, top: i32, left: i32 }
 
 impl Paragraph {
     pub fn new(move text: Text) -> Self {
         alignment := text.alignment
-        Self { text: move text, style: tui.plain(), alignment: alignment, wrap_mode: .Clip, top: 0, left: 0 }
+        text_style := text.style
+        mut lines: []ParagraphLine = []
+        lines.reserve(text.lines.len)
+        for line in move text.lines { lines.push(ParagraphLine::new(move line)) }
+        Self { lines: move lines, text_style: text_style, style: tui.plain(), alignment: alignment, wrap_mode: .Clip, top: 0, left: 0 }
     }
 
     pub fn raw(move value: string) -> Self { Paragraph::new(Text::raw(move value)) }
@@ -157,12 +166,12 @@ impl Rows {
         }
     }
 
-    fn add_segment(&mut self, line: &Line, first: i32, end: i32) {
+    fn add_segment(&mut self, line: &ParagraphLine, first: i32, end: i32) {
         mut at := first
         while at < end {
             span := line.span_at(at)
             base := line.starts[span]
-            finish := cmp.min<i32>(end, base + line.spans[span].count())
+            finish := cmp.min<i32>(end, base + line.content.spans[span].count())
             cells := line.before(finish) - line.before(at)
             self.add(Token { span: span, start: at - base, end: finish - base, cells: cells, space: false })
             at = finish
@@ -176,7 +185,7 @@ impl Rows {
     }
 }
 
-fn clip_line(rows: &mut Rows, index: i32, line: &Line, limit: i32, alignment: Alignment, scroll: i32) {
+fn clip_line(rows: &mut Rows, index: i32, line: &ParagraphLine, limit: i32, alignment: Alignment, scroll: i32) {
     rows.begin(index)
     mut skip := if alignment == .Left || alignment == .Inherit { scroll } else { 0 }
     mut columns := 0
@@ -236,7 +245,7 @@ impl Words {
         self.spaces_width = 0
     }
 
-    fn emit(&mut self, rows: &mut Rows, index: i32, line: &Line, limit: i32, alignment: Alignment, visible: bool) {
+    fn emit(&mut self, rows: &mut Rows, index: i32, line: &ParagraphLine, limit: i32, alignment: Alignment, visible: bool) {
         if visible {
             rows.begin(index)
             mut i := self.ready.head
@@ -251,7 +260,7 @@ impl Words {
     }
 }
 
-fn wrap_line(rows: &mut Rows, index: i32, line: &Line, limit: i32, alignment: Alignment, trim: bool,
+fn wrap_line(rows: &mut Rows, index: i32, line: &ParagraphLine, limit: i32, alignment: Alignment, trim: bool,
     skip: &mut i32, height: i32, words: &mut Words) {
     mut last_word := false
     mut emitted := false
@@ -312,12 +321,12 @@ impl Paragraph {
         mut rows := Rows::new()
         if limit <= 0 || height <= 0 { return move rows }
         mut skip := top
-        start := if self.wrap_mode == .Clip { cmp.min<i32>(top, self.text.lines.len) } else { 0 }
+        start := if self.wrap_mode == .Clip { cmp.min<i32>(top, self.lines.len) } else { 0 }
         mut words := Words::new()
-        for i in start..self.text.lines.len {
+        for i in start..self.lines.len {
             if rows.lines.len >= height { break }
-            line := &self.text.lines[i]
-            alignment := aligned(line.alignment, self.alignment)
+            line := &self.lines[i]
+            alignment := aligned(line.content.alignment, self.alignment)
             if self.wrap_mode == .Clip { clip_line(&mut rows, i, &line, limit, alignment, self.left) }
             else { wrap_line(&mut rows, i, &line, limit, alignment, self.wrap_mode == .Trim, &mut skip, height, &mut words) }
         }
@@ -329,13 +338,13 @@ impl Paragraph {
         count := cmp.min<i32>(area.h, rows.lines.len - top)
         for y in 0..count {
             row := y + top
-            line := &self.text.lines[rows.lines[row]]
-            base := self.text.style.patch(line.style)
+            line := &self.lines[rows.lines[row]]
+            base := self.text_style.patch(line.content.style)
             mut x := rows.offsets[row]
             mut at := rows.starts[row]
             end := if row + 1 < rows.starts.len { rows.starts[row + 1] } else { rows.runs.len }
             while at < end {
-                span := &line.spans[rows.runs[at]]
+                span := &line.content.spans[rows.runs[at]]
                 start := rows.runs[at + 1]
                 finish := rows.runs[at + 2]
                 cells := rows.runs[at + 3]

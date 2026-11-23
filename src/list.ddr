@@ -1,0 +1,175 @@
+import .block
+import .text as rich
+import .tui
+import std.cmp as cmp
+
+pub struct Item { content: rich.Text, style: tui.Style }
+
+impl Item {
+    pub fn new(move content: rich.Text) -> Self { Self { content: move content, style: tui.plain() } }
+    pub fn raw(move value: string) -> Self { Item::new(rich.Text::raw(move value)) }
+    pub fn height(&self) -> i32 { self.content.height() }
+    pub fn width(&self) -> i32 { self.content.width() }
+}
+
+pub struct ListState { offset: i32, selected: Option<i32> }
+
+const LAST: i32 = 2147483647
+
+impl ListState {
+    pub fn new() -> Self { Self { offset: 0, selected: .None } }
+
+    pub fn select(&mut self, index: Option<i32>) {
+        self.selected = index
+        if index.is_none() { self.offset = 0 }
+    }
+    pub fn first(&mut self) { self.select(.Some(0)) }
+    pub fn last(&mut self) { self.select(.Some(LAST)) }
+    pub fn next(&mut self) {
+        if self.selected.is_none() { self.first() } else { self.scroll_down_by(1) }
+    }
+    pub fn previous(&mut self) {
+        if self.selected.is_none() { self.last() } else { self.scroll_up_by(1) }
+    }
+    pub fn scroll_down_by(&mut self, amount: i32) {
+        base := cmp.max<i32>(0, self.selected.unwrap_or(0))
+        self.select(.Some(base + cmp.clamp<i32>(amount, 0, LAST - base)))
+    }
+    pub fn scroll_up_by(&mut self, amount: i32) {
+        base := cmp.max<i32>(0, self.selected.unwrap_or(0))
+        self.select(.Some(base - cmp.clamp<i32>(amount, 0, base)))
+    }
+}
+
+pub enum Direction { TopToBottom, BottomToTop }
+pub enum HighlightSpacing { Always, WhenSelected, Never }
+
+pub opaque struct Items { entries: []Item, starts: []i64 }
+
+impl Items {
+    fn new(move entries: []Item) -> Self {
+        mut starts: []i64 = []
+        starts.reserve(entries.len + 1)
+        starts.push(0)
+        mut position: i64 = 0
+        for item in &entries {
+            position += i64(item.height())
+            starts.push(position)
+        }
+        Self { entries: move entries, starts: move starts }
+    }
+
+    fn fitting_end(&self, first: i32, limit: i32, height: i32) -> i32 {
+        max_row := self.starts[first] + i64(height)
+        mut lo := first
+        mut hi := limit
+        while lo < hi {
+            mid := hi - (hi - lo) / 2
+            if self.starts[mid] <= max_row { lo = mid } else { hi = mid - 1 }
+        }
+        lo
+    }
+
+    fn fitting_start(&self, limit: i32, end: i32, height: i32) -> i32 {
+        min_row := self.starts[end] - i64(height)
+        mut lo := limit
+        mut hi := end
+        while lo < hi {
+            mid := lo + (hi - lo) / 2
+            if self.starts[mid] < min_row { lo = mid + 1 } else { hi = mid }
+        }
+        lo
+    }
+
+    fn target(&self, selected: i32, padding: i32, first: i32, end: i32, height: i32) -> i32 {
+        if selected < 0 { return first }
+        if padding <= 0 { return selected }
+        last := self.entries.len - 1
+        mut lo := 0
+        mut hi := cmp.min<i32>(last, padding)
+        while lo < hi {
+            radius := hi - (hi - lo) / 2
+            top := selected - cmp.min<i32>(selected, radius)
+            bottom := selected + cmp.min<i32>(last - selected, radius)
+            if self.starts[bottom + 1] - self.starts[top] <= i64(height) { lo = radius }
+            else { hi = radius - 1 }
+        }
+        bottom := selected + cmp.min<i32>(last - selected, lo)
+        if bottom >= end { return bottom }
+        top := selected - cmp.min<i32>(selected, lo)
+        if top < first { top } else { selected }
+    }
+}
+
+pub struct List {
+    items: Items, style: tui.Style, block: block.Block, direction: Direction, scroll_padding: i32,
+    highlight: tui.Style, marker: rich.Line, spacing: HighlightSpacing, repeat_marker: bool,
+}
+
+impl List {
+    pub fn new(move items: []Item) -> Self {
+        Self { items: Items::new(move items), style: tui.plain(), block: block.Block::new(),
+            direction: .TopToBottom, scroll_padding: 0, highlight: tui.plain(),
+            marker: rich.Line::raw(""), spacing: .WhenSelected, repeat_marker: false }
+    }
+    pub fn set_items(&mut self, move items: []Item) { self.items = Items::new(move items) }
+    pub fn len(&self) -> i32 { self.items.entries.len }
+    pub fn is_empty(&self) -> bool { self.len() == 0 }
+
+    pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
+        mut state := ListState::new()
+        self.render_stateful(&mut frame, bounds, &mut state)
+    }
+
+    pub fn render_stateful(&self, frame: &mut tui.Frame, bounds: tui.Rect, state: &mut ListState) {
+        frame.apply_style(bounds, self.style)
+        area := self.block.render(&mut frame, bounds)
+        if area.w <= 0 || area.h <= 0 { return }
+        if self.is_empty() { state.select(.None); return }
+        mut selected := -1
+        if state.selected.is_some() {
+            selected = cmp.clamp<i32>(state.selected.unwrap(), 0, self.len() - 1)
+            if selected != state.selected.unwrap() { state.select(.Some(selected)) }
+        }
+        mut first := cmp.clamp<i32>(state.offset, 0, self.len() - 1)
+        mut end := self.items.fitting_end(first, self.len(), area.h)
+        target := self.items.target(selected, self.scroll_padding, first, end, area.h)
+        if target >= end {
+            end = target + 1
+            first = self.items.fitting_start(first, end, area.h)
+        }
+        if target < first {
+            first = target
+            end = self.items.fitting_end(first, end, area.h)
+        }
+        state.offset = first
+        gutter := if self.spacing == .Always || (self.spacing == .WhenSelected && selected >= 0) {
+            cmp.min<i32>(area.w, self.marker.width())
+        } else { 0 }
+        mut y := if self.direction == .BottomToTop { area.y + area.h } else { area.y }
+        for i in first..end {
+            item := &self.items.entries[i]
+            h := item.height()
+            if h == 0 { continue }
+            if self.direction == .BottomToTop { y -= h }
+            row := tui.Rect { x: area.x, y: y, w: area.w, h: h }
+            frame.apply_style(row, self.style.patch(item.style))
+            mut content := row
+            marker := content.take_cols(gutter)
+            item.content.render(&mut frame, content)
+            if i == selected { frame.apply_style(row, self.highlight) }
+            if gutter > 0 {
+                mut blanks := marker
+                if i == selected {
+                    n := if self.repeat_marker { h } else { 1 }
+                    for j in 0..n {
+                        self.marker.render(&mut frame, tui.Rect { x: marker.x, y: y + j, w: gutter, h: 1 })
+                    }
+                    _ := blanks.take_rows(n)
+                }
+                frame.fill(blanks, ` `, tui.plain())
+            }
+            if self.direction == .TopToBottom { y += h }
+        }
+    }
+}

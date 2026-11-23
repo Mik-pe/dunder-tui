@@ -1,0 +1,78 @@
+capability stdio
+import .widget_cells as cells
+import ..src.list
+import ..benchmarks.list_scene
+import sys
+import ..src.block as box
+import ..src.text as rich
+import ..src.tui
+
+fn items(kind: i32) -> []list.Item {
+    if kind == 0 { return [] }
+    if kind == 1 { return [list.Item::raw("one"), list.Item::raw("two\nTWO"), list.Item::raw(""), list.Item::raw("four")] }
+    mut item := list.Item::new(rich.Text::new([
+        rich.Line::new([rich.Span::raw("A"), rich.Span::styled("界B", tui.ink(.Cyan).italic())]).align(.Right),
+        rich.Line::raw("é").align(.Center),
+    ]).styled(tui.plain().background(.Magenta)))
+    item.style = tui.ink(.Yellow)
+    [list.Item::new(rich.Text::new([])), move item, list.Item::raw("c\nd\ne\nf\ng"),
+     list.Item::new(rich.Text::new([])), list.Item::raw("茶"), list.Item::raw("x\ny"), list.Item::raw("z")]
+}
+
+fn run(w: i32, h: i32, kind: i32, dataset: i32) {
+    mut view := list.List::new(items(dataset))
+    view.style = tui.plain().background(.Black)
+    view.highlight = tui.ink(.Magenta).inverted()
+    view.marker = if kind < 12 { rich.Line::raw(">") } else {
+        rich.Line::new([rich.Span::styled("界", tui.ink(.Red).bold()), rich.Span::raw(":")])
+    }
+    view.direction = if kind % 2 == 0 { .TopToBottom } else { .BottomToTop }
+    view.repeat_marker = kind % 4 >= 2
+    view.spacing = match (kind / 4) % 3 { 0 => .Always, 1 => .WhenSelected, _ => .Never, }
+    view.scroll_padding = [0, 1, 2, 8][(kind + w + h) % 4]
+    if (kind + w + h) % 7 == 0 { view.block = box.Block::bordered().title("L") }
+    mut state := list.ListState::new()
+    for step in 0..18 {
+        match step {
+            1 => { state.previous() }, 2 => { state.next() }, 3 => { state.first() },
+            4 => { state.next() }, 5 => { state.scroll_down_by(2) }, 6 => { state.previous() },
+            7 => { state.offset = 12 }, 8 => { state.select(.None); state.offset = 3 },
+            9 => { state.scroll_up_by(9) }, 10 => { state.last() }, 11 => { state.scroll_up_by(2) },
+            12 => { view.set_items(items((dataset + 1) % 3)) }, 13 => { state.next() },
+            14 => { state.select(.None) }, 15 => { state.scroll_down_by(2) },
+            16 => { view.set_items(items(dataset)); state.offset = 1 }, 17 => { state.select(.Some(99)) },
+            _ => {},
+        }
+        width := if step == 6 { w / 2 } else { w }
+        height := if step == 4 || step == 7 { h / 2 } else { h }
+        area := tui.Rect { x: 1, y: 1, w: width, h: height }
+        mut frame := cells.seeded(width, height)
+        view.render_stateful(&mut frame, area, &mut state)
+        print(f"{state.offset} {state.selected.unwrap_or(-1)}")
+        cells.snapshot(&frame)
+    }
+}
+
+fn benchmark() {
+    mut scene := list_scene.Scene::new(16384)
+    for mode in ["idle", "cell", "scroll", "resize", "repaint", "jump"] {
+        for n in 0..220 {
+            w := if mode == "resize" && n % 2 == 0 { 80 } else { 96 }
+            mut frame := tui.Frame::new(w, 24)
+            scene.draw(&mut frame, mode, n)
+            print(f"{scene.state.offset} {scene.state.selected.unwrap_or(-1)}")
+            cells.snapshot(&frame)
+        }
+    }
+}
+
+fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--benchmark" { benchmark(); return }
+    for w in [0, 1, 2, 5, 12] {
+        for h in [0, 1, 2, 4, 6, 9] {
+            for kind in 0..24 {
+                for dataset in 0..3 { run(w, h, kind, dataset) }
+            }
+        }
+    }
+}

@@ -1,3 +1,4 @@
+import ..src.list as lists
 import ..src.widgets as widgets
 import ..src.barchart as chart
 import ..src.block as box
@@ -420,4 +421,65 @@ import ..src.width
     assert(f.line(1) == "#abc#界X")
     assert(f.style_at(5, 1).unwrap().get_foreground() == .Some(tui.Color.Cyan))
     assert(f.line(2) == "########")
+}
+
+@test fn list_navigation_clamps_on_render_and_preserves_selection_when_hidden() {
+    mut view := lists.List::new([lists.Item::raw("a"), lists.Item::raw("b\nc"), lists.Item::raw("d"), lists.Item::raw("e")])
+    mut frame := tui.Frame::new(4, 3)
+    mut state := lists.ListState::new()
+    state.previous()
+    view.render_stateful(&mut frame, frame.area(), &mut state)
+    assert(state.selected == .Some(3) && state.offset == 2)
+    assert(frame.line(0) == "d   " && frame.line(1) == "e   ")
+    state.scroll_up_by(2)
+    view.render_stateful(&mut frame, frame.area(), &mut state)
+    assert(state.selected == .Some(1) && state.offset == 1)
+    view.set_items([])
+    view.render_stateful(&mut frame, frame.area().inset(4), &mut state)
+    assert(state.selected == .Some(1))
+    view.render_stateful(&mut frame, frame.area(), &mut state)
+    assert(state.selected.is_none() && state.offset == 0)
+    state.next()
+    assert(state.selected == .Some(0))
+    state.last()
+    state.next()
+    assert(state.selected == .Some(2147483647))
+    state.scroll_up_by(2147483647)
+    assert(state.selected == .Some(0))
+}
+
+@test fn list_clips_the_marker_and_keeps_multiline_items_together() {
+    mut view := lists.List::new([lists.Item::raw("a\nb"), lists.Item::raw("界"), lists.Item::new(rich.Text::new([]))])
+    assert(view.len() == 3 && !view.is_empty())
+    view.marker = rich.Line::raw("界:")
+    view.repeat_marker = true
+    view.direction = .BottomToTop
+    view.highlight = tui.plain().inverted()
+    view.scroll_padding = 2147483647
+    mut frame := tui.Frame::new(6, 4)
+    frame.fill(frame.area(), `.`, tui.plain())
+    mut state := lists.ListState::new()
+    state.first()
+    view.render_stateful(&mut frame, tui.Rect { x: 1, y: 1, w: 2, h: 2 }, &mut state)
+    assert(frame.line(1) == ".界..." && frame.line(2) == ".界...")
+    assert(frame.style_at(1, 1).unwrap().has(.Reversed))
+    view.spacing = .Never
+    view.render(&mut frame, tui.Rect { x: 1, y: 0, w: 1, h: 1 })
+    assert(frame.line(0) == "......")
+}
+
+@test fn list_scroll_padding_tracks_rows_when_items_have_different_heights() {
+    mut view := lists.List::new([lists.Item::raw("a"), lists.Item::raw("b"), lists.Item::raw("c\nC"),
+        lists.Item::raw("d"), lists.Item::raw("e"), lists.Item::raw("f")])
+    view.scroll_padding = 1
+    mut frame := tui.Frame::new(2, 4)
+    mut state := lists.ListState::new()
+    state.select(.Some(2))
+    view.render_stateful(&mut frame, frame.area(), &mut state)
+    assert(state.offset == 1 && frame.line(3) == "d ")
+    state.select(.None)
+    state.offset = 3
+    frame.clear()
+    view.render_stateful(&mut frame, frame.area(), &mut state)
+    assert(state.offset == 3 && frame.line(0) == "d ")
 }

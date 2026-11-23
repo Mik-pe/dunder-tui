@@ -1,27 +1,41 @@
 capability stdio
 
 import tui
+import tui.block as box
+import tui.list as lists
+import tui.text as rich
+import std.cmp as cmp
 import sys
 
-struct Shelf { titles: []string, notes: []string, selected: i32 }
+struct Shelf { books: lists.List, cursor: lists.ListState, notes: []string }
 
-fn draw(frame: &mut tui.Frame, shelf: &Shelf) {
-    area := frame.area()
-    (main_area, footer) := area.rows(area.h - 1)
-    (menu, detail) := main_area.cols(main_area.w / 2)
-    titles := frame.panel(menu, " Böcker ", tui.ink(.Cyan))
-    frame.list(titles, &shelf.titles, shelf.selected, tui.plain().inverted())
-    note := frame.panel(detail, " Anteckning ", tui.ink(.Yellow))
-    frame.label(note, shelf.notes[shelf.selected])
-    frame.label(footer, "↑ ↓ välj bok   q avsluta")
+fn book(move title: string, move category: string) -> lists.Item {
+    lists.Item::new(rich.Text::new([
+        rich.Line::raw(move title).styled(tui.plain().bold()),
+        rich.Line::raw(move category).styled(tui.plain().foreground_rgb(0x80a4ac)),
+    ]))
+}
+
+fn draw(frame: &mut tui.Frame, shelf: &mut Shelf) {
+    mut area := frame.area()
+    mut main_area := area.take_rows(area.h - 1)
+    width := if main_area.w >= 42 { main_area.w / 2 } else { main_area.w }
+    menu := main_area.take_cols(width)
+    shelf.books.render_stateful(&mut frame, menu, &mut shelf.cursor)
+    if main_area.w > 0 {
+        detail := frame.panel(main_area, " Anteckning ", tui.ink(.Yellow))
+        index := cmp.clamp<i32>(shelf.cursor.selected.unwrap_or(0), 0, shelf.notes.len - 1)
+        frame.label(detail, shelf.notes[index])
+    }
+    frame.label(area, "↑ ↓ välj bok   Home End   q avsluta")
 }
 
 fn update(shelf: &mut Shelf, key: tui.Key) -> bool {
     match key {
-        .Up if shelf.selected > 0 => { shelf.selected -= 1 },
-        .Down if shelf.selected + 1 < shelf.titles.len => { shelf.selected += 1 },
-        .Home => { shelf.selected = 0 },
-        .End => { shelf.selected = shelf.titles.len - 1 },
+        .Up => { shelf.cursor.previous() },
+        .Down => { shelf.cursor.next() },
+        .Home => { shelf.cursor.first() },
+        .End => { shelf.cursor.last() },
         .Char(c) if c == `q` => { return false },
         .Escape => { return false },
         _ => {},
@@ -30,12 +44,21 @@ fn update(shelf: &mut Shelf, key: tui.Key) -> bool {
 }
 
 fn main() -> i32 {
+    mut books := lists.List::new([
+        book("Fåglar vid kusten", "Fälthandbok"), book("Nattåget", "Roman"),
+        book("Vinterljus", "Noveller"), book("Molnatlas", "Natur"),
+    ])
+    books.block = box.Block::bordered().border_type(.Rounded).title(" Böcker ")
+    books.block.border_style = tui.ink(.Cyan)
+    books.marker = rich.Line::raw("▸ ")
+    books.highlight = tui.plain().background_rgb(0x224451)
+    books.scroll_padding = 1
     mut shelf := Shelf {
-        titles: ["Fåglar vid kusten", "Nattåget", "Vinterljus", "Molnatlas"],
+        books: move books, cursor: lists.ListState::new(),
         notes: ["Ta med ut till fyren.", "Läs kapitel tre igen.", "Till bokcirkeln på tisdag.", "Slå upp pärlemormoln."],
-        selected: 0,
     }
-    match tui.run(&mut shelf, draw, update) {
+    shelf.cursor.first()
+    match tui.run_stateful(&mut shelf, draw, update) {
         .Ok => 0,
         .Err(message) => { _ := sys.eprint(message); 1 },
     }

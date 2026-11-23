@@ -8,7 +8,7 @@ Referensen är taggen `ratatui-v0.30.2`, inklusive de stabila tillvalen. Tabelle
 | Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. | Material- och Tailwind-paletter, beständiga dataformat och full täckning för konvertering mellan stilrepresentationer. |
 | Text | Span, Line, Text, Paragraph, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. | Strängbredder för skriftspecifika ligaturer över grafemgränser, full täckning för sammansatta emoji och alla operationer på fristående texttyper. |
 | Layout | Rektanglar, marginal runt en yta, delning av rader och kolumner. | Fler rektangeloperationer, riktning, marginaler per axel, längd-/kvot-/min-/max-/procent-/fyllnadsregler, flex, mellanrum och layoutcache. |
-| Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna tecken, individuella kanter, justerade titlar, utfyllnad och skuggor. En lista som följer markeringen. | Flerradiga listposter, listtillstånd, tabeller, rader, celler och tillstånd för rad och kolumn. |
+| Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna tecken, individuella kanter, justerade titlar, utfyllnad och skuggor. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. | Tabeller, rader, celler och tillstånd för rad och kolumn. |
 | Övriga widgets | Clear och Fill på Frame, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, Paragraph och RGB-canvas med punkter, linjer och halvblock. | Chart, kalender med datumstilar, logotyp och maskot. Canvas med koordinatgränser, lager, markörer, former, kartor och etiketter. |
 | Egna widgets och tester | Funktioner ritar på en Frame. Tillstånd kan uppdateras vid ritning med `run_stateful`. En Frame kan testas utan terminal. | Gemensamma gränssnitt för widgets med eget tillstånd och utbytbara backends, testbackend med skrollhistorik och markör. |
 | Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, ANSI och Win32. | Fast och infogad vyport, innehåll ovanför vyn, markörstyrning från Frame, regionrensning och regionskrollning, fönstrets pixelmått, livscykel- och felprov. |
@@ -62,3 +62,24 @@ build/widget-reference --merge | build/rust/release/examples/widgets --merge
 ```
 
 Blockkanter och vissa widgets tar ett enskilt tecken som symbol. `Frame.fill_symbol` tar även ett grafem med flera Unicode-skalärer. Stapeldiagrammet delar en färgsatt värdeetikett vid en hel grafemgräns och använder terminalkolumner för dess bredd.
+
+## Listor i 0.6.0
+
+Provet utför 18 åtgärder per följd. Det ändrar markering, första synliga post, listans innehåll och terminalens storlek. Bilderna omfattar bland annat tomma listor, nollhöga och för höga poster, blandade radhöjder, två ritriktningar och tre regler för markörens utrymme. Tecken, förgrund, bakgrund, använda attribut, markering och första synliga post kontrolleras efter varje ritning. [Ratatuis list-API](https://docs.rs/ratatui/0.30.2/ratatui/widgets/struct.List.html)
+
+Alla 38 880 listtillstånd matchar Ratatui. I 37 033 fall matchar hela bilden inklusive kontrollkanten. I 1 847 fall skriver referensens markör utanför listans ruta. Där kontrolleras också resultatet med Ratatui i en buffert begränsad till rutan. Dunder bevarar grannytan. Ytterligare 1 320 bilder och tillstånd från prestandaprovets lista med 16 384 poster är identiska. [Dunderprov](../tests/list_reference.ddr) · [Ratatui-prov](../benchmarks/reference/examples/lists.rs) · [Mätningar](../benchmarks/lists.md)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/list_reference.ddr -o build/list-check
+cargo build --locked --release --manifest-path benchmarks/reference/Cargo.toml --target-dir build/rust --example lists
+build/list-check | build/rust/release/examples/lists
+build/list-check --benchmark | build/rust/release/examples/lists --benchmark
+```
+
+På macOS och Linux kan bokhyllans publika exempel provas i en pseudoterminal. Provet startar en separat process, förflyttar markeringen med piltangent, End och Home, ändrar fönstrets bredd och läser tillbaka titeln och anteckningen. Det kontrollerar också återställningen av terminalen. Win32-provet läser den upprepade markören och båda textraderna direkt från konsolbufferten. [Unix-prov](../tests/bokhylla_terminal.ddr) · [Win32-prov](../tests/windows_console.ddr)
+
+```sh
+dunder build --locked --offline examples/bokhylla/main.ddr -o build/bokhylla
+dunder run --locked --offline tests/bokhylla_terminal.ddr -- build/bokhylla
+```

@@ -1,0 +1,12 @@
+capability stdio
+import ..src.tui
+import .list_scene
+import .frames
+
+fn draw(scene: &mut list_scene.Scene, frame: &mut tui.Frame, mode: string, n: i32) { scene.draw(&mut frame, mode, n) }
+
+fn main() {
+    mut scene := list_scene.Scene::new(16384)
+    cases: []string = ["idle", "cell", "scroll", "resize", "repaint", "jump"]
+    frames.run(&mut scene, &cases, draw)
+}

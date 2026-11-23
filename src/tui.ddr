@@ -788,56 +788,61 @@ impl Frame {
     }
 }
 
-pub opaque struct GlyphRun { source: string, ascii: bool, zero_width: bool, tokens: []i32, clusters: []string, columns: i32 }
+struct GlyphData { tokens: []i32, clusters: []string }
+pub opaque struct GlyphRun { source: string, data: Option<GlyphData>, zero_width: bool, columns: i32 }
 
 impl GlyphRun {
     pub fn new(move value: string) -> Self {
         mut ascii := true
         for i in 0..value.len { if value[i] < 32 || value[i] > 126 { ascii = false; break } }
+        if ascii {
+            columns := value.len
+            return Self { source: move value, data: .None, zero_width: false, columns: columns }
+        }
         mut tokens: []i32 = []
         mut clusters: []string = []
-        mut columns := value.len
+        mut columns := 0
         mut zero_width := false
-        if !ascii {
-            columns = 0
-            chars := value.runes()
-            mut at := 0
-            mut offset := 0
-            while at < chars.len {
-                group := width.glyph(&chars, at)
-                if group.span >= 0 {
-                    cp := i32(chars[at])
-                    symbol := if group.end == at + 1 { cp } else {
-                        clusters.push(value[offset..(offset + group.bytes)])
-                        -clusters.len
-                    }
-                    tokens.push(symbol)
-                    tokens.push(group.span)
-                    columns += group.span
-                    if group.span == 0 { zero_width = true }
+        chars := value.runes()
+        mut at := 0
+        mut offset := 0
+        while at < chars.len {
+            group := width.glyph(&chars, at)
+            if group.span >= 0 {
+                cp := i32(chars[at])
+                symbol := if group.end == at + 1 { cp } else {
+                    clusters.push(value[offset..(offset + group.bytes)])
+                    -clusters.len
                 }
-                offset += group.bytes
-                at = group.end
+                tokens.push(symbol)
+                tokens.push(group.span)
+                columns += group.span
+                if group.span == 0 { zero_width = true }
             }
+            offset += group.bytes
+            at = group.end
         }
-        Self { source: move value, ascii: ascii, zero_width: zero_width, tokens: move tokens, clusters: move clusters, columns: columns }
+        Self { source: "", data: .Some(GlyphData { tokens: move tokens, clusters: move clusters }), zero_width: zero_width, columns: columns }
     }
 
     pub fn has_zero_width(&self) -> bool { self.zero_width }
-    pub fn count(&self) -> i32 { if self.ascii { self.source.len } else { self.tokens.len / 2 } }
+    pub fn count(&self) -> i32 { match &self.data { .Some(d) => d.tokens.len / 2, .None => self.source.len, } }
     pub fn width(&self) -> i32 { self.columns }
-    pub fn width_at(&self, index: i32) -> i32 { if self.ascii { 1 } else { self.tokens[index * 2 + 1] } }
+    pub fn width_at(&self, index: i32) -> i32 { match &self.data { .Some(d) => d.tokens[index * 2 + 1], .None => 1, } }
     pub fn space_at(&self, index: i32) -> bool {
-        if self.ascii { return self.source[index] == 32 }
-        cp := self.tokens[index * 2]
+        cp := match &self.data { .Some(d) => d.tokens[index * 2], .None => i32(self.source[index]), }
         cp == 32 || cp == 0x1680 || (cp >= 0x2000 && cp <= 0x200b) ||
         cp == 0x2028 || cp == 0x2029 || cp == 0x202f || cp == 0x205f || cp == 0x3000
     }
 
     pub fn symbol_at(&self, index: i32) -> string {
-        if self.ascii { return self.source[index..(index + 1)] }
-        cp := self.tokens[index * 2]
-        if cp >= 0 { rune(cp).str() } else { self.clusters[-1 - cp].clone() }
+        match &self.data {
+            .None => self.source[index..(index + 1)],
+            .Some(d) => {
+                cp := d.tokens[index * 2]
+                if cp >= 0 { rune(cp).str() } else { d.clusters[-1 - cp].clone() }
+            },
+        }
     }
 
     pub fn render(&self, frame: &mut Frame, bounds: Rect, first: i32, end: i32, style: Style) {
@@ -850,10 +855,18 @@ impl GlyphRun {
         finish := clamp(end, self.count())
         if start >= finish { return 0 }
         brush := frame.encode(style)
-        if self.ascii {
-            frame.ascii_slice(bounds, self.source, start, finish, brush, &style)
-            return cmp.max<i32>(0, i32(cmp.min<i64>(i64(finish - start), cmp.min<i64>(i64(bounds.w), i64(frame.bounds.w) - i64(bounds.x)))))
+        match &self.data {
+            .Some(data) => data.write(&mut frame, bounds, start, finish, brush, style),
+            .None => {
+                frame.ascii_slice(bounds, self.source, start, finish, brush, &style)
+                cmp.max<i32>(0, i32(cmp.min<i64>(i64(finish - start), cmp.min<i64>(i64(bounds.w), i64(frame.bounds.w) - i64(bounds.x)))))
+            },
         }
+    }
+}
+
+impl GlyphData {
+    fn write(&self, frame: &mut Frame, bounds: Rect, start: i32, finish: i32, brush: i64, style: Style) -> i32 {
         mut x := i64(bounds.x)
         right := cmp.min<i64>(i64(frame.bounds.w), x + i64(bounds.w))
         mut last: i64 = 0

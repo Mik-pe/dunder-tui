@@ -1,6 +1,7 @@
 capability unsafe, stdio
 
 import ..src.tui
+import ..src.list as lists
 import ..src.widgets as ui
 import ..src.text as rich
 import sys
@@ -62,6 +63,13 @@ fn draw(frame: &mut tui.Frame, probe: &Probe) {
     gauge.filled_symbol = `=`
     gauge.unfilled_symbol = `.`
     gauge.render(&mut frame, tui.Rect { x: 0, y: 1, w: 10, h: 1 })
+    mut items := lists.List::new([lists.Item::raw("first"), lists.Item::raw("row A\nrow B")])
+    items.marker = rich.Line::raw("> ")
+    items.repeat_marker = true
+    mut state := lists.ListState::new()
+    state.last()
+    items.render_stateful(&mut frame, tui.Rect { x: 0, y: 2, w: 8, h: 2 }, &mut state)
+    assert(state.offset == 1 && state.selected == .Some(1))
 }
 
 fn update(probe: &mut Probe, key: tui.Key) -> bool {
@@ -85,6 +93,13 @@ fn update(probe: &mut Probe, key: tui.Key) -> bool {
         if read_text(out, addr(&mut meter[0]), 10, gauge_coord, addr(&mut n)) == 0 || n != 10 { probe.failure = 34; return false }
         expected := "OK ===...."
         for i in 0..10 { if meter[i] != u16(expected[i]) { probe.failure = 35; return false } }
+        for j in 0..2 {
+            mut row: [u16; 7] = [0; 7]
+            coords := u32(bounds[5]).bit_or(u32(i32(bounds[6]) + 2 + j).shl(16))
+            if read_text(out, addr(&mut row[0]), 7, coords, addr(&mut n)) == 0 || n != 7 { probe.failure = 36; return false }
+            line := if j == 0 { "> row A" } else { "> row B" }
+            for i in 0..7 { if row[i] != u16(line[i]) { probe.failure = 37; return false } }
+        }
         mut attr: u16 = 0
         if read_attr(out, addr(&mut attr), 1, coord, addr(&mut n)) == 0 || attr.bit_and(7) != 3 || attr.shr(4).bit_and(15) != 9 { probe.failure = 31; return false }
         if probe.step == 0 {

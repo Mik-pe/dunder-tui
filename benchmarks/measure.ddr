@@ -7,19 +7,22 @@ import sys
 
 struct Samples { p50: []i64, p95: []i64, bytes: i64 }
 
-fn record(rows: &mut []Samples, output: string, offset: i32, keep: bool) {
-    cases := ["idle", "cell", "scroll", "resize", "repaint"]
+fn record(rows: &mut []Samples, cases: &mut []string, output: string, keep: bool) {
     lines := text.split(text.trim(output), "\n")
-    assert(lines.len == cases.len)
-    for i in 0..cases.len {
+    first := cases.len == 0
+    assert(first || lines.len == cases.len)
+    for i in 0..lines.len {
         fields := text.split(text.trim(lines[i]), " ")
-        assert(fields.len == 4 && fields[0] == cases[i])
+        assert(fields.len == 4)
+        if first { cases.push(fields[0].clone()) }
+        assert(fields[0] == cases[i])
+        if rows.len == i { rows.push(Samples { p50: [], p95: [], bytes: 0 }) }
         median := parse.integer(fields[1])
         tail := parse.integer(fields[2])
         size := parse.integer(fields[3])
         assert(median.ok && tail.ok && size.ok && median.value <= tail.value)
         if keep {
-            row := &mut rows[offset + i]
+            row := &mut rows[i]
             assert(row.p50.len == 0 || row.bytes == size.value)
             row.p50.push(median.value)
             row.p95.push(tail.value)
@@ -34,14 +37,13 @@ fn main() -> i32 {
         return 1
     }
     programs := [sys.arg(1), sys.arg(2)]
-    cases := ["idle", "cell", "scroll", "resize", "repaint"]
     names := ["dunder", "ratatui"]
     modes := if sys.arg_count() == 4 { 2 } else { 1 }
+    mut cases: []string = []
     for mode in 0..modes {
         label := if mode == 0 { "memory" } else { "pty" }
-        mut rows: []Samples = []
+        mut rows: [ []Samples; 2 ] = [[], []]
         mut physical: [i64; 2] = [-1, -1]
-        for _ in 0..10 { rows.push(Samples { p50: [], p95: [], bytes: 0 }) }
         for run in 0..9 {
             for pos in 0..2 {
                 which := (run + pos) % 2
@@ -60,12 +62,12 @@ fn main() -> i32 {
                     assert(physical[which] < 0 || size.value == physical[which])
                     physical[which] = size.value
                 }
-                record(&mut rows, out.stderr_text(), which * 5, run >= 2)
+                record(&mut rows[which], &mut cases, out.stderr_text(), run >= 2)
             }
         }
         for which in 0..2 {
-            for i in 0..5 {
-                row := &mut rows[which * 5 + i]
+            for i in 0..cases.len {
+                row := &mut rows[which][i]
                 array.sort<i64>(&mut row.p50)
                 array.sort<i64>(&mut row.p95)
                 print(f"{label} {names[which]} {cases[i]} {row.p50[3]} {row.p95[3]} {row.bytes} {row.p50[0]} {row.p50[6]} {row.p95[0]} {row.p95[6]}")

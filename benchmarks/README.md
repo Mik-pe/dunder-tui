@@ -4,6 +4,8 @@ Båda programmen bygger om samma vy på 120 × 40 celler, jämför två återanv
 
 I version 0.5.0 mäts även en komplett diagramvy på macOS och Linux, både i minnet och med skrivning till pseudoterminal. [Diagramvyns mätningar och körinstruktioner](widgets.md)
 
+Version 0.6.0 lägger till en lista med blandade radhöjder och hopp mellan ändarna av 16 384 poster. Tid, allokeringar, minne och utdata redovisas för samma sex arbetslaster. [Listmätningar och körinstruktioner](lists.md)
+
 ## Resultat för 0.3.0
 
 Apple M5, macOS 27.2.1, Dunder 0.11.0 med standardoptimeringar och Rust 1.99.1 i releaseprofil. Varje fall kör 20 uppvärmningsbilder och 200 mätbilder. Efter två uppvärmningskörningar växlade programmen körordning sju gånger. Tabellen visar medianen för körningarnas p50 och p95 avrundade till hela mikrosekunder. Dunders klocka hade cirka 1 µs upplösning.

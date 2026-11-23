@@ -1,45 +1,17 @@
 capability stdio
 import ..src.tui
-import ..src.posix
 import .widgets_scene as fixture
-import std.time as clock
-import std.array as array
-import sys
+import .frames
+
+fn draw(scenes: &mut []fixture.Scene, frame: &mut tui.Frame, mode: string, n: i32) {
+    index := if mode == "scroll" { n % 8 } else if mode == "repaint" && n % 2 == 1 { 8 } else { 0 }
+    scenes[index].draw(&mut frame, mode == "cell" && n % 2 == 1)
+}
 
 fn main() {
-    mut timed := true
-    mut terminal := false
-    for i in 1..sys.arg_count() {
-        if sys.arg(i) == "--allocations" { timed = false }
-        if sys.arg(i) == "--terminal" { terminal = true }
-    }
     mut scenes: []fixture.Scene = []
     for phase in 0..8 { scenes.push(fixture.Scene::new(phase, false)) }
     scenes.push(fixture.Scene::new(0, true))
-    for mode in ["idle", "cell", "scroll", "resize", "repaint"] {
-        mut old := tui.Frame::new(0, 0)
-        mut next := tui.Frame::new(96, 24)
-        mut out: []u8 = []
-        mut samples: []i64 = []
-        mut total: i64 = 0
-        for n in 0..220 {
-            w := if mode == "resize" && n % 2 == 0 { 80 } else { 96 }
-            index := if mode == "scroll" { n % 8 } else if mode == "repaint" && n % 2 == 1 { 8 } else { 0 }
-            start := if timed { clock.monotonic_ns() } else { i64(0) }
-            if next.area().w == w { next.clear() } else { next = tui.Frame::new(w, 24) }
-            scenes[index].draw(&mut next, mode == "cell" && n % 2 == 1)
-            out.clear()
-            next.ansi_diff(&old, &mut out)
-            if terminal { assert(posix.write_bytes(&out)) }
-            next = replace(&mut old, move next)
-            if n >= 20 {
-                if timed { samples.push(clock.monotonic_ns() - start) }
-                total += i64(out.len)
-            }
-        }
-        if timed {
-            array.sort<i64>(&mut samples)
-            _ := sys.eprint(f"{mode} {samples[99]} {samples[189]} {total/200}")
-        } else { _ := sys.eprint(f"{total}") }
-    }
+    cases: []string = ["idle", "cell", "scroll", "resize", "repaint"]
+    frames.run(&mut scenes, &cases, draw)
 }
