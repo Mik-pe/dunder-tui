@@ -4,6 +4,8 @@ Bygg interaktiva terminalappar i Dunder för macOS, Linux och Windows. Skriv en 
 
 ## Prova
 
+Vill du se animationerna direkt? Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i en terminal. Samma paket innehåller signalvisualiseraren `signal`. [Ladda ner för macOS, Linux eller Windows](https://github.com/Mik-pe/dunder-tui/releases/tag/v0.5.0)
+
 Med [Dunder](https://github.com/Mik-pe/dunder#installera-och-kör) 0.10 eller 0.11 installerat kan du köra räknaren direkt i en terminal.
 
 ```sh
