@@ -1,0 +1,7 @@
+import .factory
+fn evaluate() -> Result<i32,string> {
+    holder := factory.make()?
+    .Ok(holder.get(7))
+}
+
+fn main() -> i32 { if evaluate().unwrap() == 7 { 0 } else { 1 } }

@@ -1,0 +1,6 @@
+pub struct Holder<B> { value: B }
+impl Holder<B> {
+    pub fn get<S>(&self, value: S) -> S { value }
+}
+
+pub fn make() -> Result<Holder<i32>,string> { .Ok(Holder<i32> { value: 3 }) }
