@@ -1,0 +1,196 @@
+import .tui
+import .text as rich
+import .lines
+import std.cmp as cmp
+
+pub enum BorderType {
+    Plain, Rounded, Double, Thick, LightDoubleDashed, HeavyDoubleDashed, LightTripleDashed, HeavyTripleDashed,
+    LightQuadrupleDashed, HeavyQuadrupleDashed, QuadrantInside, QuadrantOutside, OneEighthWide, OneEighthTall,
+    ProportionalWide, ProportionalTall, Full, Empty,
+}
+
+pub struct BorderSet { tl: rune, tr: rune, bl: rune, br: rune, left: rune, right: rune, top: rune, bottom: rune }
+
+impl BorderSet {
+    pub fn from_type(kind: BorderType) -> Self {
+        pattern := match kind {
+            .Plain => "┌┐└┘││──", .Rounded => "╭╮╰╯││──", .Double => "╔╗╚╝║║══", .Thick => "┏┓┗┛┃┃━━",
+            .LightDoubleDashed => "┌┐└┘╎╎╌╌", .HeavyDoubleDashed => "┏┓┗┛╏╏╍╍",
+            .LightTripleDashed => "┌┐└┘┆┆┄┄", .HeavyTripleDashed => "┏┓┗┛┇┇┅┅",
+            .LightQuadrupleDashed => "┌┐└┘┊┊┈┈", .HeavyQuadrupleDashed => "┏┓┗┛┋┋┉┉",
+            .QuadrantInside => "▗▖▝▘▐▌▄▀", .QuadrantOutside => "▛▜▙▟▌▐▀▄",
+            .OneEighthWide => "▁▁▔▔▏▕▁▔", .OneEighthTall => "▕▏▕▏▕▏▔▁",
+            .ProportionalWide => "▄▄▀▀██▄▀", .ProportionalTall => "██████▀▄",
+            .Full => "████████", .Empty => "        ",
+        }
+        g := pattern.runes()
+        Self { tl: g[0], tr: g[1], bl: g[2], br: g[3], left: g[4], right: g[5], top: g[6], bottom: g[7] }
+    }
+}
+
+pub struct Borders { left: bool, right: bool, top: bool, bottom: bool }
+impl Borders {
+    pub fn all() -> Self { Self { left: true, right: true, top: true, bottom: true } }
+    pub fn none() -> Self { Self { left: false, right: false, top: false, bottom: false } }
+}
+
+pub struct Padding { left: i32, right: i32, top: i32, bottom: i32 }
+impl Padding {
+    pub fn uniform(amount: i32) -> Self { Padding::axes(amount, amount) }
+    pub fn axes(horizontal: i32, vertical: i32) -> Self { Self { left: horizontal, right: horizontal, top: vertical, bottom: vertical } }
+}
+
+pub enum ShadowEffect { Overlay, Symbol(rune), Dimmed, Custom(fn(&mut tui.Frame, tui.Rect, tui.Rect)) }
+pub struct Shadow { effect: ShadowEffect, style: tui.Style, dx: i32, dy: i32 }
+impl Shadow {
+    pub fn new(effect: ShadowEffect) -> Self { Self { effect: effect, style: tui.plain(), dx: 1, dy: 1 } }
+
+    pub fn render(&self, frame: &mut tui.Frame, base: tui.Rect) {
+        x := i32(cmp.clamp<i64>(i64(base.x) + i64(self.dx), 0, 2147483647))
+        y := i32(cmp.clamp<i64>(i64(base.y) + i64(self.dy), 0, 2147483647))
+        area := tui.Rect { x: x, y: y, w: base.w, h: base.h }.intersection(frame.area())
+        for row in area.y..(area.y + area.h) {
+            for col in area.x..(area.x + area.w) {
+                if col >= base.x && row >= base.y && i64(col) < i64(base.x) + i64(base.w) && i64(row) < i64(base.y) + i64(base.h) { continue }
+                cell := tui.Rect { x: col, y: row, w: 1, h: 1 }
+                frame.apply_style(cell, self.style)
+                match self.effect {
+                    .Symbol(ch) => { frame.fill(cell, ch, tui.plain()) },
+                    .Dimmed => {
+                        bg := frame.style_at(col, row).unwrap().get_background().unwrap()
+                        dim := match bg {
+                            .Rgb(r, g, b) => tui.plain().background(.Rgb(r / 2, g / 2, b / 2)),
+                            _ => tui.plain().background(.Black),
+                        }
+                        frame.apply_style(cell, dim.dim())
+                    },
+                    _ => {},
+                }
+            }
+        }
+        match self.effect { .Custom(apply) => { apply(&mut frame, area, base) }, _ => {}, }
+    }
+}
+
+pub enum Position { Inherit, Top, Bottom }
+pub struct Title { line: rich.Line, position: Position }
+
+pub struct Block {
+    borders: Borders, symbols: BorderSet, merge: lines.Merge, padding: Padding,
+    style: tui.Style, border_style: tui.Style, title_style: tui.Style, titles: []Title,
+    title_position: Position, title_alignment: rich.Alignment, shadow: Option<Shadow>,
+}
+
+impl Block {
+    pub fn new() -> Self {
+        Self { borders: Borders::none(), symbols: BorderSet::from_type(.Plain), merge: .Replace, padding: Padding::uniform(0),
+            style: tui.plain(), border_style: tui.plain(), title_style: tui.plain(), titles: [],
+            title_position: .Top, title_alignment: .Left, shadow: .None }
+    }
+
+    pub fn bordered() -> Self { mut block := Block::new(); block.borders = Borders::all(); move block }
+    pub fn border_type(move self, kind: BorderType) -> Self { mut b := move self; b.symbols = BorderSet::from_type(kind); move b }
+    pub fn title(move self, move value: string) -> Self { self.title_at(.Inherit, rich.Line::raw(move value)) }
+    pub fn title_at(move self, position: Position, move line: rich.Line) -> Self {
+        mut b := move self
+        b.titles.push(Title { line: move line, position: position })
+        move b
+    }
+
+    fn position(&self, title: &Title) -> Position {
+        if title.position != .Inherit { return title.position }
+        if self.title_position == .Bottom { .Bottom } else { .Top }
+    }
+
+    fn alignment(&self, title: &Title) -> rich.Alignment {
+        a := title.line.get_alignment()
+        if a != .Inherit { return a }
+        if self.title_alignment == .Inherit { .Left } else { self.title_alignment }
+    }
+
+    pub fn inner(&self, area: tui.Rect) -> tui.Rect {
+        mut top := self.borders.top
+        mut bottom := self.borders.bottom
+        for i in 0..self.titles.len {
+            if self.position(&self.titles[i]) == .Bottom { bottom = true } else { top = true }
+        }
+        l := i64(cmp.max<i32>(0, self.padding.left))
+        t := i64(cmp.max<i32>(0, self.padding.top))
+        left_border := if self.borders.left && area.w > 0 { i64(1) } else { i64(0) }
+        top_border := if top && area.h > 0 { i64(1) } else { i64(0) }
+        w := i64(area.w) - left_border - l - i64(cmp.max<i32>(0, self.padding.right)) - (if self.borders.right { i64(1) } else { i64(0) })
+        h := i64(area.h) - top_border - t - i64(cmp.max<i32>(0, self.padding.bottom)) - (if bottom { i64(1) } else { i64(0) })
+        tui.Rect { x: i32(cmp.min<i64>(2147483647, i64(area.x) + left_border + l)), y: i32(cmp.min<i64>(2147483647, i64(area.y) + top_border + t)),
+            w: i32(cmp.max<i64>(0, w)), h: i32(cmp.max<i64>(0, h)) }
+    }
+
+    fn draw_titles(&self, frame: &mut tui.Frame, row: tui.Rect, position: Position, alignment: rich.Alignment) {
+        mut available := row
+        mut offset := 0
+        if alignment == .Center {
+            mut width: i64 = -1
+            for i in 0..self.titles.len {
+                title := &self.titles[i]
+                if self.position(&title) == position && self.alignment(&title) == alignment { width = cmp.min<i64>(65535, width + i64(title.line.width()) + 1) }
+            }
+            if width < 0 { return }
+            if width <= i64(row.w) { n := (row.w - i32(width)) / 2; available.x += n; available.w -= n }
+            else { offset = (i32(width) - row.w) / 2 }
+        }
+        for j in 0..self.titles.len {
+            if available.w <= 0 { break }
+            i := if alignment == .Right { self.titles.len - 1 - j } else { j }
+            title := &self.titles[i]
+            if self.position(&title) != position || self.alignment(&title) != alignment { continue }
+            size := cmp.min<i32>(title.line.width(), available.w)
+            n := cmp.max<i32>(0, size - offset)
+            x := if alignment == .Right { available.x + available.w - n } else { available.x }
+            part := tui.Rect { x: x, y: row.y, w: n, h: 1 }
+            frame.apply_style(part, self.title_style)
+            if alignment == .Center && offset > 0 {
+                title.line.render_aligned(&mut frame, part, .Right)
+                offset = cmp.max<i32>(0, offset - n - 1)
+            } else if alignment == .Center && size < title.line.width() { title.line.render_aligned(&mut frame, part, .Left) }
+            else { title.line.render(&mut frame, part) }
+            if alignment == .Right { available.w = cmp.max<i32>(0, available.w - n - 1) }
+            else { step := cmp.min<i32>(available.w, n + 1); available.x += step; available.w -= step }
+        }
+    }
+
+    pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) -> tui.Rect {
+        area := bounds.intersection(frame.area())
+        if area.w == 0 || area.h == 0 { return self.inner(area) }
+        frame.apply_style(area, self.style)
+        b := self.borders
+        s := self.symbols
+        l := area.x
+        r := l + area.w - 1
+        t := area.y
+        d := t + area.h - 1
+        inset := self.merge != .Replace
+        y := t + (if inset && b.top { 1 } else { 0 })
+        x := l + (if inset && b.left { 1 } else { 0 })
+        h := d + 1 - y - (if inset && b.bottom { 1 } else { 0 })
+        w := r + 1 - x - (if inset && b.right { 1 } else { 0 })
+        if b.left { frame.stroke(tui.Rect { x: l, y: y, w: 1, h: h }, s.left, self.border_style, self.merge) }
+        if b.top { frame.stroke(tui.Rect { x: x, y: t, w: w, h: 1 }, s.top, self.border_style, self.merge) }
+        if b.right { frame.stroke(tui.Rect { x: r, y: y, w: 1, h: h }, s.right, self.border_style, self.merge) }
+        if b.bottom { frame.stroke(tui.Rect { x: x, y: d, w: w, h: 1 }, s.bottom, self.border_style, self.merge) }
+        if b.right && b.bottom { frame.stroke(tui.Rect { x: r, y: d, w: 1, h: 1 }, s.br, self.border_style, self.merge) }
+        if b.right && b.top { frame.stroke(tui.Rect { x: r, y: t, w: 1, h: 1 }, s.tr, self.border_style, self.merge) }
+        if b.left && b.bottom { frame.stroke(tui.Rect { x: l, y: d, w: 1, h: 1 }, s.bl, self.border_style, self.merge) }
+        if b.left && b.top { frame.stroke(tui.Rect { x: l, y: t, w: 1, h: 1 }, s.tl, self.border_style, self.merge) }
+        if self.titles.len > 0 {
+            left := l + (if b.left { 1 } else { 0 })
+            title_w := cmp.max<i32>(0, r + 1 - left - (if b.right { 1 } else { 0 }))
+            positions: [Position; 2] = [.Top, .Bottom]
+            aligns: [rich.Alignment; 3] = [.Left, .Center, .Right]
+            for pos in positions {
+                row := tui.Rect { x: left, y: if pos == .Top { t } else { d }, w: title_w, h: 1 }
+                for a in aligns { self.draw_titles(&mut frame, row, pos, a) }
+            }
+        }
+        match &self.shadow { .Some(shadow) => { shadow.render(&mut frame, area) }, _ => {}, }
+        self.inner(area)
+    }
+}

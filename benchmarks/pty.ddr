@@ -1,0 +1,68 @@
+capability filesystem, process, stdio, unsafe
+
+import ..src.posix
+import std.bytes as bytes
+import std.process as proc
+import sys
+
+@extern("c", "openpty")
+unsafe fn open_pty(master: ptr, slave: ptr, name: ptr, attributes: ptr, size: ptr) -> i32
+@extern("c", "dup")
+unsafe fn duplicate(fd: i32) -> i32
+@extern("c", "dup2")
+unsafe fn redirect(fd: i32, target: i32) -> i32
+
+unsafe fn launch(program: string, slave: i32) -> Result<proc.Child, sys.IoError> {
+    input := duplicate(0)
+    if input < 0 { return .Err(.BadDescriptor) }
+    defer { _ := redirect(input, 0); _ := sys.fd_close(input) }
+    output := duplicate(1)
+    if output < 0 { return .Err(.BadDescriptor) }
+    defer { _ := redirect(output, 1); _ := sys.fd_close(output) }
+    if redirect(slave, 0) < 0 || redirect(slave, 1) < 0 { return .Err(.BadDescriptor) }
+    mut terminal := posix.state()
+    if !posix.open(&mut terminal) { return .Err(.BadDescriptor) }
+    mut command := proc.Command::new(program.clone(), ["--terminal"])
+    command.inherit_stdio()
+    command.spawn()
+}
+
+unsafe fn bench(program: string, capture: string) -> i32 {
+    mut master := -1
+    mut slave := -1
+    mut size: [u16; 4] = [24, 96, 0, 0]
+    if open_pty(addr(&mut master), addr(&mut slave), ptr(0), ptr(0), addr(&size[0])) != 0 { return 1 }
+    defer { _ := sys.fd_close(master) }
+    child := launch(program, slave)
+    _ := sys.fd_close(slave)
+    if child.is_err() { return 1 }
+    mut running := child.unwrap()
+    mut chunk: []u8 = []
+    mut transcript: []u8 = []
+    mut total: i64 = 0
+    chunk.reserve(65536)
+    while true {
+        chunk.clear()
+        n := sys.fd_read(master, &mut chunk, 65536)
+        if n == -4 { continue }
+        if n == 0 || n == -5 { break }
+        if n < 0 { return 1 }
+        total += n
+        if capture.len > 0 { bytes.extend(&mut transcript, &chunk) }
+    }
+    result := running.wait(-1)
+    if !result.ok || !result.exited || result.code != 0 || result.signal != 0 { return 1 }
+    if capture.len > 0 && sys.write_bytes(capture, &transcript).is_err() { return 1 }
+    print(total)
+    0
+}
+
+fn main() -> i32 {
+    if !(target_is("macos") || target_is("linux")) || sys.arg_count() < 2 || sys.arg_count() > 3 {
+        _ := sys.eprint("Usage on macOS or Linux: pty BENCHMARK [OUTPUT.ansi]")
+        return 1
+    }
+    capture := if sys.arg_count() == 3 { sys.arg(2) } else { "" }
+    unsafe { return bench(sys.arg(1), capture) }
+    1
+}

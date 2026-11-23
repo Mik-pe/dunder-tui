@@ -1,0 +1,77 @@
+capability process, stdio
+import std.array as array
+import std.parse as parse
+import std.process as proc
+import std.text as text
+import sys
+
+struct Samples { p50: []i64, p95: []i64, bytes: i64 }
+
+fn record(rows: &mut []Samples, output: string, offset: i32, keep: bool) {
+    cases := ["idle", "cell", "scroll", "resize", "repaint"]
+    lines := text.split(text.trim(output), "\n")
+    assert(lines.len == cases.len)
+    for i in 0..cases.len {
+        fields := text.split(text.trim(lines[i]), " ")
+        assert(fields.len == 4 && fields[0] == cases[i])
+        median := parse.integer(fields[1])
+        tail := parse.integer(fields[2])
+        size := parse.integer(fields[3])
+        assert(median.ok && tail.ok && size.ok && median.value <= tail.value)
+        if keep {
+            row := &mut rows[offset + i]
+            assert(row.p50.len == 0 || row.bytes == size.value)
+            row.p50.push(median.value)
+            row.p95.push(tail.value)
+            row.bytes = size.value
+        }
+    }
+}
+
+fn main() -> i32 {
+    if sys.arg_count() < 3 || sys.arg_count() > 4 {
+        _ := sys.eprint("Usage: measure DUNDER_BENCH RATATUI_BENCH [PTY_DRIVER]")
+        return 1
+    }
+    programs := [sys.arg(1), sys.arg(2)]
+    cases := ["idle", "cell", "scroll", "resize", "repaint"]
+    names := ["dunder", "ratatui"]
+    modes := if sys.arg_count() == 4 { 2 } else { 1 }
+    for mode in 0..modes {
+        label := if mode == 0 { "memory" } else { "pty" }
+        mut rows: []Samples = []
+        mut physical: [i64; 2] = [-1, -1]
+        for _ in 0..10 { rows.push(Samples { p50: [], p95: [], bytes: 0 }) }
+        for run in 0..9 {
+            for pos in 0..2 {
+                which := (run + pos) % 2
+                program := programs[which].clone()
+                command := if mode == 1 { proc.Command::new(sys.arg(3), [program.clone()]) }
+                                  else { proc.Command::new(program.clone(), []) }
+                out := command.exec()
+                if !out.succeeded() {
+                    _ := sys.eprint(f"{program} exit={out.code} signal={out.signal} error={out.error}")
+                    _ := sys.eprint(out.stderr_text())
+                    return 1
+                }
+                if mode == 1 {
+                    size := parse.integer(text.trim(out.stdout_text()))
+                    assert(size.ok && size.value > 0)
+                    assert(physical[which] < 0 || size.value == physical[which])
+                    physical[which] = size.value
+                }
+                record(&mut rows, out.stderr_text(), which * 5, run >= 2)
+            }
+        }
+        for which in 0..2 {
+            for i in 0..5 {
+                row := &mut rows[which * 5 + i]
+                array.sort<i64>(&mut row.p50)
+                array.sort<i64>(&mut row.p95)
+                print(f"{label} {names[which]} {cases[i]} {row.p50[3]} {row.p95[3]} {row.bytes} {row.p50[0]} {row.p50[6]} {row.p95[0]} {row.p95[6]}")
+            }
+            if mode == 1 { _ := sys.eprint(f"{names[which]} PTY bytes {physical[which]}") }
+        }
+    }
+    0
+}

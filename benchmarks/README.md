@@ -2,6 +2,8 @@
 
 Båda programmen bygger om samma vy på 120 × 40 celler, jämför två återanvända bildbuffertar och kodar uppdateringen till en återanvänd bytebuffert. Vid storleksändring växlar bredden mellan 100 och 120 och hela ytan skickas. Rustprogrammet använder `Buffer::set_stringn`, `Buffer::diff_iter` och `CrosstermBackend::draw` med färgutdata påslagen. Rustberoendena hör till referensprogrammet. [Dunderprogram](render.ddr) · [Rustprogram](reference/src/main.rs)
 
+I version 0.5.0 mäts även en komplett diagramvy på macOS och Linux, både i minnet och med skrivning till pseudoterminal. [Diagramvyns mätningar och körinstruktioner](widgets.md)
+
 ## Resultat för 0.3.0
 
 Apple M5, macOS 27.2.1, Dunder 0.11.0 med standardoptimeringar och Rust 1.99.1 i releaseprofil. Varje fall kör 20 uppvärmningsbilder och 200 mätbilder. Efter två uppvärmningskörningar växlade programmen körordning sju gånger. Tabellen visar medianen för körningarnas p50 och p95 avrundade till hela mikrosekunder. Dunders klocka hade cirka 1 µs upplösning.

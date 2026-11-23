@@ -26,8 +26,8 @@ fn property(cp: i32) -> i32 {
 }
 
 pub fn columns(cp: i32) -> i32 {
-    if cp < 32 || (cp >= 127 && cp < 160) || cp > 0x10ffff { return -1 }
-    if cp < 127 { return 1 }
+    if cp < 32 || (cp >= 127 && cp < 160) || (cp >= 0xd800 && cp <= 0xdfff) || cp > 0x10ffff { return -1 }
+    if cp < 127 || (cp >= 0x2500 && cp <= 0x259f) { return 1 }
     property(cp).shr(7).bit_and(3)
 }
 

@@ -1,5 +1,6 @@
 capability stdio, unsafe
 
+import .lines
 import .width
 import .terminal
 import .posix
@@ -131,6 +132,9 @@ impl Style {
         Self { fg: -1, bg: -1, underline: -1, added: 0, removed: 511 }
     }
 
+    pub fn default_colors() -> Self { mut s := plain(); s.fg = -1; s.bg = -1; s }
+    pub fn swap_colors(self) -> Self { mut s := self; s.fg = self.bg; s.bg = self.fg; s }
+
     pub fn foreground(self, color: Color) -> Self { mut s := self; s.fg = color.encoded(); s }
     pub fn background(self, color: Color) -> Self { mut s := self; s.bg = color.encoded(); s }
     pub fn underline_color(self, color: Color) -> Self { mut s := self; s.underline = color.encoded(); s }
@@ -214,16 +218,32 @@ impl Rect {
         Rect { x: x, y: y, w: i32(cmp.max<i64>(0, right - i64(x))), h: i32(cmp.max<i64>(0, bottom - i64(y))) }
     }
 
+    pub fn take_rows(&mut self, first: i32) -> Rect {
+        n := clamp(first, cmp.max<i32>(0, self.h))
+        part := Rect { x: self.x, y: self.y, w: self.w, h: n }
+        self.y = i32(cmp.min<i64>(2147483647, i64(self.y) + i64(n)))
+        self.h = cmp.max<i32>(0, self.h - n)
+        part
+    }
+
+    pub fn take_cols(&mut self, first: i32) -> Rect {
+        n := clamp(first, cmp.max<i32>(0, self.w))
+        part := Rect { x: self.x, y: self.y, w: n, h: self.h }
+        self.x = i32(cmp.min<i64>(2147483647, i64(self.x) + i64(n)))
+        self.w = cmp.max<i32>(0, self.w - n)
+        part
+    }
+
     pub fn rows(self, first: i32) -> (Rect, Rect) {
-        n := clamp(first, self.h)
-        (Rect { x: self.x, y: self.y, w: self.w, h: n },
-            Rect { x: self.x, y: self.y + n, w: self.w, h: self.h - n })
+        mut rest := self
+        part := rest.take_rows(first)
+        (part, rest)
     }
 
     pub fn cols(self, first: i32) -> (Rect, Rect) {
-        n := clamp(first, self.w)
-        (Rect { x: self.x, y: self.y, w: n, h: self.h },
-            Rect { x: self.x + n, y: self.y, w: self.w - n, h: self.h })
+        mut rest := self
+        part := rest.take_cols(first)
+        (part, rest)
     }
 
     pub fn inset(self, padding: i32) -> Rect {
@@ -239,6 +259,7 @@ const OFFSET_MASK: i32 = 4095
 const CLUSTER: i32 = 0x110000
 const ZERO_CLUSTER: i32 = 0x110001
 const WIDE: i32 = 0x200000
+const WRITTEN_SPACE: i32 = 0x1fffff
 
 pub opaque struct Frame { bounds: Rect, glyphs: []i32, styles: []i64, decorations: []i64, clusters: []string, cluster_cells: []i32 }
 
@@ -309,16 +330,14 @@ impl Frame {
         mut last: i64 = 0
         mut result := self.composite(last, &overlay)
         for y in top..bottom {
-            mut x := left
-            while x < right {
-                i := y * self.bounds.w + x
-                start := self.head(i)
-                old := self.styles[start]
+            row := y * self.bounds.w
+            first := self.head(row + left)
+            final_head := self.head(row + right - 1)
+            end := final_head + self.advance(final_head)
+            for i in first..end {
+                old := self.styles[i]
                 if old != last { last = old; result = self.composite(old, &overlay) }
-                self.styles[start] = result
-                span := self.advance(start)
-                for j in 1..span { self.styles[start + j] = result }
-                x = start - y * self.bounds.w + span
+                self.styles[i] = result
             }
         }
     }
@@ -346,7 +365,7 @@ impl Frame {
         i := y * self.bounds.w + x
         self.erase_span(i)
         for j in 1..span { self.erase_span(i + j) }
-        self.glyphs[i] = symbol - 32
+        self.glyphs[i] = if symbol == 32 { WRITTEN_SPACE } else { symbol - 32 }
         if span > 1 {
             self.glyphs[i] = self.glyphs[i].bit_or(WIDE)
             for j in 1..span {
@@ -387,7 +406,7 @@ impl Frame {
         if overlay.empty() {
             for j in i32(start)..i32(limit) {
                 if self.glyphs[at] < 0 || self.glyphs[at] >= WIDE { self.erase_span(at) }
-                self.glyphs[at] = i32(value[offset + j]) - 32
+                self.glyphs[at] = if value[offset + j] == 32 { WRITTEN_SPACE } else { i32(value[offset + j]) - 32 }
                 at += 1
             }
             return
@@ -401,7 +420,7 @@ impl Frame {
                 combined = if old == 0 || old == brush { brush } else { self.composite(old, &overlay) }
             }
             if self.glyphs[at] < 0 || self.glyphs[at] >= WIDE { self.erase_span(at) }
-            self.glyphs[at] = i32(value[offset + j]) - 32
+            self.glyphs[at] = if value[offset + j] == 32 { WRITTEN_SPACE } else { i32(value[offset + j]) - 32 }
             self.styles[at] = combined
             at += 1
         }
@@ -474,6 +493,85 @@ impl Frame {
         true
     }
 
+    pub fn fill(&mut self, bounds: Rect, symbol: rune, style: Style) {
+        self.fill_cells(bounds, i32(symbol), width.columns(i32(symbol)), "", &style)
+    }
+
+    pub fn fill_symbol(&mut self, bounds: Rect, symbol: string, style: Style) {
+        if symbol.len == 0 { return }
+        if symbol.len == 1 { self.fill(bounds, rune(symbol[0]), style); return }
+        chars := symbol.runes()
+        g := width.glyph(&chars, 0)
+        if g.end != chars.len { return }
+        cp := if chars.len == 1 { i32(chars[0]) } else { CLUSTER }
+        self.fill_cells(bounds, cp, g.span, symbol, &style)
+    }
+
+    fn fill_cells(&mut self, bounds: Rect, cp: i32, cells: i32, cluster: string, style: &Style) {
+        area := bounds.intersection(self.bounds)
+        if cells <= 0 || cells > area.w || area.h <= 0 { return }
+        if cells == 1 && cp != CLUSTER {
+            code := if cp == 32 { WRITTEN_SPACE } else { cp - 32 }
+            mut last: i64 = 0
+            mut combined := self.composite(0, &style)
+            for y in area.y..(area.y + area.h) {
+                start := y * self.bounds.w + area.x
+                for i in start..(start + area.w) {
+                    old := self.styles[i]
+                    if old != last { last = old; combined = self.composite(old, &style) }
+                    if self.glyphs[i] < 0 || self.glyphs[i] >= WIDE { self.erase_span(i) }
+                    self.glyphs[i] = code
+                    self.styles[i] = combined
+                }
+            }
+            return
+        }
+        first := area.x + i32((i64(cells) - (i64(area.x) - i64(bounds.x)) % i64(cells)) % i64(cells))
+        mut last: i64 = 0
+        mut combined := self.composite(0, &style)
+        for y in area.y..(area.y + area.h) {
+            mut x := first
+            while x <= area.x + area.w - cells {
+                i := y * self.bounds.w + x
+                old := self.styles[i]
+                if old != last { last = old; combined = self.composite(old, &style) }
+                if cp == CLUSTER { self.put_cluster(x, y, cluster.clone(), cells, combined) }
+                else { self.put(x, y, cp, cells, combined) }
+                x += cells
+            }
+        }
+    }
+
+    pub fn clear_area(&mut self, bounds: Rect) {
+        area := bounds.intersection(self.bounds)
+        for y in area.y..(area.y + area.h) {
+            for x in area.x..(area.x + area.w) {
+                i := y * self.bounds.w + x
+                self.erase_span(i)
+                self.glyphs[i] = 0
+                self.styles[i] = 0
+            }
+        }
+    }
+
+    pub fn stroke(&mut self, bounds: Rect, symbol: rune, style: Style, strategy: lines.Merge) {
+        if strategy == .Replace { self.fill(bounds, symbol, style); return }
+        area := bounds.intersection(self.bounds)
+        if width.columns(i32(symbol)) != 1 { return }
+        for y in area.y..(area.y + area.h) {
+            for x in area.x..(area.x + area.w) {
+                i := y * self.bounds.w + x
+                result := self.composite(self.styles[i], &style)
+                if self.glyphs[i] == 0 { self.put(x, y, i32(symbol), 1, result); continue }
+                head := self.head(i)
+                current := self.glyphs[head].bit_and(WIDE - 1) + 32
+                merged := lines.merge(current, i32(symbol), strategy)
+                if merged != current { self.put(x, y, merged, 1, result) }
+                else { self.apply_style(Rect { x: x, y: y, w: 1, h: 1 }, style) }
+            }
+        }
+    }
+
     pub fn label(&mut self, area: Rect, value: string) { self.write_text(area, value, 0, &plain()) }
 
     pub fn panel(&mut self, area: Rect, title: string, style: Style) -> Rect {
@@ -515,6 +613,7 @@ impl Frame {
 
     fn append_cell(&self, out: &mut []u8, i: i32, terminal_output: bool) {
         if self.glyphs[i] < 0 { return }
+        if self.glyphs[i] == WRITTEN_SPACE { out.push(32); return }
         cp := self.glyphs[i].bit_and(WIDE - 1) + 32
         if cp == CLUSTER || cp == ZERO_CLUSTER {
             if terminal_output && cp == ZERO_CLUSTER { out.push(b' ') }
@@ -564,8 +663,12 @@ impl Frame {
     }
 
     fn changed(&self, previous: &Frame, i: i32) -> bool {
-        self.glyphs[i] != previous.glyphs[i] || !self.same_style(&previous, i) ||
-        (self.glyphs[i].bit_and(WIDE - 1) >= CLUSTER - 32 && self.clusters[i] != previous.clusters[i])
+        code := self.glyphs[i]
+        old := previous.glyphs[i]
+        if code != old && !(code == 0 && old == WRITTEN_SPACE) && !(old == 0 && code == WRITTEN_SPACE) { return true }
+        if !self.same_style(&previous, i) { return true }
+        symbol := code.bit_and(WIDE - 1) + 32
+        (symbol == CLUSTER || symbol == ZERO_CLUSTER) && self.clusters[i] != previous.clusters[i]
     }
 
     fn shared_style_floor(&self, previous: &Frame) -> i64 {
@@ -587,7 +690,7 @@ impl Frame {
         }
         if self.cluster_cells.len > 0 {
             for i in row..(row + self.bounds.w) {
-                if self.glyphs[i] >= 0 && self.glyphs[i].bit_and(WIDE - 1) >= CLUSTER - 32 && self.clusters[i] != previous.clusters[i] { return false }
+                if self.glyphs[i] >= 0 && self.glyphs[i] != WRITTEN_SPACE && self.glyphs[i].bit_and(WIDE - 1) >= CLUSTER - 32 && self.clusters[i] != previous.clusters[i] { return false }
             }
         }
         if shared_floor != -9223372036854775808 {
@@ -596,18 +699,18 @@ impl Frame {
         true
     }
 
-    fn run_start(&self, previous: &Frame, i: i32, end: i32, full: bool) -> i32 {
+    fn run_start(&self, previous: &Frame, i: i32, end: i32) -> i32 {
         mut start := i
         while start < end {
-            if self.glyphs[start] >= 0 && (full || self.changed(&previous, start)) { break }
+            if self.glyphs[start] >= 0 && self.changed(&previous, start) { break }
             start += 1
         }
         start
     }
 
-    fn run_end(&self, previous: &Frame, start: i32, end: i32, full: bool) -> i32 {
+    fn run_end(&self, previous: &Frame, start: i32, end: i32) -> i32 {
         mut finish := start
-        while finish < end && (full || self.changed(&previous, finish)) {
+        while finish < end && self.changed(&previous, finish) {
             finish += self.advance(finish)
         }
         finish
@@ -623,9 +726,9 @@ impl Frame {
             end := row + self.bounds.w
             mut at := row
             while at < end {
-                start := self.run_start(&previous, at, end, full)
+                start := if full { at } else { self.run_start(&previous, at, end) }
                 if start == end { break }
-                finish := self.run_end(&previous, start, end, full)
+                finish := if full { end } else { self.run_end(&previous, start, end) }
                 paint.cursor(&mut out, start - row, y)
                 mut i := start
                 while i < finish {
@@ -653,9 +756,9 @@ impl Frame {
             end := row + self.bounds.w
             mut at := row
             while at < end {
-                start := self.run_start(&previous, at, end, full)
+                start := if full { at } else { self.run_start(&previous, at, end) }
                 if start == end { break }
-                finish := self.run_end(&previous, start, end, full)
+                finish := if full { end } else { self.run_end(&previous, start, end) }
                 mut i := start
                 while i < finish {
                     style := self.styles[i]
@@ -738,12 +841,19 @@ impl GlyphRun {
     }
 
     pub fn render(&self, frame: &mut Frame, bounds: Rect, first: i32, end: i32, style: Style) {
-        if bounds.w <= 0 || bounds.h <= 0 || bounds.y < 0 || bounds.y >= frame.bounds.h { return }
+        _ := self.write(&mut frame, bounds, first, end, style)
+    }
+
+    pub fn write(&self, frame: &mut Frame, bounds: Rect, first: i32, end: i32, style: Style) -> i32 {
+        if bounds.w <= 0 || bounds.h <= 0 || bounds.y < 0 || bounds.y >= frame.bounds.h { return 0 }
         start := clamp(first, self.count())
         finish := clamp(end, self.count())
-        if start >= finish { return }
+        if start >= finish { return 0 }
         brush := frame.encode(style)
-        if self.ascii { frame.ascii_slice(bounds, self.source, start, finish, brush, &style); return }
+        if self.ascii {
+            frame.ascii_slice(bounds, self.source, start, finish, brush, &style)
+            return cmp.max<i32>(0, i32(cmp.min<i64>(i64(finish - start), cmp.min<i64>(i64(bounds.w), i64(frame.bounds.w) - i64(bounds.x)))))
+        }
         mut x := i64(bounds.x)
         right := cmp.min<i64>(i64(frame.bounds.w), x + i64(bounds.w))
         mut last: i64 = 0
@@ -765,6 +875,7 @@ impl GlyphRun {
             }
             x += i64(cells)
         }
+        i32(x - i64(bounds.x))
     }
 }
 

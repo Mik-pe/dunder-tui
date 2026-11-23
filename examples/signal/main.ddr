@@ -1,0 +1,139 @@
+capability stdio
+
+import tui
+import tui.widgets as ui
+import tui.block as box
+import tui.barchart as chart
+import tui.text as rich
+import std.math as math
+import std.cmp as cmp
+import sys
+
+struct Synth {
+    phase: f64, gain: i32, cycles: i32, paused: bool, page: i32, last: i64,
+    tabs: ui.Tabs, wave: ui.Sparkline, spectrum: chart.BarChart, level: ui.Gauge,
+}
+
+fn panel(move title: string, accent: u32) -> box.Block {
+    mut b := box.Block::bordered().border_type(.Rounded)
+        .title_at(.Top, rich.Line::raw(move title).styled(tui.plain().foreground_rgb(accent).bold()))
+    b.border_style = tui.plain().foreground_rgb(0x37425f)
+    b.padding = box.Padding::axes(1, 0)
+    move b
+}
+
+fn sample(s: &mut Synth) {
+    mut signal: [f64; 128] = [0.0; 128]
+    mut squared := 0.0
+    for i in 0..signal.len {
+        angle := 2.0 * math.PI * f64(s.cycles * i) / f64(signal.len) + s.phase
+        v := (math.sin(angle) * 0.72 + math.sin(2.0 * angle + 0.6) * 0.28) * f64(s.gain) / 100.0
+        signal[i] = v
+        squared += v * v
+        s.wave.data[i].value = .Some(u64((v + 1.0) * 500.0))
+    }
+    s.level.ratio = (squared / f64(signal.len)).sqrt()
+    for bin in 1..17 {
+        angle := -2.0 * math.PI * f64(bin) / f64(signal.len)
+        step_re := math.cos(angle)
+        step_im := math.sin(angle)
+        mut re := 0.0
+        mut im := 0.0
+        mut c := 1.0
+        mut d := 0.0
+        for v in &signal {
+            re += v * c
+            im += v * d
+            next := c * step_re - d * step_im
+            d = c * step_im + d * step_re
+            c = next
+        }
+        amplitude := (re * re + im * im).sqrt() * 2.0 / f64(signal.len)
+        s.spectrum.groups[0].bars[bin - 1].value = u64((amplitude * 100.0).round())
+    }
+}
+
+fn build() -> Synth {
+    mut tabs := ui.Tabs::new([rich.Line::raw("Vågform"), rich.Line::raw("Spektrum")])
+    tabs.highlight = tui.plain().foreground_rgb(0x0d1021).background_rgb(0x8dffdb).bold()
+    tabs.style = tui.plain().foreground_rgb(0xafbad5)
+    tabs.divider = rich.Span::raw(" ")
+    mut samples: []ui.Sample = []
+    for i in 0..128 {
+        tint := tui.Color::from_hsl(172.0 + f64(i) * 0.85, 0.86, 0.70)
+        samples.push(ui.Sample::styled(0, tui.ink(tint)))
+    }
+    mut wave := ui.Sparkline::bars(move samples)
+    wave.block = panel(" SIGNAL ", 0x8dffdb)
+    wave.maximum = .Some(1000)
+    mut bars: []chart.Bar = []
+    for bin in 1..17 {
+        mut b := chart.Bar::named(bin.str(), 0)
+        b.style = tui.ink(tui.Color::from_hsl(269.0 + f64(bin) * 3.4, 0.85, 0.72))
+        bars.push(move b)
+    }
+    mut spectrum := chart.BarChart::new(move bars)
+    spectrum.block = panel(" FOURIERSPEKTRUM ", 0xf4a8ee)
+    spectrum.bar_width = 3
+    spectrum.maximum = .Some(100)
+    spectrum.value_style = tui.plain().foreground_rgb(0x121426).background_rgb(0xeab6ff)
+    spectrum.label_style = tui.plain().foreground_rgb(0xafbad5)
+    mut level := ui.Gauge::new(0.0)
+    level.fractional = true
+    level.bar_style = tui.plain().foreground_rgb(0x8dffdb).background_rgb(0x23354b)
+    mut s := Synth { phase: 0.0, gain: 80, cycles: 3, paused: false, page: 0, last: 0,
+        tabs: move tabs, wave: move wave, spectrum: move spectrum, level: move level }
+    sample(&mut s)
+    move s
+}
+
+fn draw(f: &mut tui.Frame, s: &Synth) {
+    area := f.area()
+    f.apply_style(area, tui.plain().background_rgb(0x101426))
+    mut controls := area
+    menu := controls.take_rows(1)
+    s.tabs.render(&mut f, menu)
+    plot := controls.take_rows(controls.h - 3)
+    if s.page == 0 { s.wave.render(&mut f, plot) } else { s.spectrum.render(&mut f, plot) }
+    mut bar := controls.take_rows(1)
+    rms := bar.take_cols(5)
+    f.text(rms, " RMS", tui.plain().foreground_rgb(0x8dffdb))
+    s.level.render(&mut f, bar)
+    state := controls.take_rows(1)
+    run := if s.paused { "Paus" } else { "Spelar" }
+    f.text(state, f" {run}   {s.cycles} cykler / 128 sampel   nivå {s.gain}%", tui.plain().foreground_rgb(0xedb5fd))
+    f.text(controls, " Tab vy   ← → frekvens   ↑ ↓ nivå   Space paus   q avsluta", tui.plain().foreground_rgb(0xafbad5))
+}
+
+fn tick(s: &mut Synth, elapsed: i64) -> bool {
+    dt := elapsed - s.last
+    s.last = elapsed
+    if s.paused { return false }
+    s.phase += f64(dt) * 0.002
+    sample(&mut s)
+    true
+}
+
+fn update(s: &mut Synth, key: tui.Key) -> bool {
+    match key {
+        .Tab => { s.page = 1 - s.page; s.tabs.selected = .Some(s.page) },
+        .Up => { s.gain = cmp.min<i32>(100, s.gain + 5) },
+        .Down => { s.gain = cmp.max<i32>(0, s.gain - 5) },
+        .Left => { s.cycles = cmp.max<i32>(1, s.cycles - 1) },
+        .Right => { s.cycles = cmp.min<i32>(8, s.cycles + 1) },
+        .Char(c) if c == ` ` => { s.paused = !s.paused },
+        .Char(c) if c == `q` => { return false },
+        .Escape => { return false },
+        _ => {},
+    }
+    sample(&mut s)
+    true
+}
+
+fn main() -> i32 {
+    mut state := build()
+    match tui.animate(&mut state, 30, draw, update, tick) {
+        .Ok => 0,
+        .Err(message) => { _ := sys.eprint(message); 1 },
+    }
+}

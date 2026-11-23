@@ -4,16 +4,16 @@ Referensen är taggen `ratatui-v0.30.2`, inklusive de stabila tillvalen. Tabelle
 
 | Område | Finns i Dunder | Återstår att leverera eller verifiera |
 | --- | --- | --- |
-| Buffer och Cell | Återanvända bildbuffertar, breda tecken, celldiff, färgutdata och avläsning av rader och cellstilar. | Fristående buffertoperationer med origo, ändrad storlek och sammanslagning. Cellernas regler för att hoppa över eller alltid rita och sammanslagning av linjesymboler. |
+| Buffer och Cell | Återanvända bildbuffertar, breda tecken, celldiff, exakt och ungefärlig sammanslagning av linjesymboler, färgutdata och avläsning av rader och cellstilar. | Fristående buffertoperationer med origo, ändrad storlek och sammanslagning. Cellernas regler för att hoppa över eller alltid rita. |
 | Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. | Material- och Tailwind-paletter, beständiga dataformat och full täckning för konvertering mellan stilrepresentationer. |
 | Text | Span, Line, Text, Paragraph, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. | Strängbredder för skriftspecifika ligaturer över grafemgränser, full täckning för sammansatta emoji och alla operationer på fristående texttyper. |
 | Layout | Rektanglar, marginal runt en yta, delning av rader och kolumner. | Fler rektangeloperationer, riktning, marginaler per axel, längd-/kvot-/min-/max-/procent-/fyllnadsregler, flex, mellanrum och layoutcache. |
-| Block, listor och tabeller | En ram med titel och en lista som följer markeringen. | Ramtyper, symboler, titlar, kantkombinationer, fyllning och skuggor. Flerradiga listposter, listtillstånd, tabeller, rader, celler och tillstånd för rad och kolumn. |
-| Övriga widgets | Paragraph och RGB-canvas med punkter, linjer och halvblock. | Clear, Fill, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, BarChart, Chart, kalender med datumstilar, logotyp och maskot. Canvas med koordinatgränser, lager, markörer, former, kartor och etiketter. |
+| Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna tecken, individuella kanter, justerade titlar, utfyllnad och skuggor. En lista som följer markeringen. | Flerradiga listposter, listtillstånd, tabeller, rader, celler och tillstånd för rad och kolumn. |
+| Övriga widgets | Clear och Fill på Frame, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, Paragraph och RGB-canvas med punkter, linjer och halvblock. | Chart, kalender med datumstilar, logotyp och maskot. Canvas med koordinatgränser, lager, markörer, former, kartor och etiketter. |
 | Egna widgets och tester | Funktioner ritar på en Frame. Tillstånd kan uppdateras vid ritning med `run_stateful`. En Frame kan testas utan terminal. | Gemensamma gränssnitt för widgets med eget tillstånd och utbytbara backends, testbackend med skrollhistorik och markör. |
 | Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, ANSI och Win32. | Fast och infogad vyport, innehåll ovanför vyn, markörstyrning från Frame, regionrensning och regionskrollning, fönstrets pixelmått, livscykel- och felprov. |
 | Stabil Rust-integration | Jämförelseprogrammen använder den låsta Rustreferensen. Dunder-appar byggs offline. | Kontrollera Dunder-motsvarigheter till bekvämlighetsmakron, serialisering, cachning och backendval där dessa påverkar appens beteende. |
-| Effektivitet och plattformar | Repeterbara tid-, minnes- och utdataprov på macOS. Pseudoterminalprov på macOS och Linux ARM64/x86-64. Win32-prov under Wine. | Nativ Windows x64, fler representativa arbetslaster med layout och widgets, färre allokeringar vid konstruktion av färgvärden per rad och jämförbara mätningar på fler värdar. |
+| Effektivitet och plattformar | Tid, minne, allokeringar och faktiska terminalbyte för en widgetvy på macOS och Linux. Pseudoterminalprov på macOS och Linux ARM64/x86-64. Win32-prov under Wine. | Nativ Windows x64, fler arbetslaster med komplex layout, lägre kostnad för dynamiska färgvärden och paritet på fysisk x86-64. |
 
 Stilprovet genererar en bild med 1 024 celler via Dunders publika API, tolkar terminalströmmen och jämför varje attribut, färg och position med både Ratatuis buffert och Crossterms terminalström. Det täcker alla 512 kombinationer av de nio attributen. Ytterligare 512 färgtripplar konverteras med både HSL och HSLuv i båda programmen. [Dunderprovet](../tests/style_reference.ddr) · [Referens och terminalavkodare](../benchmarks/reference/examples/styles.rs)
 
@@ -46,3 +46,19 @@ Alla 766 officiella prov för grafemgränser i Unicode 17.0 och alla 1 111 999 U
 ```sh
 dunder run --locked --offline tools/unicode.ddr -- /sökväg/till/UCD-17 /sökväg/till/UCD-18
 ```
+
+## Widgets i 0.5.0
+
+Bildprovet ritar på en färgad bakgrund med en kontrollkant runt widgeten. För varje cell jämförs tecken, för- och bakgrundsfärg samt de attribut som används i provet. Av 24 516 bilder är 24 485 identiska över hela bufferten. I resterande 31 bilder skriver Ratatuis stapeldiagram utanför sin tilldelade ruta. Dunder matchar alla celler inuti rutan och behåller omgivningen intakt. Provet inkluderar samtliga 36 tillstånd som används för att mäta diagramvyn. Ytterligare 50 700 kombinationer av linjetecken och sammanslagningsregler ger samma symbol som Ratatui. [Dunderprov](../tests/widget_reference.ddr) · [Ratatui-prov](../benchmarks/reference/examples/widgets.rs) · [Bildtider och terminalutdata](../benchmarks/widgets.md)
+
+Kör båda jämförelserna från repots rot.
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/widget_reference.ddr -o build/widget-reference
+cargo build --locked --release --manifest-path benchmarks/reference/Cargo.toml --example widgets --target-dir build/rust
+build/widget-reference | build/rust/release/examples/widgets
+build/widget-reference --merge | build/rust/release/examples/widgets --merge
+```
+
+Blockkanter och vissa widgets tar ett enskilt tecken som symbol. `Frame.fill_symbol` tar även ett grafem med flera Unicode-skalärer. Stapeldiagrammet delar en färgsatt värdeetikett vid en hel grafemgräns och använder terminalkolumner för dess bredd.

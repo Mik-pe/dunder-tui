@@ -1,3 +1,7 @@
+import ..src.widgets as widgets
+import ..src.barchart as chart
+import ..src.block as box
+import ..src.lines as borders
 import ..src.text as rich
 import .grapheme_cases as cases
 import std.parse as parse
@@ -330,4 +334,90 @@ import ..src.width
     data.clear()
     next.ansi_diff(&old, &mut data)
     assert(bytes.decode(&data).unwrap() == "\x1b[1;1H \u{301}z")
+}
+
+@test fn fill_and_clear_preserve_wide_graphemes_and_remove_explicit_spaces() {
+    mut f := tui.Frame::new(8, 2)
+    f.fill(f.area(), `#`, tui.ink(.Cyan))
+    f.fill_symbol(tui.Rect { x: -1, y: 0, w: 7, h: 1 }, "👩🏽‍💻", tui.plain().bold())
+    assert(f.line(0) == "#👩🏽‍💻👩🏽‍💻###")
+    f.clear_area(tui.Rect { x: 2, y: 0, w: 1, h: 1 })
+    assert(f.line(0) == "#  👩🏽‍💻###" && f.style_at(2, 0).unwrap().get_foreground() == .Some(tui.Color.Default))
+    f.fill_symbol(f.area(), "ab", tui.plain())
+    assert(width.columns(0xd800) == -1)
+    f.fill(f.area(), rune(0), tui.plain())
+    assert(f.line(1) == "########")
+    f.clear()
+    f.label(f.area(), " x")
+    f.stroke(tui.Rect { x: 0, y: 0, w: 8, h: 1 }, `─`, tui.ink(.Red), .Exact)
+    assert(f.line(0) == " x──────")
+    f.clear_area(tui.Rect { x: 0, y: 0, w: 1, h: 1 })
+    f.stroke(tui.Rect { x: 0, y: 0, w: 1, h: 1 }, `│`, tui.plain(), .Exact)
+    assert(f.line(0) == "│x──────")
+    f.clear()
+    f.fill(f.area(), ` `, tui.plain())
+    mut out: []u8 = []
+    blank := tui.Frame::new(8, 2)
+    f.ansi_diff(&blank, &mut out)
+    assert(out.len == 0)
+}
+
+@test fn blocks_merge_shared_edges_and_apply_custom_shadow() {
+    mut f := tui.Frame::new(7, 4)
+    mut block := box.Block::bordered()
+    block.merge = .Fuzzy
+    _ := block.render(&mut f, tui.Rect { x: 0, y: 0, w: 4, h: 3 })
+    _ := block.render(&mut f, tui.Rect { x: 3, y: 0, w: 4, h: 3 })
+    assert(f.line(0) == "┌──┬──┐" && f.line(2) == "└──┴──┘")
+    assert(borders.merge(0x2500, 0x2551, .Fuzzy) == 0x256b)
+    shadow := box.Shadow::new(.Custom(fn(frame: &mut tui.Frame, area: tui.Rect, base: tui.Rect) {
+        assert(base.w == 4)
+        frame.fill(tui.Rect { x: area.x, y: area.y + area.h - 1, w: area.w, h: 1 }, `·`, tui.plain())
+    }))
+    shadow.render(&mut f, tui.Rect { x: 0, y: 0, w: 4, h: 3 })
+    assert(f.line(3) == " ····  ")
+}
+
+@test fn gauges_sparkline_and_scroll_state_cover_extreme_values() {
+    max: u64 = 0xffffffffffffffff
+    assert(widgets.bar_ticks(max - 1, max, 32768) == 32767)
+    assert(widgets.bar_ticks(max / 2, max, 32767) == 16383)
+    assert(widgets.bar_ticks(9, 3, 8) == 8 && widgets.bar_ticks(3, 0, 8) == 0)
+    mut state := widgets.ScrollState::new(0)
+    state.next()
+    assert(state.position == 0)
+    state.length = 2147483647
+    state.last(); state.next()
+    assert(state.position == 2147483646)
+    state.first(); state.prev()
+    assert(state.position == 0)
+    mut t := widgets.Tabs::new([])
+    assert(t.selected.is_none() && t.width() == 0)
+    t.set_titles([rich.Line::raw("a"), rich.Line::raw("界")])
+    assert(t.width() == 8 && t.selected == .Some(0))
+    t.selected = .Some(999)
+    t.set_titles([rich.Line::raw("z")])
+    assert(t.selected == .Some(0))
+    mut f := tui.Frame::new(7, 2)
+    mut spark := widgets.Sparkline::bars([widgets.Sample::missing(), widgets.Sample::new(max - 1)])
+    spark.maximum = .Some(max); spark.flow = .RightToLeft; spark.missing_symbol = `·`
+    spark.render(&mut f, f.area())
+    assert(f.line(0) == "     ▇·" && f.line(1) == "     █·")
+}
+
+@test fn horizontal_chart_clips_labels_and_splits_values_at_graphemes() {
+    mut f := tui.Frame::new(8, 3)
+    f.fill(f.area(), `#`, tui.plain())
+    mut b := chart.Bar::named("abc", 1)
+    b.text_value = .Some("界X")
+    mut graph := chart.BarChart::new([move b])
+    graph.direction = .Horizontal
+    graph.maximum = .Some(3)
+    graph.value_style = tui.ink(.Cyan)
+    graph.render(&mut f, tui.Rect { x: 1, y: 1, w: 1, h: 1 })
+    assert(f.line(1) == "#a######")
+    graph.render(&mut f, tui.Rect { x: 1, y: 1, w: 7, h: 1 })
+    assert(f.line(1) == "#abc#界X")
+    assert(f.style_at(5, 1).unwrap().get_foreground() == .Some(tui.Color.Cyan))
+    assert(f.line(2) == "########")
 }

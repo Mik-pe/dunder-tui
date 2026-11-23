@@ -1,0 +1,214 @@
+capability stdio
+
+import ..benchmarks.widgets_scene as scene
+import ..src.tui
+import ..src.widgets as ui
+import ..src.barchart as chart
+import ..src.block as box
+import ..src.lines
+import ..src.text as rich
+import std.bytes as bytes
+import sys
+
+fn snapshot(frame: &tui.Frame) {
+    mut out: []u8 = []
+    for y in 0..frame.area().h {
+        for x in 0..frame.area().w {
+            ch := frame.symbol_at(x,y).unwrap()
+            if ch == "" { out.push(b'~'); continue }
+            s := frame.style_at(x,y).unwrap()
+            out.push(u8(66 + s.get_foreground().unwrap().code()))
+            out.push(u8(66 + s.get_background().unwrap().code()))
+            flags := (if s.has(.Bold) { 1 } else { 0 }) + (if s.has(.Italic) { 2 } else { 0 }) +
+                (if s.has(.Reversed) { 4 } else { 0 }) + (if s.has(.Dim) { 8 } else { 0 })
+            out.push(u8(65 + flags))
+            bytes.append_utf8(&mut out, ch)
+            out.push(b'|')
+        }
+    }
+    print(bytes.decode(&out).unwrap())
+}
+
+fn seeded(w: i32, h: i32) -> tui.Frame {
+    mut frame := tui.Frame::new(w + 2, h + 2)
+    frame.fill(frame.area(), `.`, tui.ink(.Green).background(.Blue).bold())
+    move frame
+}
+
+fn fixture_block() -> box.Block {
+    mut b := box.Block::bordered().border_type(.Rounded).title("A")
+    b.border_style = tui.ink(.Yellow)
+    move b
+}
+
+fn gauges(area: tui.Rect) {
+    for ratio in [0.0, 0.005, 0.125, 0.375, 0.5, 0.6667, 0.875, 0.999, 1.0] {
+        for kind in 0..8 {
+            mut f := seeded(area.w, area.h)
+            mut g := ui.Gauge::new(ratio)
+            g.fractional = kind % 2 == 1
+            g.style = tui.plain().background(.Cyan)
+            if kind.bit_and(2) != 0 { g.bar_style = tui.ink(.Red).background(.Magenta).italic() }
+            if kind.bit_and(4) != 0 { g.block = fixture_block(); g.label = .Some(rich.Span::styled("界x", tui.ink(.Yellow))) }
+            g.render(&mut f, area)
+            snapshot(&f)
+        }
+        for kind in 0..4 {
+            mut f := seeded(area.w, area.h)
+            mut g := ui.LineGauge::new(ratio)
+            g.filled_style = tui.ink(.Red)
+            g.unfilled_style = tui.ink(.Cyan).italic()
+            g.style = tui.plain().background(.Magenta)
+            if kind % 2 == 1 { g.block = fixture_block() }
+            if kind >= 2 {
+                g.label = .Some(rich.Line::new([rich.Span::styled("界", tui.ink(.Yellow)), rich.Span::raw("ab")]))
+                g.filled_symbol = `═`; g.unfilled_symbol = `·`
+            }
+            g.render(&mut f, area)
+            snapshot(&f)
+        }
+    }
+}
+
+fn sparklines(area: tui.Rect) {
+    for kind in 0..16 {
+        mut f := seeded(area.w, area.h)
+        mut s := ui.Sparkline::bars([ui.Sample::new(0), ui.Sample::missing(), ui.Sample::styled(2, tui.ink(.Red)),
+            ui.Sample::new(7), ui.Sample::new(11), ui.Sample::new(5), ui.Sample::new(8)])
+        s.style = tui.ink(.Cyan).italic()
+        s.missing_style = tui.ink(.Yellow)
+        s.missing_symbol = `·`
+        if kind.bit_and(1) != 0 { s.flow = .RightToLeft }
+        if kind.bit_and(2) != 0 { s.symbols = ui.three_levels() }
+        if kind.bit_and(4) != 0 { s.maximum = .Some(6) }
+        if kind.bit_and(8) != 0 { s.block = fixture_block() }
+        s.render(&mut f, area)
+        snapshot(&f)
+    }
+}
+
+fn tabs(area: tui.Rect) {
+    for kind in 0..12 {
+        mut f := seeded(area.w, area.h)
+        mut t := ui.Tabs::new([rich.Line::raw("A"), rich.Line::new([rich.Span::styled("界", tui.ink(.Red)), rich.Span::raw("z")]), rich.Line::raw("B")])
+        t.highlight = tui.plain().background(.Yellow).inverted()
+        t.style = tui.ink(.Cyan)
+        if kind % 3 == 1 { t.selected = .Some(1) } else if kind % 3 == 2 { t.selected = .None }
+        if kind.bit_and(1) != 0 { t.left_padding = rich.Line::raw(""); t.right_padding = rich.Line::raw(">"); t.divider = rich.Span::styled("·", tui.ink(.Red)) }
+        if kind >= 6 { t.block = fixture_block() }
+        t.render(&mut f, area)
+        snapshot(&f)
+    }
+}
+
+fn scrollbars(area: tui.Rect) {
+    edges: [ui.Edge; 4] = [.Left, .Right, .Top, .Bottom]
+    for edge in edges {
+        for kind in 0..8 {
+            mut b := ui.Scrollbar::new(edge)
+            if kind.bit_and(1) != 0 { b.begin = ui.ScrollPart::hidden(); b.end = ui.ScrollPart::hidden() }
+            if kind.bit_and(2) != 0 { b.track = ui.ScrollPart::hidden(); b.thumb = ui.ScrollPart::new("■", tui.ink(.Cyan)) }
+            for pos in [0, 1, 4, 9, 25] {
+                mut f := seeded(area.w, area.h)
+                mut s := ui.ScrollState::new(10)
+                s.position = pos
+                if kind.bit_and(4) != 0 { s.viewport = 3 }
+                b.render(&mut f, area, &s)
+                snapshot(&f)
+            }
+        }
+    }
+}
+
+fn blocks(area: tui.Rect) {
+    types: [box.BorderType; 18] = [.Plain, .Rounded, .Double, .Thick, .LightDoubleDashed, .HeavyDoubleDashed,
+        .LightTripleDashed, .HeavyTripleDashed, .LightQuadrupleDashed, .HeavyQuadrupleDashed, .QuadrantInside, .QuadrantOutside,
+        .OneEighthWide, .OneEighthTall, .ProportionalWide, .ProportionalTall, .Full, .Empty]
+    for style in types {
+        for mask in 0..16 {
+            mut f := seeded(area.w, area.h)
+            mut b := box.Block::new().border_type(style)
+            b.borders = box.Borders { left: mask.bit_and(1) != 0, right: mask.bit_and(2) != 0, top: mask.bit_and(4) != 0, bottom: mask.bit_and(8) != 0 }
+            b.border_style = tui.ink(.Yellow)
+            b.style = tui.plain().background(.Magenta)
+            _ := b.render(&mut f, area)
+            snapshot(&f)
+        }
+    }
+    for mode in 0..12 {
+        mut f := seeded(area.w, area.h)
+        mut b := box.Block::bordered().title_at(.Top, rich.Line::raw("Abcde"))
+            .title_at(.Top, rich.Line::raw("x").align(.Center))
+            .title_at(.Top, rich.Line::raw("Centrum").align(.Center)).title_at(.Top, rich.Line::raw("Z").align(.Right))
+            .title_at(.Inherit, rich.Line::raw("xyz"))
+        b.title_position = .Bottom
+        b.title_style = tui.ink(.Red)
+        if mode % 2 == 1 { b.title_alignment = .Right }
+        b.padding = box.Padding::axes(mode % 3, mode % 2)
+        mut shadow := box.Shadow::new(if mode < 4 { .Dimmed } else if mode < 8 { .Symbol(`░`) } else { .Overlay })
+        shadow.style = tui.ink(.Cyan)
+        shadow.dx = mode % 3 - 1
+        shadow.dy = mode % 4 - 2
+        b.shadow = .Some(move shadow)
+        inner := b.render(&mut f, area)
+        f.fill(inner, `+`, tui.ink(.Magenta))
+        snapshot(&f)
+    }
+}
+
+fn bars(area: tui.Rect) {
+    for kind in 0..16 {
+        mut f := seeded(area.w, area.h)
+        mut a := chart.Bar::named("A", 14)
+        a.style = tui.ink(.Yellow)
+        a.value_style = tui.plain().inverted()
+        a.text_value = .Some("fast")
+        group := chart.Group { bars: [move a, chart.Bar::named("BB", 0), chart.Bar::new(6)], label: .Some(rich.Line::raw("G").align(.Center)) }
+        mut b := chart.BarChart::grouped([move group, chart.Group::new([chart.Bar::new(10), chart.Bar::named("C", 2)])])
+        b.value_style = tui.ink(.Red)
+        b.bar_style = tui.ink(.Cyan)
+        b.label_style = tui.ink(.Magenta)
+        b.bar_width = 1 + kind % 3
+        b.bar_gap = kind % 2
+        b.group_gap = (kind / 2) % 2
+        if kind.bit_and(4) != 0 { b.maximum = .Some(9) }
+        if kind.bit_and(8) != 0 { b.direction = .Horizontal }
+        b.render(&mut f, area)
+        snapshot(&f)
+    }
+}
+
+fn main() {
+    if sys.arg_count() > 1 && sys.arg(1) == "--merge" {
+        modes: [lines.Merge; 3] = [.Replace, .Exact, .Fuzzy]
+        for mode in modes {
+            for a in 0x24ff..0x2581 {
+                mut out: []u8 = []
+                for b in 0x24ff..0x2581 { bytes.append_utf8(&mut out, rune(lines.merge(a,b,mode)).str()) }
+                print(bytes.decode(&out).unwrap())
+            }
+        }
+        return
+    }
+    for w in [0,1,2,3,5,8,13,22] {
+        for h in [0,1,2,3,6] {
+            area := tui.Rect { x: 1, y: 1, w: w, h: h }
+            gauges(area)
+            sparklines(area)
+            tabs(area)
+            scrollbars(area)
+            blocks(area)
+            bars(area)
+        }
+    }
+    for w in [80, 96] {
+        for phase in 0..9 {
+            for marker in [false, true] {
+                mut f := tui.Frame::new(w,24)
+                scene.Scene::new(if phase == 8 { 0 } else { phase }, phase == 8).draw(&mut f, marker)
+                snapshot(&f)
+            }
+        }
+    }
+
+}

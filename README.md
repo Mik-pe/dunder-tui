@@ -36,13 +36,23 @@ Starta en viss scen med exempelvis `dunder run examples/motion/main.ddr -- koi`.
 
 För en egen animation tar `tui.animate(&mut state, 30, draw, update, tick)` hand om bildklockan. `tick` får förfluten tid i millisekunder och returnerar `true` när något behöver ritas. En sen bild går direkt till aktuell tid. Tangentbordet fungerar under tiden. Med `import tui.canvas` kan du rita pixlar och linjer i RGB. `Canvas.render` visar två vertikala pixlar per teckencell. Galleriet använder 24-bitarsfärg i moderna terminaler och närmaste konsolfärg i äldre Windowskonsoler.
 
+### Signal
+
+Växla mellan vågform och frekvensspektrum med Tab. Piltangenterna ändrar frekvens och amplitud. Den turkosa mätaren visar signalens effektivvärde. Varje stapel i spektrumet beräknas från samma 128 sampel som vågformen. Mellanslag fryser bilden.
+
+```sh
+dunder run examples/signal/main.ddr
+```
+
+Signalen syntetiseras i appen och kräver ingen ljudenhet. [Källkod](examples/signal/main.ddr)
+
 ## Skriv en egen app
 
 Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `dunder.toml`.
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.4.0", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.5.0", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.
@@ -89,6 +99,25 @@ fn main() -> i32 {
 | `tui.ink(.Cyan).bold()` | Välj textfärg. `.background(.Blue)` och `.inverted()` kan kombineras med färg och fetstil. |
 
 En egen widget är en vanlig funktion som tar `&mut tui.Frame` och en `tui.Rect`. Använd `tui.ink(tui.rgb(0x82efc5))` för RGB eller `tui.ink(.Indexed(197))` för palettfärg. Testa den utan terminal med `tui.Frame::new(20, 4)` och läs en färdig rad med `frame.line(0)`. [Körbara exempel på layout och textklippning](tests/suite.ddr)
+
+## Mätare, diagram och paneler
+
+Med `import tui.widgets as ui` kan du rita en mätare i valfri del av en bild.
+
+```dunder
+mut level := ui.Gauge::percent(37)
+level.fractional = true
+level.bar_style = tui.plain().foreground_rgb(0x8dffdb).background_rgb(0x23354b)
+level.render(&mut frame, area)
+```
+
+| Modul | Byggstenar |
+| --- | --- |
+| `tui.widgets` | `Gauge`, `LineGauge`, `Sparkline`, `Tabs` och `Scrollbar` med eget skrolltillstånd. |
+| `tui.barchart` | Horisontella och vertikala staplar med grupper, etiketter och färger per stapel. |
+| `tui.block` | Ramar med egna kanttecken, flera titlar, marginal innanför kanten och skuggor. Delade kanter kan slås ihop. |
+
+`area.take_rows(n)` tar ut de första raderna och låter `area` fortsätta direkt under dem. `take_cols(n)` gör motsvarande för kolumner. Använd `frame.fill_symbol(area, "🌊", style)` för att upprepa hela grafem eller `frame.clear_area(area)` för att tömma ytan före en överlagring. [Exempel med flikar, paneler och diagram](examples/signal/main.ddr)
 
 ## Rik text och radbrytning
 

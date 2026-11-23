@@ -1,0 +1,55 @@
+import ..src.tui
+import ..src.text as rich
+import ..src.widgets as ui
+import ..src.barchart as chart
+import ..src.block as box
+
+pub struct Scene { tabs: ui.Tabs, bars: chart.BarChart, signal: ui.Sparkline, gauge: ui.Gauge, base: tui.Style }
+
+fn panel(move title: string) -> box.Block {
+    mut b := box.Block::bordered().border_type(.Rounded).title(move title)
+    b.border_style = tui.ink(.Cyan)
+    move b
+}
+
+impl Scene {
+    pub fn new(phase: i32, alternate: bool) -> Self {
+        mut tabs := ui.Tabs::new([rich.Line::raw("Signal"), rich.Line::raw("Spectrum"), rich.Line::raw("Level")])
+        tabs.highlight = tui.ink(.Red).bold()
+        tabs.selected = .Some(if alternate { 1 } else { 0 })
+        mut values: []ui.Sample = []
+        for i in 0..96 {
+            value := u64(((i + phase) * 11) % 31)
+            values.push(ui.Sample::styled(value, if i % 3 == 0 { tui.ink(.Magenta) } else { tui.ink(.Cyan) }))
+        }
+        mut spark := ui.Sparkline::bars(move values)
+        spark.block = panel(" Trace ")
+        spark.maximum = .Some(30)
+        mut group: []chart.Bar = []
+        for i in 0..12 { group.push(chart.Bar::named((i + 1).str(), u64((i * 7 + 3) % 20))) }
+        mut bars := chart.BarChart::new(move group)
+        bars.block = panel(" Harmonics ")
+        bars.bar_style = tui.ink(if alternate { .Yellow } else { .Magenta })
+        bars.value_style = tui.ink(.Cyan)
+        bars.bar_width = 3
+        mut gauge := ui.Gauge::new(if alternate { 0.8125 } else { 0.375 })
+        gauge.fractional = true
+        gauge.label = .Some(rich.Span::raw("level"))
+        gauge.bar_style = tui.ink(.Yellow).background(.Blue)
+        Self { tabs: move tabs, bars: move bars, signal: move spark, gauge: move gauge, base: tui.plain().background(if alternate { .Blue } else { .Black }) }
+    }
+
+    pub fn draw(&self, frame: &mut tui.Frame, marker: bool) {
+        area := frame.area()
+        frame.apply_style(area, self.base)
+        mut meter := area
+        menu := meter.take_rows(1)
+        plot := meter.take_rows(9)
+        bars := meter.take_rows(meter.h - 1)
+        self.tabs.render(&mut frame, menu)
+        self.signal.render(&mut frame, plot)
+        self.bars.render(&mut frame, bars)
+        self.gauge.render(&mut frame, meter)
+        frame.label(tui.Rect { x: area.w - 1, y: area.h - 1, w: 1, h: 1 }, if marker { "+" } else { "-" })
+    }
+}

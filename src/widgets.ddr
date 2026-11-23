@@ -1,0 +1,258 @@
+import .tui
+import .text as rich
+import .block
+import std.cmp as cmp
+
+pub struct Gauge {
+    ratio: f64, fractional: bool, label: Option<rich.Span>, style: tui.Style, bar_style: tui.Style, block: block.Block,
+}
+
+fn check_ratio(value: f64) { assert(value >= 0.0 && value <= 1.0) }
+
+impl Gauge {
+    pub fn new(ratio: f64) -> Self {
+        check_ratio(ratio)
+        Self { ratio: ratio, fractional: false, label: .None, style: tui.plain(), bar_style: tui.plain(), block: block.Block::new() }
+    }
+    pub fn percent(value: i32) -> Self { Gauge::new(f64(value) / 100.0) }
+
+    pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
+        check_ratio(self.ratio)
+        frame.apply_style(bounds, self.style)
+        area := self.block.render(&mut frame, bounds)
+        if area.w <= 0 || area.h <= 0 { return }
+        frame.apply_style(area, self.bar_style)
+        match &self.label {
+            .Some(label) => { self.draw(&mut frame, area, &label) },
+            .None => { label := rich.Span::raw(f"{i32((self.ratio * 100.0).round())}%"); self.draw(&mut frame, area, &label) },
+        }
+    }
+
+    fn draw(&self, frame: &mut tui.Frame, area: tui.Rect, label: &rich.Span) {
+        n := cmp.min<i32>(label.width(), area.w)
+        x := area.x + (area.w - n) / 2
+        y := area.y + area.h / 2
+        width := f64(area.w) * self.ratio
+        filled := if self.fractional { i32(width) } else { i32(width.round()) }
+        normal := tui.Style::default_colors().patch(self.bar_style)
+        inverted := normal.swap_colors()
+        frame.fill(tui.Rect { x: area.x, y: area.y, w: filled, h: area.h }, `█`, normal)
+        behind := cmp.min<i32>(area.x + filled - x, n + 1)
+        frame.fill(tui.Rect { x: x, y: y, w: behind, h: 1 }, ` `, inverted)
+        if self.fractional && self.ratio < 1.0 {
+            parts: [rune; 9] = [` `, `▏`, `▎`, `▍`, `▌`, `▋`, `▊`, `▉`, `█`]
+            part := i32(((width - f64(filled)) * 8.0).round())
+            frame.fill(tui.Rect { x: area.x + filled, y: area.y, w: 1, h: area.h }, parts[part], tui.plain())
+        }
+        _ := label.write(&mut frame, tui.Rect { x: x, y: y, w: n, h: 1 })
+    }
+}
+
+pub struct LineGauge {
+    ratio: f64, label: Option<rich.Line>, style: tui.Style, filled_style: tui.Style, unfilled_style: tui.Style,
+    filled_symbol: rune, unfilled_symbol: rune, block: block.Block,
+}
+impl LineGauge {
+    pub fn new(ratio: f64) -> Self {
+        check_ratio(ratio)
+        Self { ratio: ratio, label: .None, style: tui.plain(), filled_style: tui.plain(), unfilled_style: tui.plain(),
+            filled_symbol: `─`, unfilled_symbol: `─`, block: block.Block::new() }
+    }
+    pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
+        check_ratio(self.ratio)
+        frame.apply_style(bounds, self.style)
+        area := self.block.render(&mut frame, bounds)
+        if area.w <= 0 || area.h <= 0 { return }
+        used := match &self.label {
+            .Some(label) => label.write(&mut frame, area),
+            .None => {
+                number := i32((self.ratio * 100.0).round_ties_even())
+                pad := if number < 10 { "  " } else if number < 100 { " " } else { "" }
+                label := f"{pad}{number}%"
+                frame.label(tui.Rect { x: area.x, y: area.y, w: area.w, h: 1 }, label)
+                cmp.min<i32>(label.len, area.w)
+            },
+        }
+        w := area.w - used - 1
+        if w <= 0 { return }
+        x := area.x + used + 1
+        filled := i32(f64(w) * self.ratio)
+        frame.fill(tui.Rect { x: x, y: area.y, w: filled, h: 1 }, self.filled_symbol, self.filled_style)
+        frame.fill(tui.Rect { x: x + filled, y: area.y, w: w - filled, h: 1 }, self.unfilled_symbol, self.unfilled_style)
+    }
+}
+
+pub struct Sample { value: Option<u64>, style: tui.Style }
+impl Sample {
+    pub fn new(value: u64) -> Self { Self { value: .Some(value), style: tui.plain() } }
+    pub fn missing() -> Self { Self { value: .None, style: tui.plain() } }
+    pub fn styled(value: u64, style: tui.Style) -> Self { Self { value: .Some(value), style: style } }
+}
+pub enum Flow { LeftToRight, RightToLeft }
+
+pub fn nine_levels() -> [rune; 9] { [` `, `▁`, `▂`, `▃`, `▄`, `▅`, `▆`, `▇`, `█`] }
+pub fn three_levels() -> [rune; 9] { [` `, ` `, `▄`, `▄`, `▄`, `▄`, `▄`, `█`, `█`] }
+
+pub fn bar_ticks(value: u64, maximum: u64, ticks: i32) -> i32 {
+    if maximum == 0 || value == 0 || ticks <= 0 { return 0 }
+    if value >= maximum { return ticks }
+    if value <= 0xffffffffffffffff / u64(ticks) { return i32(value * u64(ticks) / maximum) }
+    mut bit := 1
+    while bit <= ticks / 2 { bit *= 2 }
+    mut whole := 0
+    mut rem: u64 = 0
+    while bit > 0 {
+        whole *= 2
+        if rem >= maximum - rem { rem -= maximum - rem; whole += 1 } else { rem += rem }
+        if ticks.bit_and(bit) != 0 {
+            if rem >= maximum - value { rem -= maximum - value; whole += 1 } else { rem += value }
+        }
+        bit /= 2
+    }
+    whole
+}
+
+pub struct Sparkline {
+    data: []Sample, maximum: Option<u64>, flow: Flow, symbols: [rune; 9], style: tui.Style,
+    missing_symbol: rune, missing_style: tui.Style, block: block.Block,
+}
+impl Sparkline {
+    pub fn bars(move data: []Sample) -> Self {
+        Self { data: move data, maximum: .None, flow: .LeftToRight, symbols: nine_levels(), style: tui.plain(),
+            missing_symbol: ` `, missing_style: tui.plain(), block: block.Block::new() }
+    }
+    pub fn new(values: &[]u64) -> Self {
+        mut data: []Sample = []
+        data.reserve(values.len)
+        for v in values { data.push(Sample::new(v)) }
+        Sparkline::bars(move data)
+    }
+    pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
+        area := self.block.render(&mut frame, bounds)
+        if area.w <= 0 || area.h <= 0 { return }
+        mut maximum := self.maximum.unwrap_or(0)
+        if self.maximum.is_none() {
+            for item in &self.data { maximum = cmp.max<u64>(maximum, item.value.unwrap_or(0)) }
+        }
+        for i in 0..cmp.min<i32>(area.w, self.data.len) {
+            x := if self.flow == .LeftToRight { area.x + i } else { area.x + area.w - i - 1 }
+            col := tui.Rect { x: x, y: area.y, w: 1, h: area.h }
+            item := &self.data[i]
+            if item.value.is_none() { frame.fill(col, self.missing_symbol, self.style.patch(self.missing_style)); continue }
+            ticks := bar_ticks(item.value.unwrap(), maximum, area.h * 8)
+            style := self.style.patch(item.style)
+            vertical_bar(&mut frame, col, ticks, &self.symbols, style)
+        }
+    }
+}
+
+fn advance(area: &mut tui.Rect, columns: i32) { area.x += columns; area.w -= columns }
+
+pub struct Tabs {
+    titles: []rich.Line, selected: Option<i32>, style: tui.Style, highlight: tui.Style, divider: rich.Span,
+    left_padding: rich.Line, right_padding: rich.Line, block: block.Block,
+}
+impl Tabs {
+    pub fn new(move titles: []rich.Line) -> Self {
+        selection: Option<i32> = if titles.len == 0 { .None } else { .Some(0) }
+        Self { titles: move titles, selected: selection, style: tui.plain(), highlight: tui.plain().inverted(),
+            divider: rich.Span::raw("│"), left_padding: rich.Line::raw(" "), right_padding: rich.Line::raw(" "), block: block.Block::new() }
+    }
+    pub fn set_titles(&mut self, move titles: []rich.Line) {
+        self.selected = if titles.len == 0 { .None } else { .Some(cmp.clamp<i32>(self.selected.unwrap_or(0), 0, titles.len - 1)) }
+        self.titles = move titles
+    }
+    pub fn width(&self) -> i32 {
+        mut total := i64(self.titles.len) * (i64(self.left_padding.width()) + i64(self.right_padding.width()))
+        total += i64(cmp.max<i32>(0, self.titles.len - 1)) * i64(self.divider.width())
+        for title in &self.titles { total += i64(title.width()) }
+        i32(cmp.min<i64>(2147483647, total))
+    }
+    pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
+        frame.apply_style(bounds, self.style)
+        mut area := self.block.render(&mut frame, bounds)
+        if area.w <= 0 || area.h <= 0 { return }
+        area.h = 1
+        for i in 0..self.titles.len {
+            pad := self.left_padding.write(&mut frame, area)
+            advance(&mut area, pad)
+            if area.w == 0 { break }
+            n := self.titles[i].write(&mut frame, area)
+            if self.selected.unwrap_or(-1) == i { frame.apply_style(tui.Rect { x: area.x, y: area.y, w: n, h: 1 }, self.highlight) }
+            advance(&mut area, n)
+            if area.w == 0 { break }
+            gap := self.right_padding.write(&mut frame, area)
+            advance(&mut area, gap)
+            if area.w == 0 || i + 1 == self.titles.len { break }
+            divider := self.divider.write(&mut frame, area)
+            advance(&mut area, divider)
+        }
+    }
+}
+
+pub fn vertical_bar(frame: &mut tui.Frame, area: tui.Rect, ticks: i32, symbols: &[rune; 9], style: tui.Style) {
+    clipped := area.intersection(frame.area())
+    if area.w <= 0 || area.h <= 0 || clipped.w <= 0 || clipped.h <= 0 { return }
+    amount := cmp.clamp<i64>(i64(ticks), 0, i64(area.h) * 8)
+    whole := i32(amount / 8)
+    part := i32(amount % 8)
+    full_y := i32(cmp.min<i64>(2147483647, i64(area.y) + i64(area.h) - i64(whole)))
+    partial := if part == 0 { 0 } else { 1 }
+    frame.fill(tui.Rect { x: area.x, y: area.y, w: area.w, h: area.h - whole - partial }, symbols[0], style)
+    if part > 0 { frame.fill(tui.Rect { x: area.x, y: full_y - 1, w: area.w, h: 1 }, symbols[part], style) }
+    frame.fill(tui.Rect { x: area.x, y: full_y, w: area.w, h: whole }, symbols[8], style)
+}
+
+pub enum Edge { Left, Right, Top, Bottom }
+pub struct ScrollState { length: i32, position: i32, viewport: i32 }
+impl ScrollState {
+    pub fn new(length: i32) -> Self { Self { length: length, position: 0, viewport: 0 } }
+    pub fn first(&mut self) { self.position = 0 }
+    pub fn last(&mut self) { self.position = if self.length > 0 { self.length - 1 } else { 0 } }
+    pub fn next(&mut self) { self.position = i32(cmp.clamp<i64>(i64(self.position) + 1, 0, cmp.max<i64>(0, i64(self.length) - 1))) }
+    pub fn prev(&mut self) { self.position = if self.position > 0 { self.position - 1 } else { 0 } }
+}
+pub struct ScrollPart { symbol: Option<rich.Span> }
+impl ScrollPart {
+    pub fn new(move symbol: string, style: tui.Style) -> Self { Self { symbol: .Some(rich.Span::styled(move symbol, style)) } }
+    pub fn hidden() -> Self { Self { symbol: .None } }
+    fn width(&self) -> i32 { match &self.symbol { .Some(s) => s.width(), .None => 0, } }
+    fn write(&self, frame: &mut tui.Frame, area: tui.Rect) {
+        match &self.symbol { .Some(s) => { _ := s.write(&mut frame, area) }, _ => {}, }
+    }
+}
+pub struct Scrollbar { edge: Edge, begin: ScrollPart, track: ScrollPart, thumb: ScrollPart, end: ScrollPart }
+impl Scrollbar {
+    pub fn new(edge: Edge) -> Self {
+        v := edge == .Left || edge == .Right
+        Self { edge: edge, begin: ScrollPart::new(if v { "▲" } else { "◄" }, tui.plain()),
+            track: ScrollPart::new(if v { "║" } else { "═" }, tui.plain()), thumb: ScrollPart::new("█", tui.plain()),
+            end: ScrollPart::new(if v { "▼" } else { "►" }, tui.plain()) }
+    }
+
+    pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect, state: &ScrollState) {
+        area := bounds.intersection(frame.area())
+        if state.length <= 0 || area.w <= 0 || area.h <= 0 { return }
+        vertical := self.edge == .Left || self.edge == .Right
+        length := if vertical { area.h } else { area.w }
+        track := i64(length) - i64(self.begin.width()) - i64(self.end.width())
+        if track <= 0 { return }
+        view := i64(if state.viewport > 0 { state.viewport } else { length })
+        last := i64(state.length - 1)
+        denom := last + view
+        thumb := cmp.clamp<i64>((view * track + denom / 2) / denom, 1, track)
+        pos := i64(cmp.clamp<i32>(state.position, 0, state.length - 1))
+        start := cmp.min<i64>((pos * track + denom / 2) / denom, track - thumb)
+        head := if self.begin.symbol.is_some() { 1 } else { 0 }
+        tail := head + i32(track)
+        for i in 0..length {
+            x := area.x + (if !vertical { i } else if self.edge == .Right { area.w - 1 } else { 0 })
+            y := area.y + (if vertical { i } else if self.edge == .Bottom { area.h - 1 } else { 0 })
+            cell := tui.Rect { x: x, y: y, w: area.x + area.w - x, h: 1 }
+            if i < head { self.begin.write(&mut frame, cell) }
+            else if i == tail { self.end.write(&mut frame, cell); break }
+            else if i >= head + i32(start) && i < head + i32(start + thumb) { self.thumb.write(&mut frame, cell) }
+            else { self.track.write(&mut frame, cell) }
+        }
+    }
+}
