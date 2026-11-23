@@ -1,0 +1,30 @@
+capability stdio
+
+import tui
+import sys
+
+fn draw(frame: &mut tui.Frame, count: &i32) {
+    body := frame.panel(frame.area(), " Räknare ", tui.ink(.Cyan))
+    (number, help) := body.rows(1)
+    frame.text(number, f"Antal: {count}", tui.plain().bold())
+    frame.label(help, "↑ öka   ↓ minska   q avsluta")
+}
+
+fn update(count: &mut i32, key: tui.Key) -> bool {
+    match key {
+        .Up => { count += 1 },
+        .Down => { count -= 1 },
+        .Char(c) if c == `q` => { return false },
+        .Escape => { return false },
+        _ => {},
+    }
+    true
+}
+
+fn main() -> i32 {
+    mut count := 0
+    match tui.run(&mut count, draw, update) {
+        .Ok => 0,
+        .Err(message) => { _ := sys.eprint(message); 1 },
+    }
+}

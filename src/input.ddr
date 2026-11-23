@@ -1,0 +1,68 @@
+import .tui
+import std.bytes as bytes
+
+pub enum Event { Idle, Press(tui.Key), Quit, Error }
+pub struct Decoded { consumed: i32, event: Event }
+
+pub fn character(cp: i32) -> Event {
+    if cp == 3 { return .Quit }
+    if cp == 8 || cp == 127 { return .Press(.Backspace) }
+    if cp == 9 { return .Press(.Tab) }
+    if cp == 10 || cp == 13 { return .Press(.Enter) }
+    if cp == 27 { return .Press(.Escape) }
+    if cp >= 32 && (cp < 127 || cp >= 160) { return .Press(.Char(rune(cp))) }
+    .Idle
+}
+
+fn navigation(last: u8, parameter: u8) -> Event {
+    if last == b'A' { return .Press(.Up) }
+    if last == b'B' { return .Press(.Down) }
+    if last == b'C' { return .Press(.Right) }
+    if last == b'D' { return .Press(.Left) }
+    if last == b'H' { return .Press(.Home) }
+    if last == b'F' { return .Press(.End) }
+    if last == b'~' {
+        if parameter == b'1' || parameter == b'7' { return .Press(.Home) }
+        if parameter == b'3' { return .Press(.Delete) }
+        if parameter == b'4' || parameter == b'8' { return .Press(.End) }
+    }
+    .Idle
+}
+
+pub fn decode(data: &[]u8, expired: bool) -> Decoded {
+    mut out := Decoded { consumed: 0, event: .Idle }
+    if data.len == 0 { return out }
+    b := data[0]
+    if b == 27 {
+        if data.len == 1 && !expired { return out }
+        if data.len < 2 || (data[1] != b'[' && data[1] != b'O') {
+            return Decoded { consumed: 1, event: .Press(.Escape) }
+        }
+        for i in 2..data.len {
+            v := data[i]
+            if v >= 64 && v <= 126 {
+                out.consumed = i + 1
+                if i == 2 || (i == 3 && v == b'~') { out.event = navigation(v, data[2]) }
+                return out
+            }
+            if v < 32 || v > 63 { out.consumed = i; return out }
+        }
+        if expired || data.len >= 64 { out.consumed = data.len }
+        return out
+    }
+    if b < 128 { return Decoded { consumed: 1, event: character(i32(b)) } }
+    n := if b >= 194 && b <= 223 { 2 } else if b >= 224 && b <= 239 { 3 } else if b >= 240 && b <= 244 { 4 } else { 1 }
+    for i in 1..n {
+        if i >= data.len {
+            if expired { out.consumed = i }
+            return out
+        }
+        if data[i] < 128 || data[i] > 191 { out.consumed = i; return out }
+    }
+    out.consumed = n
+    match bytes.decode_range(&data, 0, n) {
+        .Ok(s) => { out.event = character(i32(s.runes()[0])) },
+        .Err(_) => {},
+    }
+    out
+}

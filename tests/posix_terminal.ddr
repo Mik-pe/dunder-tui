@@ -1,0 +1,113 @@
+capability unsafe, stdio
+
+import ..src.tui
+import std.bytes as bytes
+import std.text as text
+import sys
+
+@extern("c", "openpty")
+unsafe fn open_pty(master: ptr, slave: ptr, name: ptr, attributes: ptr, size: ptr) -> i32
+@extern("c", "dup")
+unsafe fn duplicate(fd: i32) -> i32
+@extern("c", "dup2")
+unsafe fn redirect(fd: i32, target: i32) -> i32
+@extern("c", "tcgetattr")
+unsafe fn attributes(fd: i32, buf: ptr) -> i32
+@c_variadic(2)
+@extern("c", "ioctl")
+unsafe fn ioctl(fd: i32, request: usize, data: ptr) -> i32
+
+struct Probe { master: i32, slave: i32, step: i32, quit: string, ok: bool }
+
+fn send(fd: i32, data: string) -> bool {
+    buf := data.bytes()
+    unsafe { return sys.fd_write(fd, &buf, 0, i64(buf.len)) == i64(buf.len) }
+    false
+}
+
+fn draw(frame: &mut tui.Frame, state: &Probe) {
+    (heading, body) := frame.area().rows(1)
+    frame.label(heading, "Rubrik")
+    frame.label(body, f"Steg {state.step} med bredd {body.w}")
+    if state.step == 0 { assert(send(state.master, "\x1b[A")) }
+    else if state.step == 1 { assert(send(state.master, "\x1b[B")) }
+    else { assert(send(state.master, state.quit)) }
+}
+
+fn output(fd: i32) -> string {
+    mut buf: []u8 = []
+    mut pollfd: []u8 = [u8(fd.bit_and(255)), u8(fd.shr(8).bit_and(255)), u8(fd.shr(16).bit_and(255)), u8(fd.shr(24)), 1, 0, 0, 0]
+    unsafe {
+        while sys.fd_poll(&mut pollfd, 1, 0) == 1 {
+            buf.reserve(buf.len + 4096)
+            if sys.fd_read(fd, &mut buf, 4096) <= 0 { break }
+        }
+    }
+    bytes.decode(&buf).unwrap()
+}
+
+fn resize(fd: i32) -> bool {
+    mut size: [u16; 4] = [4, 20, 0, 0]
+    unsafe {
+        if target_is("macos") { return ioctl(fd, 0x80087467, addr(&size[0])) == 0 }
+        else { return ioctl(fd, 0x5414, addr(&size[0])) == 0 }
+    }
+    false
+}
+
+fn update(state: &mut Probe, key: tui.Key) -> bool {
+    rendered := output(state.master)
+    if state.step == 0 {
+        state.ok = text.contains(rendered, "\x1b[?1049h") && text.contains(rendered, "Steg 0 med bredd 32")
+        match key { .Up => {}, _ => { state.ok = false }, }
+    } else if state.step == 1 {
+        state.ok = text.contains(rendered, "Steg 1 med bredd 32") && !text.contains(rendered, "Rubrik") && resize(state.slave)
+        match key { .Down => {}, _ => { state.ok = false }, }
+    } else {
+        state.ok = text.contains(rendered, "Rubrik") && text.contains(rendered, "Steg 2 med bredd 20")
+        match key { .Char(c) if i32(c) == 113 => {}, _ => { state.ok = false }, }
+    }
+    state.step += 1
+    state.ok && state.step < 3
+}
+
+unsafe fn verify(quit: string) -> bool {
+    mut master := -1
+    mut slave := -1
+    mut size: [u16; 4] = [7, 32, 0, 0]
+    if open_pty(addr(&mut master), addr(&mut slave), ptr(0), ptr(0), addr(&size[0])) != 0 { return false }
+    defer { _ := sys.fd_close(master); _ := sys.fd_close(slave) }
+    in_fd := duplicate(0)
+    out_fd := duplicate(1)
+    defer {
+        _ := redirect(in_fd, 0)
+        _ := redirect(out_fd, 1)
+        _ := sys.fd_close(in_fd)
+        _ := sys.fd_close(out_fd)
+    }
+    if in_fd < 0 || out_fd < 0 || redirect(slave, 0) < 0 || redirect(slave, 1) < 0 { return false }
+    mut before: [u64; 16] = [0; 16]
+    mut after: [u64; 16] = [0; 16]
+    if attributes(slave, addr(&mut before[0])) != 0 { return false }
+    mut state := Probe { master: master, slave: slave, step: 0, quit: quit.clone(), ok: true }
+    result := tui.run<Probe>(&mut state, draw, update)
+    tail := output(master)
+    if result.is_err() || !state.ok || !text.contains(tail, "\x1b[?25h\x1b[?1049l") { return false }
+    if quit == "q" && state.step != 3 { return false }
+    if quit != "q" && (state.step != 2 || !text.contains(tail, "Steg 2 med bredd 20")) { return false }
+    if attributes(slave, addr(&mut after[0])) != 0 { return false }
+    if target_is("macos") {
+        before[3] = before[3].bit_and(u64(0x20000000).bit_not())
+        after[3] = after[3].bit_and(u64(0x20000000).bit_not())
+    }
+    for i in 0..16 { if before[i] != after[i] { return false } }
+    true
+}
+
+fn main() -> i32 {
+    if target_is("linux") || target_is("macos") {
+        unsafe { if verify("q") && verify("\x03") { print("terminal OK"); return 0 } }
+    }
+    _ := sys.eprint("POSIX terminal check failed")
+    1
+}

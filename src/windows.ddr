@@ -1,0 +1,174 @@
+capability unsafe, stdio
+
+import .input
+import .tui
+
+@extern("kernel32.dll", "GetStdHandle")
+unsafe fn handle(channel: i32) -> ptr
+@extern("kernel32.dll", "GetConsoleMode")
+unsafe fn get_mode(h: ptr, mode: ptr) -> i32
+@extern("kernel32.dll", "SetConsoleMode")
+unsafe fn set_mode(h: ptr, mode: u32) -> i32
+@extern("kernel32.dll", "GetConsoleScreenBufferInfo")
+unsafe fn buffer_info(h: ptr, info: ptr) -> i32
+@extern("kernel32.dll", "WriteConsoleW")
+unsafe fn write_wide(h: ptr, buf: ptr, n: u32, written: ptr, reserved: ptr) -> i32
+@extern("kernel32.dll", "WaitForSingleObject")
+unsafe fn wait_for(h: ptr, millis: u32) -> u32
+@extern("kernel32.dll", "ReadConsoleInputW")
+unsafe fn read_record(h: ptr, buf: ptr, n: u32, read: ptr) -> i32
+
+@c_layout
+struct KeyRecord {
+    kind: u16, padding: u16, down: i32, repeat: u16, vk: u16, scan: u16, unit: u16, modifiers: u32,
+}
+
+@extern("kernel32.dll", "CreateConsoleScreenBuffer")
+unsafe fn new_screen(access: u32, share: u32, security: ptr, flags: u32, data: ptr) -> ptr
+@extern("kernel32.dll", "SetConsoleActiveScreenBuffer")
+unsafe fn activate(h: ptr) -> i32
+@extern("kernel32.dll", "CloseHandle")
+unsafe fn close_handle(h: ptr) -> i32
+@extern("kernel32.dll", "SetConsoleScreenBufferSize")
+unsafe fn buffer_size(h: ptr, coord: u32) -> i32
+@extern("kernel32.dll", "SetConsoleWindowInfo")
+unsafe fn window_rect(h: ptr, absolute: i32, rect: ptr) -> i32
+@extern("kernel32.dll", "SetConsoleCursorInfo")
+unsafe fn cursor_info(h: ptr, info: ptr) -> i32
+@extern("kernel32.dll", "SetConsoleCursorPosition")
+unsafe fn position(h: ptr, coord: u32) -> i32
+@extern("kernel32.dll", "SetConsoleTextAttribute")
+unsafe fn attributes(h: ptr, value: u16) -> i32
+
+pub struct State {
+    screen: ptr, in_mode: u32, palette: i32,
+    high: i32, repeats: i32, last: input.Event,
+}
+
+pub fn state() -> State {
+    unsafe { return State { screen: ptr(0), in_mode: 0, palette: 7, high: 0, repeats: 0, last: .Idle } }
+}
+
+pub fn size(state: &mut State) -> (i32, i32) {
+    mut info: [i16; 11] = [0; 11]
+    unsafe {
+        h := if state.screen == ptr(0) { handle(-11) } else { state.screen }
+        if buffer_info(h, addr(&mut info[0])) == 0 { return (0, 0) }
+        w := i32(info[7]) - i32(info[5]) + 1
+        hgt := i32(info[8]) - i32(info[6]) + 1
+        if state.screen == ptr(0) { state.palette = i32(info[4]).bit_and(255) }
+        else if w != i32(info[0]) || hgt != i32(info[1]) {
+            mut rect: [i16; 4] = [0, 0, i16(w - 1), i16(hgt - 1)]
+            if (info[5] != 0 || info[6] != 0) && window_rect(h, 1, addr(&rect[0])) == 0 { return (0, 0) }
+            if buffer_size(h, u32(w).bit_or(u32(hgt).shl(16))) == 0 { return (0, 0) }
+        }
+        return (w, hgt)
+    }
+    (0, 0)
+}
+
+pub fn open(state: &mut State) -> bool {
+    unsafe {
+        stdin := handle(-10)
+        if get_mode(stdin, addr(&mut state.in_mode)) == 0 { return false }
+        screen := new_screen(0xc0000000, 3, ptr(0), 1, ptr(0))
+        if usize(screen) == usize(0xffffffffffffffff) { return false }
+        mut cursor: [u32; 2] = [25, 0]
+        if set_mode(screen, 0) == 0 || cursor_info(screen, addr(&cursor[0])) == 0 || activate(screen) == 0 {
+            _ := close_handle(screen)
+            return false
+        }
+        mode := state.in_mode.bit_and(u32(0x247).bit_not()).bit_or(0x88)
+        if set_mode(stdin, mode) == 0 {
+            _ := activate(handle(-11))
+            _ := close_handle(screen)
+            return false
+        }
+        state.screen = screen
+        return true
+    }
+    false
+}
+
+pub fn restore(state: &mut State) {
+    unsafe {
+        _ := set_mode(handle(-10), state.in_mode)
+        _ := activate(handle(-11))
+        _ := close_handle(state.screen)
+        state.screen = ptr(0)
+    }
+}
+
+fn color(value: tui.Color, fallback: i32) -> i32 {
+    if value == tui.Color.Default { return fallback }
+    ansi := i32(value) - 1
+    ansi.bit_and(1).shl(2).bit_or(ansi.bit_and(2)).bit_or(ansi.shr(2))
+}
+
+pub fn paint(state: &State, x: i32, y: i32, value: string, style: tui.Style) -> bool {
+    mut fg := color(style.fg, state.palette.bit_and(15))
+    bg := color(style.bg, state.palette.shr(4))
+    if style.strong { fg = fg.bit_or(8) }
+    attr := if style.reverse { fg * 16 + bg } else { bg * 16 + fg }
+    coord := u32(x).bit_or(u32(y).shl(16))
+    unsafe {
+        if position(state.screen, coord) == 0 || attributes(state.screen, u16(attr)) == 0 { return false }
+    }
+    mut units: []u16 = []
+    units.reserve(value.len)
+    for r in value.runes() {
+        cp := i32(r)
+        if cp < 65536 { units.push(u16(cp)) }
+        else {
+            pair := cp - 65536
+            units.push(u16(55296 + pair / 1024))
+            units.push(u16(56320 + pair % 1024))
+        }
+    }
+    mut sent := 0
+    unsafe {
+        while sent < units.len {
+            mut n: u32 = 0
+            if write_wide(state.screen, addr(&units[sent]), u32(units.len - sent), addr(&mut n), ptr(0)) == 0 || n == 0 { return false }
+            sent += i32(n)
+        }
+    }
+    true
+}
+
+fn key(state: &mut State, record: KeyRecord) -> input.Event {
+    cp := i32(record.unit)
+    if cp >= 0xd800 && cp <= 0xdbff { state.high = cp; return .Idle }
+    high := state.high
+    state.high = 0
+    if cp >= 0xdc00 && cp <= 0xdfff {
+        if high == 0 { return .Idle }
+        return input.character(0x10000 + (high - 0xd800) * 1024 + cp - 0xdc00)
+    }
+    if record.vk == 35 { return .Press(.End) }
+    if record.vk == 36 { return .Press(.Home) }
+    if record.vk == 37 { return .Press(.Left) }
+    if record.vk == 38 { return .Press(.Up) }
+    if record.vk == 39 { return .Press(.Right) }
+    if record.vk == 40 { return .Press(.Down) }
+    if record.vk == 46 { return .Press(.Delete) }
+    input.character(cp)
+}
+
+pub fn next(state: &mut State) -> input.Event {
+    if state.repeats > 0 { state.repeats -= 1; return state.last }
+    unsafe {
+        h := handle(-10)
+        ready := wait_for(h, 125)
+        if ready == 258 { return .Idle }
+        if ready != 0 { return .Error }
+        mut record: KeyRecord = zeroed()
+        mut n: u32 = 0
+        if read_record(h, addr(&mut record), 1, addr(&mut n)) == 0 { return .Error }
+        if n == 0 || record.kind != 1 || record.down == 0 { return .Idle }
+        state.last = key(&mut state, record)
+        state.repeats = i32(record.repeat) - 1
+        return state.last
+    }
+    .Error
+}

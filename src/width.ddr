@@ -1,0 +1,72 @@
+import .width_data
+
+fn hex(table: string, at: i32) -> i32 {
+    mut n := 0
+    for i in at..(at + 6) {
+        digit := i32(table[i])
+        n = n * 16 + (if digit <= 57 { digit - 48 } else { digit - 55 })
+    }
+    n
+}
+
+fn contains(table: string, cp: i32) -> bool {
+    mut lo := 0
+    mut hi := table.len / 14
+    while lo < hi {
+        mid := lo + (hi - lo) / 2
+        at := mid * 14
+        if cp < hex(table, at) { hi = mid }
+        else if cp > hex(table, at + 7) { lo = mid + 1 }
+        else { return true }
+    }
+    false
+}
+
+pub fn columns(cp: i32) -> i32 {
+    if cp < 32 || (cp >= 127 && cp < 160) { return -1 }
+    if cp < 0x300 { return if cp == 0xad { -1 } else { 1 } }
+    if contains(width_data.formatting(), cp) { return -1 }
+    if contains(width_data.combining(), cp) { return 0 }
+    if contains(width_data.wide(), cp) { return 2 }
+    1
+}
+
+fn encoded(cp: i32) -> i32 {
+    if cp < 128 { return 1 }
+    if cp < 2048 { return 2 }
+    if cp < 65536 { return 3 }
+    4
+}
+
+fn regional(cp: i32) -> bool { cp >= 0x1f1e6 && cp <= 0x1f1ff }
+
+pub struct Glyph { end: i32, bytes: i32, span: i32 }
+
+pub fn glyph(chars: &[]rune, start: i32) -> Glyph {
+    base := i32(chars[start])
+    mut result := Glyph { end: start + 1, bytes: encoded(base), span: columns(base) }
+    if result.span < 1 { return result }
+    if regional(base) && result.end < chars.len && regional(i32(chars[result.end])) {
+        result.end += 1
+        result.bytes += 4
+        result.span = 2
+    }
+    while result.end < chars.len {
+        cp := i32(chars[result.end])
+        if cp < 0x300 { break }
+        if cp == 0x200d && result.end + 1 < chars.len && contains(width_data.pictographic(), base) {
+            next := i32(chars[result.end + 1])
+            if !contains(width_data.pictographic(), next) { break }
+            result.end += 2
+            result.bytes += 3 + encoded(next)
+            result.span = 2
+            continue
+        }
+        modifier := cp >= 0x1f3fb && cp <= 0x1f3ff && contains(width_data.pictographic(), base)
+        if !modifier && !contains(width_data.combining(), cp) { break }
+        if modifier || cp == 0x20e3 || (cp == 0xfe0f && contains(width_data.pictographic(), base)) { result.span = 2 }
+        result.bytes += encoded(cp)
+        result.end += 1
+    }
+    result
+}

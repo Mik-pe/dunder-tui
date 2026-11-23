@@ -1,0 +1,34 @@
+import .posix
+import .windows
+import .input
+
+pub struct Session { unix: posix.State, win: windows.State }
+
+pub fn session() -> Session { Session { unix: posix.state(), win: windows.state() } }
+
+impl Session {
+    pub fn size(&mut self) -> (i32, i32) {
+        if target_is("windows") { return windows.size(&mut self.win) } else { return posix.size() }
+    }
+
+    pub fn open(&mut self) -> bool {
+        if target_is("windows") { return windows.open(&mut self.win) } else { return posix.open(&mut self.unix) }
+    }
+
+    pub fn enter(&self) -> bool {
+        if target_is("windows") { return true }
+        else { return posix.write("\x1b[?1049h\x1b[?25l\x1b[0m\x1b[2J") }
+    }
+
+    pub fn close(&mut self) {
+        if target_is("windows") { windows.restore(&mut self.win) }
+        else {
+            _ := posix.write("\x1b[0m\x1b[?25h\x1b[?1049l")
+            posix.restore(&mut self.unix)
+        }
+    }
+
+    pub fn next(&mut self) -> input.Event {
+        if target_is("windows") { return windows.next(&mut self.win) } else { return posix.next(&mut self.unix) }
+    }
+}

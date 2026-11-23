@@ -1,0 +1,42 @@
+capability stdio
+
+import tui
+import sys
+
+struct Shelf { titles: []string, notes: []string, selected: i32 }
+
+fn draw(frame: &mut tui.Frame, shelf: &Shelf) {
+    area := frame.area()
+    (main_area, footer) := area.rows(area.h - 1)
+    (menu, detail) := main_area.cols(main_area.w / 2)
+    titles := frame.panel(menu, " Böcker ", tui.ink(.Cyan))
+    frame.list(titles, &shelf.titles, shelf.selected, tui.plain().inverted())
+    note := frame.panel(detail, " Anteckning ", tui.ink(.Yellow))
+    frame.label(note, shelf.notes[shelf.selected])
+    frame.label(footer, "↑ ↓ välj bok   q avsluta")
+}
+
+fn update(shelf: &mut Shelf, key: tui.Key) -> bool {
+    match key {
+        .Up if shelf.selected > 0 => { shelf.selected -= 1 },
+        .Down if shelf.selected + 1 < shelf.titles.len => { shelf.selected += 1 },
+        .Home => { shelf.selected = 0 },
+        .End => { shelf.selected = shelf.titles.len - 1 },
+        .Char(c) if c == `q` => { return false },
+        .Escape => { return false },
+        _ => {},
+    }
+    true
+}
+
+fn main() -> i32 {
+    mut shelf := Shelf {
+        titles: ["Fåglar vid kusten", "Nattåget", "Vinterljus", "Molnatlas"],
+        notes: ["Ta med ut till fyren.", "Läs kapitel tre igen.", "Till bokcirkeln på tisdag.", "Slå upp pärlemormoln."],
+        selected: 0,
+    }
+    match tui.run(&mut shelf, draw, update) {
+        .Ok => 0,
+        .Err(message) => { _ := sys.eprint(message); 1 },
+    }
+}

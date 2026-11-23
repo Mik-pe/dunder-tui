@@ -1,0 +1,84 @@
+import ..src.tui
+import ..src.input
+import ..src.width
+
+@test fn layout_clamps_splits_and_padding() {
+    area := tui.Rect { x: 3, y: 4, w: 6, h: 4 }
+    (top, rest) := area.rows(9)
+    assert(top.h == 4 && rest.y == 8 && rest.h == 0)
+    (left, right) := area.cols(-2)
+    assert(left.w == 0 && right.x == 3 && right.w == 6)
+    mid := area.inset(1)
+    assert(mid.x == 4 && mid.y == 5 && mid.w == 4 && mid.h == 2)
+    assert(area.inset(99).w == 0)
+}
+
+@test fn panel_and_list_follow_selection_in_a_small_viewport() {
+    mut frame := tui.Frame::new(8, 4)
+    body := frame.panel(frame.area(), "Val", tui.ink(.Cyan))
+    items: []string = ["Första", "Andra", "Tredje"]
+    frame.list(body, &items, 2, tui.plain().inverted())
+    assert(frame.line(0) == "┌Val───┐")
+    assert(frame.line(1) == "│Andra │")
+    assert(frame.line(2) == "│Tredje│")
+    assert(frame.line(3) == "└──────┘")
+}
+
+@test fn text_clips_by_columns_and_keeps_combining_marks() {
+    mut frame := tui.Frame::new(5, 2)
+    frame.text(frame.area(), "Åe\u{301}界X\n雪ab雪", tui.plain())
+    assert(frame.line(0) == "Åe\u{301}界X")
+    assert(frame.line(1) == "雪ab ")
+    frame.text(tui.Rect { x: 3, y: 0, w: 1, h: 1 }, "z", tui.plain())
+    assert(frame.line(0) == "Åe\u{301} zX")
+    frame.text(tui.Rect { x: -1, y: 1, w: 4, h: 1 }, "abcd", tui.plain())
+    assert(frame.line(1) == "bcdb ")
+    assert(width.columns(0x1f30d) == 2)
+}
+
+@test fn control_bytes_never_reach_the_screen() {
+    mut frame := tui.Frame::new(4, 1)
+    frame.text(frame.area(), "a\u{1b}\u{7}\u{9b}b", tui.plain())
+    assert(frame.line(0) == "ab  ")
+}
+
+@test fn empty_layouts_and_empty_lists_render() {
+    mut frame := tui.Frame::new(1, 1)
+    body := frame.panel(frame.area(), "Title", tui.plain())
+    items: []string = []
+    frame.list(frame.area(), &items, 0, tui.plain())
+    frame.text(body, "hidden", tui.plain())
+    assert(frame.line(0) == " ")
+    assert(frame.line(-1) == "")
+    empty := tui.Frame::new(0, 0)
+    assert(empty.line(0) == "")
+}
+
+@test fn escape_utf8_and_unknown_sequences_preserve_the_next_key() {
+    esc: []u8 = [27]
+    assert(input.decode(&esc, false).consumed == 0)
+    match input.decode(&esc, true).event { .Press(.Escape) => {}, _ => { assert(false) }, }
+    prefix: []u8 = [27, 91]
+    assert(input.decode(&prefix, false).consumed == 0)
+    arrows: []u8 = [27, 91, 65, 113]
+    first := input.decode(&arrows, false)
+    assert(first.consumed == 3)
+    match first.event { .Press(.Up) => {}, _ => { assert(false) }, }
+    extra: []u8 = [27, 91, 49, 53, 126, 113]
+    assert(input.decode(&extra, false).consumed == 5)
+    half: []u8 = [195]
+    assert(input.decode(&half, false).consumed == 0)
+    full: []u8 = [195, 165]
+    match input.decode(&full, false).event { .Press(.Char(c)) => { assert(i32(c) == 229) }, _ => { assert(false) }, }
+    invalid: []u8 = [195, 113]
+    assert(input.decode(&invalid, false).consumed == 1)
+}
+
+@test fn emoji_sequences_occupy_their_visible_columns() {
+    mut frame := tui.Frame::new(5, 3)
+    frame.label(frame.area(), "👩🏽‍💻🇸🇪!\n❤️1️⃣.\nA界界")
+    assert(frame.line(0) == "👩🏽‍💻🇸🇪!")
+    assert(frame.line(1) == "❤️1️⃣.")
+    frame.label(tui.Rect { x: 1, y: 2, w: 2, h: 1 }, "💻")
+    assert(frame.line(2) == "A💻界")
+}

@@ -1,0 +1,122 @@
+capability unsafe, stdio
+
+import ..src.tui
+import sys
+
+@extern("kernel32.dll", "FreeConsole")
+unsafe fn detach() -> i32
+@extern("kernel32.dll", "AllocConsole")
+unsafe fn allocate() -> i32
+@extern("kernel32.dll", "CreateFileW")
+unsafe fn open_file(name: ptr, access: u32, share: u32, security: ptr, creation: u32, flags: u32, template: ptr) -> ptr
+@extern("kernel32.dll", "SetStdHandle")
+unsafe fn use_handle(channel: i32, handle: ptr) -> i32
+@extern("kernel32.dll", "GetConsoleMode")
+unsafe fn mode(handle: ptr, out: ptr) -> i32
+@extern("kernel32.dll", "WriteConsoleInputW")
+unsafe fn enqueue(handle: ptr, records: ptr, count: u32, written: ptr) -> i32
+@extern("kernel32.dll", "ReadConsoleOutputCharacterW")
+unsafe fn read_text(handle: ptr, data: ptr, count: u32, coord: u32, read: ptr) -> i32
+@extern("kernel32.dll", "GetConsoleScreenBufferInfo")
+unsafe fn info(handle: ptr, out: ptr) -> i32
+@extern("kernel32.dll", "CloseHandle")
+unsafe fn close_handle(h: ptr) -> i32
+
+@extern("kernel32.dll", "ReadConsoleOutputAttribute")
+unsafe fn read_attr(handle: ptr, data: ptr, count: u32, coord: u32, read: ptr) -> i32
+@extern("kernel32.dll", "SetConsoleWindowInfo")
+unsafe fn set_window(handle: ptr, absolute: i32, rect: ptr) -> i32
+@extern("kernel32.dll", "WriteConsoleOutputCharacterW")
+unsafe fn stamp(handle: ptr, data: ptr, count: u32, coord: u32, written: ptr) -> i32
+
+struct Probe { step: i32, failure: i32, width: i32 }
+
+unsafe fn push_key(handle: ptr, vk: i32, unit: i32) -> bool {
+    mut record: [u16; 10] = [0; 10]
+    record[0] = 1
+    record[2] = 1
+    record[4] = 1
+    record[5] = u16(vk)
+    record[7] = u16(unit)
+    mut n: u32 = 0
+    enqueue(handle, addr(&record[0]), 1, addr(&mut n)) != 0 && n == 1
+}
+
+fn draw(frame: &mut tui.Frame, probe: &Probe) {
+    frame.text(frame.area(), "Å" + probe.step.str(), tui.ink(.Cyan))
+}
+
+fn update(probe: &mut Probe, key: tui.Key) -> bool {
+    mut chars: [u16; 2] = [0; 2]
+    mut n: u32 = 0
+    mut bounds: [i16; 11] = [0; 11]
+    unsafe {
+        mut device: [u16; 8] = [67, 79, 78, 79, 85, 84, 36, 0]
+        out := open_file(addr(&device[0]), 0xc0000000, 3, ptr(0), 3, 0, ptr(0))
+        defer { _ := close_handle(out) }
+        if info(out, addr(&mut bounds[0])) == 0 { probe.failure = 20; return false }
+        if probe.step == 1 && i32(bounds[7]) - i32(bounds[5]) + 1 != probe.width { probe.failure = 30; return false }
+        coord := u32(bounds[5]).bit_or(u32(bounds[6]).shl(16))
+        if read_text(out, addr(&mut chars[0]), 2, coord, addr(&mut n)) == 0 || n != 2 ||
+        chars[0] != 197 || i32(chars[1]) != 48 + probe.step {
+            _ := sys.eprint(f"screen step={probe.step} read={n} expected=Å{probe.step} units={chars[0]},{chars[1]}")
+            probe.failure = 21 + probe.step; return false
+        }
+        mut attr: u16 = 0
+        if read_attr(out, addr(&mut attr), 1, coord, addr(&mut n)) == 0 || attr.bit_and(7) != 3 { probe.failure = 31; return false }
+        if probe.step == 0 {
+            mut rect: [i16; 4] = [bounds[5], bounds[6], i16(i32(bounds[7]) - 1), bounds[8]]
+            if set_window(out, 1, addr(&rect[0])) == 0 { probe.failure = 32; return false }
+            probe.width = i32(rect[2]) - i32(rect[0]) + 1
+        }
+    }
+    if probe.step == 0 {
+        match key { .Up => {}, _ => { probe.failure = 24 + probe.step }, }
+    } else if probe.step == 1 {
+        match key { .Char(c) if i32(c) == 0x1f30d => {}, _ => { probe.failure = 24 + probe.step }, }
+    } else {
+        match key { .Escape => {}, _ => { probe.failure = 24 + probe.step }, }
+    }
+    probe.step += 1
+    probe.failure == 0 && probe.step < 3
+}
+
+fn verify() -> i32 {
+    unsafe {
+        _ := detach()
+        if allocate() == 0 { return 11 }
+        mut device_in: [u16; 7] = [67, 79, 78, 73, 78, 36, 0]
+        mut device_out: [u16; 8] = [67, 79, 78, 79, 85, 84, 36, 0]
+        stdin := open_file(addr(&device_in[0]), 0xc0000000, 3, ptr(0), 3, 0, ptr(0))
+        stdout := open_file(addr(&device_out[0]), 0xc0000000, 3, ptr(0), 3, 0, ptr(0))
+        if use_handle(-10, stdin) == 0 || use_handle(-11, stdout) == 0 { return 12 }
+        mut old_in: u32 = 0
+        mut old_out: u32 = 0
+        if mode(stdin, addr(&mut old_in)) == 0 || mode(stdout, addr(&mut old_out)) == 0 { return 13 }
+        if !push_key(stdin, 38, 0) || !push_key(stdin, 0, 0xd83c) ||
+        !push_key(stdin, 0, 0xdf0d) || !push_key(stdin, 27, 27) { return 14 }
+        mut sentinel: u16 = 35
+        mut n: u32 = 0
+        if stamp(stdout, addr(&sentinel), 1, 0, addr(&mut n)) == 0 || n != 1 { return 19 }
+        mut probe := Probe { step: 0, failure: 0, width: 0 }
+        result := tui.run<Probe>(&mut probe, draw, update)
+        if result.is_err() { return 15 }
+        if probe.failure != 0 { return probe.failure }
+        if probe.step != 3 { return 16 }
+        mut new_in: u32 = 0
+        mut new_out: u32 = 0
+        if mode(stdin, addr(&mut new_in)) == 0 || mode(stdout, addr(&mut new_out)) == 0 { return 17 }
+        if old_in != new_in || old_out != new_out { return 18 }
+        active := open_file(addr(&device_out[0]), 0xc0000000, 3, ptr(0), 3, 0, ptr(0))
+        mut restored: u16 = 0
+        if read_text(active, addr(&mut restored), 1, 0, addr(&mut n)) == 0 || restored != sentinel { return 33 }
+        _ := close_handle(active)
+    }
+    0
+}
+
+fn main() -> i32 {
+    if target_is("windows") { return verify() }
+    _ := sys.eprint("Run this console test on Windows.")
+    1
+}
