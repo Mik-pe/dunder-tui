@@ -1,0 +1,28 @@
+capability stdio
+import sys
+
+fn as_bool(code:i32) -> bool { code%16 != 0 }
+fn as_result(code:i32) -> Result<(),string> {
+    if code%16 == 0 { return .Err("deferred") }
+    .Ok
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 2 }
+    mode := sys.arg(1)
+    mut passed := 0
+    mut failed := 0
+    for i in 0..65536 {
+        if mode == "bool" {
+            if as_bool(i) { passed += 1 } else { failed += 1 }
+        } else if mode == "result" {
+            match as_result(i) {
+                .Ok => { passed += 1 },
+                .Err(message) => { assert(message == "deferred"); failed += 1 },
+            }
+        } else { return 2 }
+    }
+    assert(passed == 61440 && failed == 4096)
+    print(f"{passed} {failed}")
+    0
+}
