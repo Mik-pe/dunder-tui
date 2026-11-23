@@ -1,0 +1,28 @@
+capability stdio
+import ..src.tui
+import sys
+
+pub fn cells(frame: &mut tui.Frame, step: i32) {
+    a := frame.area()
+    frame.label(a,"ABCDEFG")
+    if step < 2 {
+        assert(frame.set_diff_option(a.x+1,a.y,.Skip))
+        assert(frame.set_diff_option(a.x+2,a.y,.AlwaysUpdate))
+    } else {
+        assert(frame.set_cell_with_width(a.x+3,a.y,"[X]",3,tui.ink(.Yellow)))
+    }
+}
+
+fn render(frame: &mut tui.Frame, step: &i32) {
+    cells(&mut frame,step)
+    match frame.area().row_at(1) { .Some(row) => { frame.label(row,step.str()) }, .None => {}, }
+}
+
+fn update(step: &mut i32, key: tui.Key) -> bool {
+    match key { .Char(c) if c == `q` => false, _ => { step += 1; true }, }
+}
+
+fn main() -> i32 {
+    mut step := 0
+    match tui.run(&mut step,render,update) { .Ok => 0, .Err(e) => { _ := sys.eprint(e); 1 }, }
+}

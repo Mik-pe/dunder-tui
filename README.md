@@ -68,7 +68,7 @@ Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.12.0", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.13.0", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.
@@ -103,6 +103,18 @@ fn main() -> i32 {
 `draw` får en tom bild vid start, efter en tangent och när fönstret byter storlek. Returnera `false` från `update` för att lämna appen. Ctrl+C avslutar också. Om in- eller utmatningen är omdirigerad returnerar `run` ett fel.
 
 En egen widget kan ha metoden `render(&self, frame: &mut tui.Frame, area: tui.Rect)`. Rita den med `frame.render_widget(&widget, area)`. För en widget som uppdaterar sin cache kan du skicka `&mut widget`. Håller appen exempelvis listans markering separat tar `frame.render_stateful_widget(&list, area, &mut selection)` med det tillståndet till `render_stateful`. [Exempel med eget och inbyggt tillstånd](tests/suite.ddr)
+
+## Dela terminalyta med en annan ritare
+
+Sätt en cellregel efter att du ritat innehållet. Med `.Skip` kan exempelvis en bildvisare behålla sina pixlar i terminalen. `.AlwaysUpdate` ritar tillbaka appens tecken även när föregående bild innehöll samma tecken. När en cell återgår till `.None` skriver biblioteket åter dess aktuella innehåll.
+
+```dunder
+frame.label(frame.area(),"ABCDE")
+_ := frame.set_diff_option(1,0,.Skip)
+_ := frame.set_diff_option(2,0,.AlwaysUpdate)
+```
+
+`set_cell_with_width(x, y, symbol, columns, style)` låter en widget skriva en egen teckenföljd och ange antalet kolumner den tar i anspråk. `cell_at` läser tecken, stil och cellregel tillsammans. Med `frame.merge(&overlay)?` kan du kombinera två buffertar med olika origo. Överlappande celler hämtas från `overlay`, även tomma celler. [Exempel och terminalprov](tests/buffer_terminal.ddr) · [Jämförelse mot Ratatui](docs/parity.md#bildbuffert-och-celldiff-i-0130)
 
 ## Markör och testterminal
 

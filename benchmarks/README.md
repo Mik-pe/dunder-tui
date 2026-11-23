@@ -116,3 +116,7 @@ cargo run --locked --release --manifest-path benchmarks/reference/Cargo.toml --f
 ## Sex månadskalendrar
 
 För oförändrad bild, en celländring, sex rullande månader, ny bredd och full omritning finns median, p95, spridning, allokeringar, RSS och faktisk terminalutdata. [Kalendermätningen i 0.12.0](calendar.md)
+
+## Diagram med delad terminalyta
+
+I 0.13.0 mäts även diagrammet med överlåtna celler, en cell som alltid skrivs och en fast utskriftsbredd. Jämförelsen kontrollerar skärmen efter varje storleksändring och mäter utdata i en pseudoterminal. [Resultat och körkommandon](buffers.md)

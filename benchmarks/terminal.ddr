@@ -1,33 +1,44 @@
-capability stdio
+capability stdio, process
 import ..src.tui
 import ..src.posix
 import ..src.testing
 import ..tests.widget_cells as cells
 import .chart_scene
+import std.bytes as bytes
 import std.array as array
 import std.time as clock
+import std.process as proc
 import sys
 
 struct Output { width: i32, data: []u8 }
 impl tui.Backend for Output {
     fn size(&mut self) -> (i32,i32) { (self.width,24) }
+    fn clear_screen(&mut self, area: tui.Rect) -> Result<(),string> {
+        bytes.append_utf8(&mut self.data,"\x1b[2J")
+        .Ok
+    }
     fn present(&mut self, frame: &tui.Frame, previous: &tui.Frame) -> Result<(),string> {
-        self.data.clear()
         frame.ansi_diff(&previous,&mut self.data)
         .Ok
     }
 }
 
-struct State { scene: chart_scene.Scene, mode: string, step: i32 }
+struct State { scene: chart_scene.Scene, mode: string, step: i32, shared: bool }
 fn render(frame: &mut tui.Frame, s: &mut State) {
     s.scene.draw(&mut frame,s.mode,s.step)
+    if s.shared {
+        frame.label(tui.Rect{x:4,y:23,w:24,h:1},"external    +   >")
+        for x in 4..12 { _ := frame.set_diff_option(x,23,.Skip) }
+        _ := frame.set_diff_option(16,23,.AlwaysUpdate)
+        _ := frame.set_diff_option(20,23,.ForcedWidth(4))
+    }
     frame.set_cursor_position(0,23)
 }
 
 fn main() {
     timed := sys.arg_count() < 2 || sys.arg(1) != "--allocations"
     physical := sys.arg_count() == 2 && sys.arg(1) == "--terminal"
-    mut state := State { scene: chart_scene.Scene::new(), mode: "", step: 0 }
+    mut state := State { scene: chart_scene.Scene::new(), mode: "", step: 0, shared:proc.env("TUI_BENCH_DIFF_OPTIONS") == .Some("1") }
     if sys.arg_count() == 2 && sys.arg(1) == "--verify" {
         for mode in ["idle","cell","scroll","resize","repaint"] {
             mut t := tui.Terminal<testing.TestBackend>::new(testing.TestBackend::new(96,24))
@@ -51,6 +62,7 @@ fn main() {
             state.step = step
             t.backend_mut().width = if mode == "resize" && step%2 == 0 { 80 } else { 96 }
             start := if timed { clock.monotonic_ns() } else { i64(0) }
+            t.backend_mut().data.clear()
             assert(t.draw(&mut state,render).is_ok())
             batch := &t.backend().data
             if physical { assert(posix.write_bytes(&batch)) }

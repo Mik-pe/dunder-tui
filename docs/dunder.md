@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## En vy över två lånade värden
+
+En celldiff behöver läsa två bildbuffertar samtidigt. I 0.11.2 går det att lagra två delade lån i en post om de kommer från samma array. Två lokala ägare ger E4003 även när båda lever tills posten har använts. Biblioteket kan besöka skillnaderna med en funktionsparameter. En lånad iterator över två oberoende ägare skulle också kunna användas för jämförelse av dokument och sorterade sekvenser. [Två lokala ägare](../tests/dogfood/compiler/paired_views.ddr) · [Gemensam ägare](../tests/dogfood/compiler/paired_views_one_owner.ddr)
+
 ## Lokal tid i kalendern
 
 Kalendern markerar dagens datum enligt datorns tidszon. I 0.11.2 erbjuder `std.time` UTC-omvandling. Kalendern använder `localtime_r` på macOS och Linux och `SystemTimeToTzSpecificLocalTime` på Windows för att få lokalt datum. Tidsstämpeln `1711924200` gav 31 mars i UTC och 1 april i Stockholm på macOS och Linux. Språkets arbetslista innehåller även kontroll av årsskifte och övergång till sommartid. [Körbart prov](../tests/calendar_clock.ddr) · [Dunders nästa steg](https://github.com/Mik-pe/dunder/blob/5d8459bef0600eb5a87080fc0d507d1c83daf777/docs/next-steps.md#hämta-lokal-kalendertid-för-ett-givet-ögonblick)

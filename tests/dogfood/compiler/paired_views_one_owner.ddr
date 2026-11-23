@@ -1,0 +1,8 @@
+struct Value { number:i32 }
+struct Pair { left:&Value, right:&Value }
+
+fn main() {
+    values := [Value { number:3 },Value { number:5 }]
+    view := Pair { left:&values[0], right:&values[1] }
+    assert(view.left.number+view.right.number == 8)
+}

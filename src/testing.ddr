@@ -142,6 +142,8 @@ impl TestBackend {
 }
 
 impl tui.Backend for TestBackend {
+    fn clear_screen(&mut self, area: tui.Rect) -> Result<(),string> { self.clear_region(.All); .Ok }
+
     fn size(&mut self) -> (i32,i32) { (self.screen.area().w,self.screen.area().h) }
     fn read_cursor(&mut self) -> Result<(i32,i32),string> { .Ok(self.cursor_position()) }
     fn move_to(&mut self, x: i32, y: i32) -> Result<(),string> { self.set_cursor_position(x,y); .Ok }
@@ -151,8 +153,8 @@ impl tui.Backend for TestBackend {
         .Ok
     }
     fn write_region(&mut self, frame: &tui.Frame) -> Result<(),string> {
-        area := frame.area()
-        self.screen.copy_region(&frame,area,area.x,area.y)
+        unknown := tui.Frame::new(0,0)
+        self.screen.apply_region_diff(&frame,&unknown)
         .Ok
     }
     fn present(&mut self, frame: &tui.Frame, previous: &tui.Frame) -> Result<(),string> {

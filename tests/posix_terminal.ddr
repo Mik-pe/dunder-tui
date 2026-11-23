@@ -1,5 +1,6 @@
 capability unsafe, stdio
 
+import .terminal_driver as driver
 import ..src.tui
 import ..src.widgets as ui
 import std.bytes as bytes
@@ -59,6 +60,12 @@ fn resize(fd: i32) -> bool {
     false
 }
 
+fn resized_screen(output: string) -> bool {
+    mut screen := driver.Screen::new(20,4)
+    screen.apply(output)
+    text.contains(output,"\x1b[2J") && screen.contains(0,"Rubrik") && screen.contains(1,"Steg 2 med bredd 20")
+}
+
 fn update(state: &mut Probe, key: tui.Key) -> bool {
     rendered := output(state.master)
     if state.step == 0 {
@@ -69,7 +76,7 @@ fn update(state: &mut Probe, key: tui.Key) -> bool {
         state.ok = rendered == "\x1b[2;6H1" && resize(state.slave)
         match key { .Down => {}, _ => { state.ok = false }, }
     } else {
-        state.ok = text.contains(rendered, "Rubrik") && text.contains(rendered, "Steg 2 med bredd 20")
+        state.ok = resized_screen(rendered)
         match key { .Char(c) if i32(c) == 113 => {}, _ => { state.ok = false }, }
     }
     state.step += 1
@@ -106,7 +113,7 @@ unsafe fn verify(quit: string, timed: bool) -> bool {
     tail := output(master)
     if result.is_err() || !state.ok || !text.contains(tail, "\x1b[?25h\x1b[?1049l") { return false }
     if quit == "q" && state.step != 3 { return false }
-    if quit != "q" && (state.step != 2 || !text.contains(tail, "Steg 2 med bredd 20")) { return false }
+    if quit != "q" && (state.step != 2 || !resized_screen(tail)) { return false }
     if attributes(slave, addr(&mut after[0])) != 0 { return false }
     if target_is("macos") {
         before[3] = before[3].bit_and(u64(0x20000000).bit_not())

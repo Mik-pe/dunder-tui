@@ -1,5 +1,6 @@
 capability unsafe, stdio
 
+import .buffer_app
 import ..src.tui
 import ..src.calendar as cal
 import ..src.table
@@ -204,11 +205,34 @@ unsafe fn calendar_screen(out: ptr, x: i32, y: i32) -> i32 {
     0
 }
 
+fn shared_cells(frame: &mut tui.Frame, step: &mut i32) { buffer_app.cells(&mut frame,step) }
+
+unsafe fn shared_screen(out: ptr, x: i32, y: i32) -> i32 {
+    mut term: tui.Terminal<tui.LiveBackend> = tui.open(.Fixed(tui.Rect {x:2,y:2,w:7,h:1})).unwrap()
+    defer { term.backend_mut().close() }
+    mut step := 0
+    mut pair: [u16;2] = [33,33]
+    mut n: u32 = 0
+    coord := u32(x+3).bit_or(u32(y+2).shl(16))
+    if stamp(out,addr(&pair[0]),2,coord,addr(&mut n)) == 0 || n != 2 { return 61 }
+    if term.draw(&mut step,shared_cells).is_err() || unit_at(out,x+3,y+2) != 33 || unit_at(out,x+4,y+2) != 67 { return 62 }
+    if stamp(out,addr(&pair[0]),2,coord,addr(&mut n)) == 0 || n != 2 { return 63 }
+    step = 1
+    if term.draw(&mut step,shared_cells).is_err() || unit_at(out,x+3,y+2) != 33 || unit_at(out,x+4,y+2) != 67 { return 64 }
+    step = 2
+    if term.draw(&mut step,shared_cells).is_err() { return 65 }
+    expected := "ABC[X]G"
+    for i in 0..7 { if unit_at(out,x+2+i,y+2) != i32(expected[i]) { return 66 } }
+    0
+}
+
 unsafe fn embedded(out: ptr) -> i32 {
     mut bounds: [i16;11] = [0;11]
     if info(out,addr(&mut bounds[0])) == 0 { return 50 }
     x := i32(bounds[5])
     y := i32(bounds[6])
+    shared := shared_screen(out,x,y)
+    if shared != 0 { return shared }
     result := calendar_screen(out,x,y)
     if result != 0 { return result }
     mut count := 0

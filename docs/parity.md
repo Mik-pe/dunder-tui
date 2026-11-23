@@ -6,7 +6,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 
 | Område | Finns i Dunder | Återstår att leverera eller verifiera |
 | --- | --- | --- |
-| Buffer och Cell | Återanvända bildbuffertar, breda tecken, celldiff, exakt och ungefärlig sammanslagning av linjesymboler, färgutdata och avläsning av rader och cellstilar. Buffertar med förskjutet origo, rektangulär kopiering, linjär storleksändring och tillämpning av en diff på en delyta. | Sammanslagning till den gemensamma omslutande rektangeln. Cellernas regler för att hoppa över eller alltid rita. |
+| Buffer och Cell | Återanvända bildbuffertar, breda tecken, celldiff, exakt och ungefärlig sammanslagning av linjesymboler, färgutdata och avläsning av rader och cellstilar. Buffertar med förskjutet origo, rektangulär kopiering, linjär storleksändring och tillämpning av en diff på en delyta. Buffertsammanslagning, avläsning av en hel cell, fyra cellregler och strömmande besök av ändringar. | Större ytor än bibliotekets nuvarande gräns på 4 096 celler per axel och 1 048 576 celler totalt. |
 | Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. | Material- och Tailwind-paletter, beständiga dataformat och full täckning för konvertering mellan stilrepresentationer. |
 | Text | Span, Line, Text, Paragraph, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. | Strängbredder för skriftspecifika ligaturer över grafemgränser, full täckning för sammansatta emoji och alla operationer på fristående texttyper. |
 | Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering och cache. 15 076 jämförda layouter, 1 200 rektangelprov och 1 100 jämförda bilder. | Utökad täckning av överbestämda system med många olika paneler och upprepade ändringar av reglerna. |
@@ -194,4 +194,22 @@ dunder build --locked --offline tests/calendar_reference.ddr -o build/calendar-s
 cargo build --locked --release --manifest-path benchmarks/reference/Cargo.toml --features calendar-oracle --example calendar --target-dir build/rust
 build/calendar-states | build/rust/release/examples/calendar
 build/calendar-states --dates | build/rust/release/examples/calendar --dates
+```
+
+
+## Bildbuffert och celldiff i 0.13.0
+
+`Frame.merge` använder båda buffertarnas absoluta koordinater. Den sista bufferten bestämmer innehållet där ytorna överlappar och tomrummet mellan dem fylls med standardceller. Om ytan skulle överskrida buffertgränsen returneras ett fel och ursprungsbufferten bevaras. 2 880 jämförelser mot Ratatui omfattar tomma, angränsande, överlappande och upprepat sammanslagna ytor. Varje cell jämförs med sitt tecken, förgrund, bakgrund, understrykningsfärg, attribut och cellregel. Det omfattar även fallet där högerhalvan av ett brett tecken täcks. [Dunderprov](../tests/merge_reference.ddr) · [Ratatui-prov](../benchmarks/reference/examples/merges.rs)
+
+`Frame.visit_changes` besöker ändrade koordinater i ritordning och kan avbrytas när besökaren returnerar `false`. `diff_positions` samlar samma koordinater i en array. Båda använder den gemensamma höjden och rapporterar fel om origo eller bredd skiljer sig. De fyra cellreglerna är `.None`, `.Skip`, `.AlwaysUpdate` och `.ForcedWidth(1..65535)` inklusive båda gränserna. Ett prov jämför 10 000 ordnade par av buffertar mot Ratatuis `diff_iter`, avkodar Dunders terminalutdata och kontrollerar koordinater, tecken och stilar för varje skrivning. Det omfattar bland annat variationsväljaren U+FE0F, breda tecken, regler som täcker nästa rad och borttagning av en regel. [Dunderprov](../tests/buffer_reference.ddr) · [Referens och avkodare](../benchmarks/reference/examples/buffers.rs)
+
+En andra skrivare ändrar två celler i en pseudoterminal. Nästa bild skyddar den första, återställer den andra och kan sedan återta båda cellerna. Win32-provet gör samma ändring i en konsolbuffert och läser tillbaka tecknen. Vid storleksändring rensas helskärmsvyn innan den nya bilden skickas. [Pseudoterminal](../tests/buffer_terminal.ddr) · [Win32](../tests/windows_console.ddr) · [Bildtider och terminalutdata](../benchmarks/buffers.md)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/buffer_reference.ddr -o build/buffers
+dunder build --locked --offline tests/merge_reference.ddr -o build/merges
+cargo build --release --locked --manifest-path benchmarks/reference/Cargo.toml --features style-oracle --example buffers --example merges --target-dir build/rust
+build/buffers | build/rust/release/examples/buffers
+build/merges | build/rust/release/examples/merges
 ```

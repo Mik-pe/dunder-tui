@@ -54,3 +54,7 @@ required-features = ["calendar-oracle"]
 [[example]]
 name = "calendar_bench"
 required-features = ["calendar-oracle"]
+
+[[example]]
+name = "merges"
+required-features = ["style-oracle"]

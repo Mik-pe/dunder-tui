@@ -74,6 +74,21 @@ fn main() {
     let physical = std::env::args().any(|a| a == "--terminal");
     let data = chart_scene::Data::new();
     let mut scene = chart_scene::Scene::new(&data);
+    let shared = std::env::var("TUI_BENCH_DIFF_OPTIONS").as_deref() == Ok("1");
+    let mut draw = |buf: &mut ratatui::buffer::Buffer, mode: &str, n| {
+        scene.draw(buf, mode, n);
+        if shared {
+            use ratatui::buffer::CellDiffOption;
+            buf.set_string(4, 23, "external    +   >", ratatui::style::Style::new());
+            for x in 4..12 {
+                buf[(x, 23)].set_diff_option(CellDiffOption::Skip);
+            }
+            buf[(16, 23)].set_diff_option(CellDiffOption::AlwaysUpdate);
+            buf[(20, 23)].set_diff_option(CellDiffOption::ForcedWidth(
+                std::num::NonZeroU16::new(4).unwrap(),
+            ));
+        }
+    };
     if std::env::args().any(|v| v == "--verify") {
         let mut input = io::stdin().lock().lines();
         for mode in ["idle", "cell", "scroll", "resize", "repaint"] {
@@ -89,7 +104,7 @@ fn main() {
                 );
                 let count = t
                     .draw(|f| {
-                        scene.draw(f.buffer_mut(), mode, n);
+                        draw(f.buffer_mut(), mode, n);
                         f.set_cursor_position((0, 23));
                     })
                     .unwrap()
@@ -127,7 +142,7 @@ fn main() {
             let start = timed.then(Instant::now);
             t.backend_mut().bytes.clear();
             t.draw(|f| {
-                scene.draw(f.buffer_mut(), mode, n);
+                draw(f.buffer_mut(), mode, n);
                 f.set_cursor_position((0, 23));
             })
             .unwrap();

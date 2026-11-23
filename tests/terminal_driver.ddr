@@ -36,7 +36,7 @@ impl Screen {
         }
     }
 
-    fn apply(&mut self, batch: string) {
+    pub fn apply(&mut self, batch: string) {
         chars := batch.runes()
         mut i := 0
         while i < chars.len {

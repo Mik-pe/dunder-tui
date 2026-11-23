@@ -1,0 +1,54 @@
+import ..src.tui
+import std.bytes as bytes
+
+fn painted(area:tui.Rect, seed:i32) -> tui.Frame {
+    mut f := tui.Frame::at(area)
+    base := if seed%2 == 0 { tui.ink(.Green).background(.Black) } else { tui.ink(.Yellow).background(.Blue) }
+    f.fill(area,rune(97+seed),base)
+    for y in area.y..area.bottom() {
+        mut x := area.x
+        while x < area.right() {
+            k := (x+3*y+seed)%6
+            style := tui.ink(.Red).underlined().underline_color(.Indexed(130+u8(k)))
+            if k == 0 && x+1 < area.right() { _ := f.set_cell(x,y,"界",style); x += 2; continue }
+            if k == 1 { _ := f.set_cell(x,y,"é",style) }
+            if k == 2 { f.clear_area(tui.Rect{x:x,y:y,w:1,h:1}) }
+            if k == 3 { _ := f.set_diff_option(x,y,.Skip) }
+            if k == 4 { _ := f.set_diff_option(x,y,.AlwaysUpdate) }
+            if k == 5 { _ := f.set_diff_option(x,y,.ForcedWidth(3)) }
+            x += 1
+        }
+    }
+    move f
+}
+
+fn snapshot(f:&tui.Frame) {
+    a := f.area()
+    mut out: []u8 = []
+    bytes.append_utf8(&mut out,f"{a.x},{a.y},{a.w},{a.h} ")
+    for y in a.y..a.bottom() { for x in a.x..a.right() {
+        c := f.cell_at(x,y).unwrap()
+        flags := match c.diff_option { .None => 0, .Skip => -1, .AlwaysUpdate => -2, .ForcedWidth(n) => n, }
+        fg := c.style.get_foreground().unwrap().code()
+        bg := c.style.get_background().unwrap().code()
+        ul := c.style.get_underline_color().unwrap_or(.Default).code()
+        bytes.append_utf8(&mut out,f"{c.symbol}:{fg},{bg},{ul},{c.style.has(.Underlined)},{flags}|")
+    } }
+    print(bytes.decode(&out).unwrap())
+}
+
+fn main() {
+    for index in 0..120 {
+        first := tui.Rect {x:2+index%7,y:2+(index/7)%5,w:index%8,h:(index/8)%6}
+        for delta in 0..12 {
+            other := tui.Rect {x:1+(index+3*delta)%11,y:1+(2*index+delta)%8,w:(index+delta)%8,h:(index+2*delta)%5}
+            mut merged := painted(first,0)
+            second := painted(other,1)
+            assert(merged.merge(&second).is_ok())
+            snapshot(&merged)
+            third := painted(tui.Rect {x:4,y:3,w:2+delta%5,h:3},2)
+            assert(merged.merge(&third).is_ok())
+            snapshot(&merged)
+        }
+    }
+}

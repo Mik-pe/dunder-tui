@@ -703,6 +703,14 @@ fn reject_number(frame: &mut tui.Frame, n: &mut i32) -> Result<(),string> {
     t.backend_mut().device.clear_region(.All)
     t.invalidate()
     assert(t.draw(&mut n,draw_number).is_ok() && t.backend().device.buffer().line(0) == "0  ")
+    count := t.completed().count()
+    t.backend_mut().device.resize(6,1)
+    t.backend_mut().fail = true
+    assert(t.draw(&mut n,draw_number).is_err() && t.completed().count() == count)
+    t.backend_mut().fail = false
+    n = 4
+    assert(t.draw(&mut n,draw_number).is_ok() && t.completed().count() == count+1)
+    assert(t.backend().device.buffer().line(0) == "4     ")
 }
 
 @test fn cell_transfers_preserve_clusters_and_decoration_keys() {
@@ -855,4 +863,72 @@ impl VisitCount {
     frame.render_stateful_widget(&bar,row,&mut scroll)
     assert(scroll.position == 14)
     assert(frame.symbol_at(row.x,row.y) == .Some("◄") && frame.symbol_at(row.right()-1,row.y) == .Some("►"))
+}
+
+@test fn buffer_diffs_validate_shared_coordinates_and_use_the_common_height() {
+    mut first := tui.Frame::at(tui.Rect {x:3,y:7,w:4,h:1})
+    mut next := tui.Frame::at(tui.Rect {x:3,y:7,w:4,h:3})
+    first.label(first.area(),"ABCD")
+    next.label(next.area(),"A1CD\nWXYZ")
+    result := next.diff_positions(&first).unwrap()
+    assert(result.len == 1 && result[0] == (4,7))
+    assert(first.diff_positions(&next).unwrap()[0] == (4,7))
+    next.label(next.area(),"1234")
+    mut visits := 0
+    assert(next.visit_changes(&first,&mut visits,fn(n: &mut i32,x:i32,y:i32) -> bool {
+        n += 1; assert(x == 3 && y == 7); false
+    }).is_ok() && visits == 1)
+    shifted := tui.Frame::at(tui.Rect {x:4,y:7,w:4,h:1})
+    assert(first.diff_positions(&shifted).is_err())
+    narrow := tui.Frame::at(tui.Rect {x:3,y:7,w:3,h:1})
+    assert(first.diff_positions(&narrow).is_err())
+    assert(!next.set_diff_option(3,7,.ForcedWidth(0)) && !next.set_diff_option(3,7,.ForcedWidth(65536)))
+    assert(!next.set_diff_option(2,7,.Skip) && next.diff_option_at(7,7).is_none())
+}
+
+@test fn headless_updates_preserve_skipped_cells_and_repair_external_writes() {
+    mut old := tui.Frame::new(5,1)
+    old.label(old.area(),"ABCDE")
+    assert(old.set_diff_option(1,0,.Skip) && old.set_diff_option(2,0,.AlwaysUpdate))
+    mut screen := tui.Frame::new(5,1)
+    screen.label(screen.area(),"-----")
+    unknown := tui.Frame::new(0,0)
+    screen.apply_region_diff(&old,&unknown)
+    assert(screen.line(0) == "A-CDE")
+    screen.label(tui.Rect{x:1,y:0,w:2,h:1},"!!")
+    screen.apply_region_diff(&old,&old)
+    assert(screen.line(0) == "A!CDE")
+    mut next := tui.Frame::new(5,1)
+    next.label(next.area(),"ABCDE")
+    screen.apply_diff(&next,&old)
+    assert(screen.line(0) == "ABCDE")
+    assert(next.set_cell_with_width(1,0,"[x]",3,tui.ink(.Cyan)))
+    clear := tui.Frame::new(5,1)
+    assert(next.diff_positions(&clear).unwrap().len == 3)
+    next.clear()
+    assert(next.diff_positions(&clear).unwrap().len == 0)
+}
+
+@test fn merging_preserves_cut_glyphs_and_rejects_unrepresentable_bounds_atomically() {
+    mut a := tui.Frame::at(tui.Rect{x:12,y:7,w:4,h:1})
+    a.label(a.area(),"界ab")
+    a.set_cursor_position(14,7)
+    b := tui.Frame::at(tui.Rect{x:13,y:7,w:1,h:1})
+    assert(a.merge(&b).is_ok() && a.cell_at(12,7).unwrap().symbol == "界" && a.cell_at(13,7).unwrap().symbol == " ")
+    assert(a.cursor_position() == .Some((14,7)))
+    far := tui.Frame::at(tui.Rect{x:7000,y:7,w:1,h:1})
+    assert(a.merge(&far).is_err() && a.area().w == 4 && a.cell_at(12,7).unwrap().symbol == "界")
+}
+
+
+@test fn merged_raw_symbols_keep_their_display_width_across_a_row_boundary() {
+    mut raw := tui.Frame::new(4,2)
+    assert(raw.set_cell_with_width(3,0,"abc",3,tui.plain()))
+    assert(raw.set_diff_option(3,0,.None))
+    mut old := tui.Frame::new(4,2)
+    mut next := tui.Frame::new(4,2)
+    assert(old.merge(&raw).is_ok() && next.merge(&raw).is_ok())
+    next.label(tui.Rect{x:0,y:1,w:4,h:1},"XYZ")
+    positions := next.diff_positions(&old).unwrap()
+    assert(positions.len == 1 && positions[0] == (2,1))
 }
