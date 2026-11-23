@@ -82,8 +82,56 @@ fn live(fixed: bool) -> io::Result<()> {
     }
 }
 
+fn manual(t: &mut Terminal<TestBackend>, seed: u16, stage: u16, w: u16, h: u16) {
+    let a = t.get_frame().area();
+    let x = a.x + (seed + stage) % a.width;
+    let y = a.y + (seed / 3 + stage) % a.height;
+    let token = char::from(b'A' + stage as u8);
+    let style = Style::default().fg(Color::Red).add_modifier(Modifier::BOLD);
+    match stage {
+        0 | 7 => t.show_cursor().unwrap(),
+        1 | 4 | 11 | 17 => {
+            let mut f = t.get_frame();
+            f.buffer_mut()[(x, y)].set_char(token).set_style(style);
+            f.set_cursor_position((x, y));
+        }
+        2 | 3 | 5 | 9 | 12 | 18 => t.flush().unwrap(),
+        6 | 10 | 19 => t.swap_buffers(),
+        8 | 14 | 21 => {
+            t.current_buffer_mut()[(x, y)]
+                .set_char(token)
+                .set_style(style);
+        }
+        13 => {
+            t.apply_buffer_with_cursor(Some((x, y).into())).unwrap();
+        }
+        15 => {
+            t.backend_mut().resize(w + 2, h + 1);
+            t.autoresize().unwrap();
+        }
+        16 => {
+            t.apply_buffer().unwrap();
+        }
+        20 => {
+            t.insert_before(1, |buf| {
+                buf.set_string(0, 0, "log", Style::default());
+            })
+            .unwrap();
+        }
+        22 => {
+            t.draw(|f| {
+                let a = f.area();
+                f.buffer_mut().set_string(a.x, a.y, "T", Style::default());
+            })
+            .unwrap();
+        }
+        _ => t.backend_mut().flush().unwrap(),
+    }
+}
+
 fn main() {
     let windows = std::env::args().nth(1).as_deref() == Some("--window");
+    let manual_mode = std::env::args().nth(1).as_deref() == Some("--manual");
     let direct = std::env::args().nth(1).as_deref() == Some("--direct-cursor");
     match std::env::args().nth(1).as_deref() {
         Some("--probe-window") => {
@@ -131,14 +179,25 @@ fn main() {
             .unwrap();
         let viewport = if seed % 3 == 0 {
             Viewport::Fixed(Rect::new(2, 1, w - 4, h - 2))
-        } else if (windows || direct) && seed % 3 == 1 {
+        } else if (windows || direct || manual_mode) && seed % 3 == 1 {
             Viewport::Fullscreen
         } else {
             Viewport::Inline(1 + seed % (h + 3))
         };
         let mut t = Terminal::with_options(device, TerminalOptions { viewport }).unwrap();
-        for stage in 0..16 {
+        for stage in 0..if manual_mode { 24 } else { 16 } {
             match stage {
+                _ if manual_mode => {
+                    manual(&mut t, seed, stage, w, h);
+                    let mut f = t.get_frame();
+                    let mut current = format!("{} ", f.count());
+                    cells(&mut current, f.buffer_mut());
+                    assert_eq!(
+                        records.next().unwrap().unwrap(),
+                        current,
+                        "pending {seed}/{stage}"
+                    );
+                }
                 0 => {}
                 1 | 6 | 10 if direct => {
                     let pos = ((seed + stage) % w, (2 * seed + stage) % h);

@@ -253,6 +253,18 @@ unsafe fn embedded(out: ptr) -> i32 {
     if fixed.cursor_position().unwrap() != (3,2) || fixed.draw(&mut count,embedded_frame).is_err() { return 106 }
     if info(out,addr(&mut bounds[0])) == 0 || i32(bounds[2]) != x+5 || i32(bounds[3]) != y+2 { return 107 }
     if cursor_info(out,addr(&mut shape[0])) == 0 || shape[0] != 47 || shape[1] == 0 { return 108 }
+    area := fixed.viewport_area()
+    f := fixed.get_frame()
+    f.label(area,"STAGE")
+    f.set_cursor_position(0,0)
+    if unit_at(out,x+4,y+2) != 86 || fixed.flush().is_err() || unit_at(out,x+4,y+2) != 83 { return 110 }
+    if cursor_info(out,addr(&mut shape[0])) == 0 || shape[0] != 47 || shape[1] == 0 { return 111 }
+    fixed.swap_buffers()
+    if fixed.current_buffer_mut().symbol_at(area.x,area.y).unwrap() != " " || fixed.backend_mut().flush().is_err() { return 112 }
+    fixed.current_buffer_mut().label(area,"NEXT")
+    if fixed.apply_buffer_with_cursor(.Some((6,2))).is_err() || fixed.cursor_position().unwrap() != (6,2) { return 113 }
+    if unit_at(out,x+4,y+2) != 78 || fixed.apply_buffer().is_err() || unit_at(out,x+4,y+2) != 32 { return 114 }
+    if cursor_info(out,addr(&mut shape[0])) == 0 || shape[1] != 0 { return 115 }
     fixed.backend_mut().close()
     if fixed.cursor_position().is_ok() || fixed.set_cursor_position(0,0).is_ok() || fixed.show_cursor().is_ok() || fixed.hide_cursor().is_ok() { return 109 }
     if position(out,u32(x).bit_or(u32(y+1).shl(16))) == 0 { return 52 }

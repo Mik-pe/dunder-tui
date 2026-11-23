@@ -13,7 +13,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna tecken, individuella kanter, justerade titlar, utfyllnad och skuggor. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
 | Övriga widgets | Clear och Fill på Frame, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, månadskalender med händelser och egna datumstilar, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. | Logotyp och maskot. |
 | Egna widgets och tester | Frame ritar egna och inbyggda widgets med `render_widget` och `render_stateful_widget`. Tillstånd kan uppdateras vid ritning med `run_stateful`. Egna backends kan anslutas till Terminal. TestBackend har skrollhistorik, markör, fem rensningslägen och regionskrollning. | Bredare testning av specialiserade terminalbackends. |
-| Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, markörstyrning från Frame och Terminal, bildräknare, ANSI och Win32. Fast och inbäddad vyport, explicit storleksanpassning, terminalens tecken- och pixelmått, loggrader, rensning och regionskrollning. Återställning efter skrivfel och uteblivet markörsvar har provats. | Separat spolning och byte av terminalbuffertar, marköråterställning för egna backends när terminalen släpps, fel mitt i skrollning och nativ Windowskonsol. |
+| Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, markörstyrning från Frame och Terminal, bildräknare, ANSI och Win32. Fast och inbäddad vyport, explicit storleksanpassning, terminalens tecken- och pixelmått, manuell cellutmatning och byte av arbetsbuffert, loggrader, rensning och regionskrollning. Återställning efter skrivfel och uteblivet markörsvar har provats. | Marköråterställning för egna backends när terminalen släpps, fel mitt i skrollning och nativ Windowskonsol. |
 | Stabil Rust-integration | Jämförelseprogrammen använder den låsta Rustreferensen. Dunder-appar byggs offline. | Kontrollera Dunder-motsvarigheter till bekvämlighetsmakron, serialisering, cachning och backendval där dessa påverkar appens beteende. |
 | Effektivitet och plattformar | Tid, minne, allokeringar och faktiska terminalbyte för en widgetvy på macOS och Linux. Pseudoterminalprov på macOS och Linux ARM64/x86-64. Win32-prov under Wine. | Nativ Windows x64, fler arbetslaster med komplex layout, lägre kostnad för dynamiska färgvärden och paritet på fysisk x86-64. |
 
@@ -262,3 +262,25 @@ build/probe ./build/rust/release/examples/terminal
 ```
 
 För samma 1 100 bilder finns median, p95, spridning, allokeringar och terminalbyte för de fem arbetslasterna. [Terminalmätning i 0.16.0](../benchmarks/buffers.md#ommätning-i-0160)
+
+## Manuell rendering i 0.17.0
+
+`get_frame()` öppnar den aktuella arbetsbufferten med en ny markörbegäran. Cellerna finns kvar mellan anrop. `current_buffer_mut()` ger direkt åtkomst till samma celler. Skrivningarna syns när en celldiff skickas till backenden eller när appen visar en hel bild med `draw`, `apply_buffer` eller `apply_buffer_with_cursor`. De tre sistnämnda anropen uppdaterar markören och ökar bildräknaren efter lyckad utmatning.
+
+Det går också att skicka diffen med `flush()`, byta arbetsbuffert med `swap_buffers()` och tömma backendens utmatning var för sig. En ren celldiff behåller markörens synlighet. Vid textutmatning kan själva skrivningen flytta markören. En egen backend kan implementera `draw_cells` och använda `frame.ansi_cells` för exakt den utmatningen. För tidigare backends som enbart implementerar `present` ger manuell cellutmatning ett fel. Om cellskrivningen misslyckas finns arbetsbuffertens innehåll kvar. Om backendens avslutande tömning misslyckas är nästa arbetsbuffert tom och bildräknaren står kvar. Rita om innehållet så skickas en hel bild.
+
+Ett prov läser både den väntande bilden och den faktiska testskärmen vid 24 steg för 90 olika terminaler. Det jämför celltext och stil, skrollhistorik, markör, bildnummer och vyport med Ratatui 0.30.2. Stegen omfattar upprepad cellutmatning, buffertbyte, skärmändring, loggrad och övergång till vanlig ritning. Pseudoterminalprovet följer båda implementationerna genom tio steg i helskärm och i en förskjuten fast vy. På Win32 läser provet tillbaka konsolens tecken och markör via systemets egna anrop. [Referensens buffertoperationer](https://github.com/ratatui/ratatui/blob/ratatui-v0.30.2/ratatui-core/src/terminal/buffers.rs) · [Ratatuis fullständiga ritning](https://github.com/ratatui/ratatui/blob/ratatui-v0.30.2/ratatui-core/src/terminal/render.rs) · [Test av buffrad utmatning och skrivfel](../tests/suite.ddr)
+
+```sh
+mkdir -p build
+dunder build --offline --locked tests/viewport_reference.ddr -o build/views
+dunder build --offline --locked tests/manual_app.ddr -o build/manual-app
+dunder build --offline --locked tests/manual_terminal.ddr -o build/manual-pty
+cargo build --release --locked --manifest-path benchmarks/reference/Cargo.toml --features terminal-oracle --example viewports --example terminal --target-dir build/rust
+build/views --manual | build/rust/release/examples/viewports --manual
+build/manual-pty ./build/manual-app
+build/manual-pty ./build/rust/release/examples/terminal
+build/rust/release/examples/terminal --final-flush-error
+```
+
+Median, p95, allokeringar, minne och antal terminalbyte för 1 100 bilder finns redovisade per plattform och arbetslast. [Mätning i 0.17.0](../benchmarks/buffers.md#ommätning-i-0170)

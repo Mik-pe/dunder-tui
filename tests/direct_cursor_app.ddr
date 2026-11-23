@@ -8,7 +8,7 @@ fn draw(frame:&mut tui.Frame, visible:&mut bool) {
 }
 
 fn reject(frame:&mut tui.Frame, visible:&mut bool) -> Result<(),string> {
-    frame.label(frame.area(),"BAD")
+    frame.label(frame.area(),"B")
     frame.set_cursor_position(7,0)
     .Err("reject")
 }

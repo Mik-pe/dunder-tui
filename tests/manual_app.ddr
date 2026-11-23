@@ -1,0 +1,39 @@
+capability stdio
+import ..src.tui
+import sys
+
+fn reject(f:&mut tui.Frame, area:&mut tui.Rect) -> Result<(),string> {
+    f.text(tui.Rect{x:area.x+2,y:area.y,w:1,h:1},"x",tui.plain())
+    .Err("reject")
+}
+
+fn exercise(fixed:bool) -> Result<(),string> {
+    mode := if fixed { tui.Viewport.Fixed(tui.Rect{x:4,y:2,w:8,h:3}) } else { tui.Viewport.Fullscreen }
+    mut t: tui.Terminal<tui.LiveBackend> = tui.open(mode)?
+    mut a := t.viewport_area()
+    for step in 0..10 {
+        match step {
+            0 => { t.set_cursor_position(2,1)?; t.show_cursor()? },
+            1 => { f := t.get_frame(); f.label(a,"ED"); f.set_cursor_position(9,4) },
+            2 => { t.flush()? },
+            3 | 9 => { t.swap_buffers() },
+            4 => { t.current_buffer_mut().label(a,"LO") },
+            5 => { t.apply_buffer()? },
+            6 => { t.current_buffer_mut().label(a,"UP"); t.apply_buffer_with_cursor(.Some((2,4)))? },
+            7 => {
+                t.current_buffer_mut().label(a,"NO")
+                if t.try_draw(&mut a,reject).is_ok() { return .Err("unexpected success") }
+            },
+            _ => { t.apply_buffer()? },
+        }
+        t.backend_mut().flush()?
+        _ := t.cursor_position()?
+    }
+    .Ok
+}
+
+fn main() -> i32 {
+    match exercise(sys.arg_count() == 2 && sys.arg(1) == "--manual-fixed") {
+        .Ok => 0, .Err(message) => { _ := sys.eprint(message); 1 },
+    }
+}

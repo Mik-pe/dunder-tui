@@ -84,7 +84,7 @@ Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.16.0", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.17.0", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.
@@ -159,6 +159,22 @@ fn main() {
 
 Implementera `tui.Backend` med `size` och `present` för att ansluta en egen utmatning. `present` får aktuell och föregående bild. `frame.ansi_diff(&previous,&mut output)` skriver ändrade celler och markörkommandon till en bytebuffert. Med `try_draw` kan ritfunktionen returnera ett fel före utmatningen. Om backenden rapporterar ett skrivfel får den en hel bild nästa gång. `completed()` ger den senast lyckade bilden. Anropa `invalidate()` för att tvinga fram en hel omritning efter externa ändringar. [Backend med felprov](tests/suite.ddr) · [Testterminalens skrollhistorik](src/testing.ddr)
 
+### Rita i separata steg
+
+Använd `terminal.draw(...)` för den vanliga ritloopen. En egen händelseloop kan förbereda flera widgets i samma arbetsbuffert och välja när de ska visas.
+
+```dunder
+frame := terminal.get_frame()
+frame.label(frame.area(),"Nästa avgång")
+terminal.flush()?
+terminal.swap_buffers()
+terminal.backend_mut().flush()?
+```
+
+`terminal.flush()` skickar ändrade celler till backenden. `swap_buffers()` väljer den färdigritade bilden som grund för nästa diff och ger dig en tom arbetsbuffert. Ett separat `backend_mut().flush()` tömmer en eventuell utmatningsbuffert. Bildräknaren fortsätter på samma nummer genom dessa tre steg.
+
+Om du vill göra allt i ett anrop efter att ha fyllt arbetsbufferten, använd `apply_buffer()?` för dold markör eller `apply_buffer_with_cursor(.Some((x,y)))?` för synlig markör. Båda räknar en visad bild. [Körbart terminalexempel](tests/manual_app.ddr)
+
 ### Styr markören mellan bilder
 
 Med en öppen `Terminal` kan du läsa och flytta den verkliga markören även utanför ritfunktionen. Koordinaterna börjar på noll och gäller hela terminalen. Förflyttning behåller markörens synlighet.
@@ -170,7 +186,7 @@ terminal.set_cursor_position(x,y+1)?
 terminal.show_cursor()?
 ```
 
-Vid nästa lyckade ritning bestämmer bildens markör åter position och synlighet. En misslyckad ritfunktion behåller `completed()`. Egna backends kan implementera `read_cursor`, `move_to` och `set_cursor_visible`. Metoderna returnerar ett fel om backenden saknar stödet. [Körbart exempel](tests/direct_cursor_app.ddr)
+Vid nästa lyckade ritning bestämmer bildens markör åter position och synlighet. En misslyckad ritfunktion behåller den visade bilden och `completed()`. De celler funktionen redan skrivit finns kvar i arbetsbufferten. Anropa `current_buffer_mut().clear()` om du vill börja om på en tom bild. Egna backends kan implementera `read_cursor`, `move_to` och `set_cursor_visible`. Metoderna returnerar ett fel om backenden saknar stödet. [Körbart exempel](tests/direct_cursor_app.ddr)
 
 ## Rita i en del av terminalen
 

@@ -11,7 +11,7 @@ fn exercise(master:i32, slave:i32, screen:&mut driver.Screen) -> bool {
                 _ := sys.eprint(f"step {step}, cursor {screen.x},{screen.y} visible={screen.cursor_visible}")
                 return false
             }
-            if screen.contains(0,"BAD") { return false }
+            if screen.contains(0,"B") { return false }
             if step == 12 && !driver.send(master,"k") { return false }
             if !driver.send(master,f"\x1b[{pos.1+1};") || !driver.send(master,f"{pos.0+1}R") { return false }
         }

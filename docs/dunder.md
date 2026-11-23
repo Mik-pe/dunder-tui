@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Skicka vidare ett lyckat Result
+
+När terminalen började tömma backendens utmatning efter varje bild ökade antalet allokeringsanrop. Genom att skicka tillbaka dess lyckade resultat med `move` kunde terminalen undvika 1 100 nykonstruerade resultat i mätningen med 1 100 bilder. I det isolerade provet anropar två program samma operation och kontrollerar samma felmeddelande. Den variant som bygger en ny `.Ok` gör ett extra poolåterbruk per lyckat anrop på Dunder 0.11.2. [Resultatprov](../benchmarks/language/unit_result.ddr) · [Förslag för kompilatorn](https://github.com/Mik-pe/dunder/blob/99e96aba89d6913e0b7c0411deeff435204fa16e/docs/next-steps.md#återanvänd-lyckade-resultat-vid-vidarebefordran)
+
 ## Stegvis läsning ur en bytekö
 
 Med Dunder 0.11.2 tog det 105 ms i median att tömma 16 KiB en byte i taget med `std.bytes.consume_prefix` på macOS ARM64. Med en lånad vy och en läsposition tog det 53 µs. Terminalen använder nu en läsposition och packar ihop återstående byte när den behöver läsa mer. Skillnaden märks när stora inklistringar kommer samtidigt som ett markörsvar. [Körbart mätprov](../benchmarks/language/byte_queue.ddr) · [Förslag till standardbiblioteket](https://github.com/Mik-pe/dunder/blob/94e98cc01e8b112aa20d3b8095a0391a65664c90/docs/next-steps.md#läs-stegvis-ur-en-bytekö)

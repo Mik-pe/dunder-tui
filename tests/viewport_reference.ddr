@@ -40,9 +40,50 @@ fn snapshot(t: &tui.Terminal<test.TestBackend>, seed: i32, step: i32) {
     print(bytes.decode(&out).unwrap())
 }
 
+fn manual(t: &mut tui.Terminal<test.TestBackend>, seed:i32, stage:i32, w:i32, h:i32) {
+    area := t.viewport_area()
+    column := area.x+(seed+stage)%area.w
+    row := area.y+(seed/3+stage)%area.h
+    mark := tui.Rect {x:column,y:row,w:1,h:1}
+    brush := tui.ink(.Red).bold()
+    match stage {
+        0 | 7 => { assert(t.show_cursor().is_ok()) },
+        1 | 4 | 11 | 17 => {
+            frame := t.get_frame()
+            frame.fill(mark,rune(65+stage),brush)
+            frame.set_cursor_position(column,row)
+        },
+        2 | 3 | 5 | 9 | 12 | 18 => { assert(t.flush().is_ok()) },
+        6 | 10 | 19 => { t.swap_buffers() },
+        8 | 14 | 21 => { t.current_buffer_mut().fill(mark,rune(65+stage),brush) },
+        13 => { assert(t.apply_buffer_with_cursor(.Some((column,row))).is_ok()) },
+        15 => {
+            t.backend_mut().resize(w+2,h+1)
+            assert(t.autoresize().is_ok())
+        },
+        16 => { assert(t.apply_buffer().is_ok()) },
+        20 => {
+            mut lines := tui.Frame::new(area.w,1)
+            lines.label(lines.area(),"log")
+            assert(t.insert_before(&lines).is_ok())
+        },
+        22 => {
+            mut n := seed
+            assert(t.draw(&mut n,fn(f:&mut tui.Frame,s:&mut i32) { f.label(f.area(),"T") }).is_ok())
+        },
+        _ => { assert(t.backend_mut().flush().is_ok()) },
+    }
+    frame := t.get_frame()
+    mut out: []u8 = []
+    bytes.append_utf8(&mut out,f"{frame.count()} ")
+    cells(&mut out,&frame)
+    print(bytes.decode(&out).unwrap())
+}
+
 fn main() {
     windows := sys.arg_count() == 2 && sys.arg(1) == "--window"
     direct := sys.arg_count() == 2 && sys.arg(1) == "--direct-cursor"
+    manual_mode := sys.arg_count() == 2 && sys.arg(1) == "--manual"
     for seed in 0..90 {
         w := 9+seed%3
         h := 5+seed%4
@@ -52,9 +93,13 @@ fn main() {
         assert(device.write_region(&backing).is_ok())
         device.set_cursor_position(seed%w,(seed/2)%h)
         mode := if seed%3 == 0 { tui.Viewport.Fixed(tui.Rect {x:2,y:1,w:w-4,h:h-2}) }
-            else if (windows || direct) && seed%3 == 1 { tui.Viewport.Fullscreen }
+            else if (windows || direct || manual_mode) && seed%3 == 1 { tui.Viewport.Fullscreen }
             else { tui.Viewport.Inline(1+seed%(h+3)) }
         mut t := tui.Terminal<test.TestBackend>::with_viewport(move device,mode).unwrap()
+        if manual_mode {
+            for stage in 0..24 { manual(&mut t,seed,stage,w,h); snapshot(&t,seed,stage) }
+            continue
+        }
         snapshot(&t,seed,0)
         for stage in 1..16 {
             mut step := stage

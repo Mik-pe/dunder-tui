@@ -1242,7 +1242,7 @@ impl Frame {
         .Ok(move positions)
     }
 
-    fn ansi_cells(&self, previous: &Frame, out: &mut []u8) {
+    pub fn ansi_cells(&self, previous: &Frame, out: &mut []u8) {
         mut scan := DiffScan::new(&self,&previous)
         mut current: i64 = 0
         while scan.next(&self,&previous) {
@@ -1452,6 +1452,8 @@ pub trait Backend {
         .Ok(WindowSize { columns:w, rows:h, pixel_width:0, pixel_height:0 })
     }
     fn present(&mut self, frame: &Frame, previous: &Frame) -> Result<(),string>
+    fn draw_cells(&mut self, frame: &Frame, previous: &Frame) -> Result<(),string> { .Err("Backend cannot present a cell diff independently.") }
+    fn flush(&mut self) -> Result<(),string> { .Ok }
     fn clear_screen(&mut self, area: Rect) -> Result<(),string> {
         blank := Frame::at(area)
         unknown := Frame::new(0,0)
@@ -1467,7 +1469,7 @@ pub trait Backend {
 }
 
 pub opaque struct Terminal<B> where B: Backend {
-    device: B, viewport: Viewport, area: Rect, screen: Rect, last_y: i32, buffers: [Frame;2], front: i32, number: u64, invalid: bool,
+    device: B, viewport: Viewport, area: Rect, screen: Rect, last_y: i32, buffers: [Frame;2], front: i32, number: u64, invalid: bool, staged: bool,
 }
 
 enum Renderer<S> {
@@ -1475,14 +1477,32 @@ enum Renderer<S> {
 }
 
 impl Terminal<B> {
-    pub fn new(move device: B) -> Self {
+    fn empty(move device: B) -> Self {
         empty := Rect { x:0,y:0,w:0,h:0 }
         pending := Rect { x:-1,y:0,w:0,h:0 }
-        Self { device: move device, viewport:.Fullscreen, area:empty, screen:pending, last_y:0, buffers: [Frame::new(0,0),Frame::new(0,0)], front: 0, number: 0, invalid: true }
+        Self { device: move device, viewport:.Fullscreen, area:empty, screen:pending, last_y:0, buffers: [Frame::new(0,0),Frame::new(0,0)], front: 0, number: 0, invalid: true, staged:false }
+    }
+
+    pub fn new(move device: B) -> Self {
+        mut term := Self::empty(move device)
+        (w,h) := term.device.size()
+        screen := Rect { x:0,y:0,w:w,h:h }
+        if valid_area(screen) {
+            term.area = screen
+            term.screen = screen
+            term.initialize_buffers()
+        }
+        move term
+    }
+
+    fn initialize_buffers(&mut self) {
+        self.buffers[0] = Frame::at(self.area)
+        self.buffers[0].cursor_x = -2
+        self.invalid = false
     }
 
     pub fn with_viewport(move device: B, viewport: Viewport) -> Result<Self,string> {
-        mut term := Self::new(move device)
+        mut term := Self::empty(move device)
         term.viewport = viewport
         (w,h) := term.device.size()
         term.screen = Rect { x:0,y:0,w:w,h:h }
@@ -1499,9 +1519,7 @@ impl Terminal<B> {
                 term.last_y = position.1
             },
         }
-        term.buffers[0] = Frame::at(term.area)
-        term.buffers[0].cursor_x = -2
-        term.invalid = false
+        term.initialize_buffers()
         .Ok(move term)
     }
 
@@ -1595,6 +1613,11 @@ impl Terminal<B> {
             self.invalid = true
             self.device.write_region(&blank)?
         }
+        if self.staged {
+            pending := &mut self.buffers[1-self.front]
+            pending.resize(self.area.w,self.area.h)
+            pending.bounds = self.area
+        }
         result := self.clear_surface()
         if result.is_err() { self.screen.w = -1; return result }
         match cursor { .Some(p) => self.device.move_to(p.0,p.1), .None => .Ok, }
@@ -1615,6 +1638,7 @@ impl Terminal<B> {
             top := self.area.y
             self.area.y += free
             self.buffers[self.front].bounds.y = self.area.y
+            if self.staged { self.buffers[1-self.front].bounds.y = self.area.y }
             block := lines.rows_at(0,top,free)
             self.device.write_region(&block)?
             row = free
@@ -1677,12 +1701,65 @@ impl Terminal<B> {
     fn prepare(&mut self, w: i32, h: i32) -> Result<(),string> {
         screen := Rect { x:0,y:0,w:w,h:h }
         if screen != self.screen { self.fit(screen)? }
+        self.begin_frame()
+        .Ok
+    }
+
+    fn stage(&mut self) {
+        if self.staged { return }
         back := 1-self.front
         self.buffers[back].reset_area(self.area)
-        self.buffers[back].hide_cursor()
         self.buffers[back].cursor_changed = false
+        self.buffers[back].hide_cursor()
         self.buffers[back].number = self.number
-        .Ok
+        self.staged = true
+    }
+
+    fn begin_frame(&mut self) {
+        self.stage()
+        self.buffers[1-self.front].hide_cursor()
+    }
+
+    pub fn current_buffer_mut(&mut self) -> &mut Frame from self {
+        self.stage()
+        &mut self.buffers[1-self.front]
+    }
+
+    pub fn get_frame(&mut self) -> &mut Frame from self {
+        self.begin_frame()
+        &mut self.buffers[1-self.front]
+    }
+
+    pub fn flush(&mut self) -> Result<(),string> {
+        self.stage()
+        back := 1-self.front
+        self.buffers[self.front].cursor_changed = true
+        result := if self.invalid {
+            unknown := Frame::new(0,0)
+            self.device.draw_cells(&self.buffers[back],&unknown)
+        } else { self.device.draw_cells(&self.buffers[back],&self.buffers[self.front]) }
+        if result.is_err() { self.invalid = true; return result }
+        self.track_inline(false)
+        self.invalid = false
+        move result
+    }
+
+    pub fn swap_buffers(&mut self) {
+        self.stage()
+        self.front = 1-self.front
+        self.buffers[self.front].cursor_changed = true
+        self.staged = false
+    }
+
+    pub fn apply_buffer(&mut self) -> Result<(),string> {
+        self.begin_frame()
+        self.commit()
+    }
+
+    pub fn apply_buffer_with_cursor(&mut self, cursor: Option<(i32,i32)>) -> Result<(),string> {
+        self.begin_frame()
+        match cursor { .Some(p) => { self.buffers[1-self.front].set_cursor_position(p.0,p.1) }, .None => {}, }
+        self.commit()
     }
 
     fn fit(&mut self, screen: Rect) -> Result<(),string> {
@@ -1704,23 +1781,25 @@ impl Terminal<B> {
             self.device.present(&self.buffers[back],&unknown)
         } else { self.device.present(&self.buffers[back],&self.buffers[self.front]) }
         if result.is_err() { self.invalid = true; return result }
-        viewport := self.viewport
-        match viewport {
-            .Inline(_) => {
-                next := &self.buffers[back]
-                prev := &self.buffers[self.front]
-                if next.cursor_x >= 0 { self.last_y = next.cursor_y }
-                else {
-                    mut scan := DiffScan::new(&next,&prev)
-                    while scan.next(&self.buffers[back],&self.buffers[self.front]) { self.last_y = next.bounds.y+scan.start/next.bounds.w }
-                }
-            },
-            _ => {},
-        }
+        self.track_inline(true)
+        self.staged = false
+        flushed := self.device.flush()
+        if flushed.is_err() { self.invalid = true; return flushed }
         self.invalid = false
         self.front = back
         self.number = self.number.wrapping_add(u64(1))
-        .Ok
+        move flushed
+    }
+
+    fn track_inline(&mut self, apply_cursor: bool) {
+        match self.viewport { .Inline(_) => {}, _ => { return }, }
+        next := &self.buffers[1-self.front]
+        if apply_cursor && next.cursor_x >= 0 { self.last_y = next.cursor_y; return }
+        prev := &self.buffers[self.front]
+        mut scan := DiffScan::new(&next,&prev)
+        while scan.next(&self.buffers[1-self.front],&self.buffers[self.front]) {
+            self.last_y = next.bounds.y+scan.start/next.bounds.w
+        }
     }
 }
 
@@ -1759,6 +1838,29 @@ impl LiveBackend {
 
     fn visible(&self, frame: &Frame) -> Rect {
         frame.bounds.intersection(Rect { x:0,y:0,w:self.width,h:self.height })
+    }
+
+    fn present_region(&mut self, frame: &Frame, previous: &Frame, cursor: bool) -> Result<(),string> {
+        if !self.active { return .Err("The terminal is closed.") }
+        if self.inline_end >= 0 { self.inline_end = frame.bounds.bottom() }
+        visible := self.visible(&frame)
+        if visible == frame.bounds {
+            if self.draw_region(&frame,&previous,cursor) { return .Ok }
+        } else {
+            mut cropped := Frame::at(visible)
+            cropped.copy_region(&frame,visible,visible.x,visible.y)
+            cropped.cursor_x = cmp.min<i32>(frame.cursor_x,self.width-1)
+            cropped.cursor_y = cmp.min<i32>(frame.cursor_y,self.height-1)
+            mut before := Frame::new(0,0)
+            if frame.bounds == previous.bounds {
+                before = Frame::at(visible)
+                before.copy_region(&previous,visible,visible.x,visible.y)
+            }
+            before.cursor_x = previous.displayed_cursor_x()
+            before.cursor_y = previous.cursor_y
+            if self.draw_region(&cropped,&before,cursor) { return .Ok }
+        }
+        .Err("Could not write the frame.")
     }
 
     fn draw_region(&mut self, frame: &Frame, previous: &Frame, cursor: bool) -> bool {
@@ -1879,27 +1981,12 @@ impl Backend for LiveBackend {
     }
 
     fn present(&mut self, frame: &Frame, previous: &Frame) -> Result<(),string> {
-        if !self.active { return .Err("The terminal is closed.") }
-        if self.inline_end >= 0 { self.inline_end = frame.bounds.bottom() }
-        visible := self.visible(&frame)
-        if visible == frame.bounds {
-            if self.draw_region(&frame,&previous,true) { return .Ok }
-        } else {
-            mut cropped := Frame::at(visible)
-            cropped.copy_region(&frame,visible,visible.x,visible.y)
-            cropped.cursor_x = cmp.min<i32>(frame.cursor_x,self.width-1)
-            cropped.cursor_y = cmp.min<i32>(frame.cursor_y,self.height-1)
-            mut before := Frame::new(0,0)
-            if frame.bounds == previous.bounds {
-                before = Frame::at(visible)
-                before.copy_region(&previous,visible,visible.x,visible.y)
-            }
-            before.cursor_x = previous.displayed_cursor_x()
-            before.cursor_y = previous.cursor_y
-            if self.draw_region(&cropped,&before,true) { return .Ok }
-        }
-        .Err("Could not write the frame.")
+        self.present_region(&frame,&previous,true)
     }
+    fn draw_cells(&mut self, frame: &Frame, previous: &Frame) -> Result<(),string> {
+        self.present_region(&frame,&previous,false)
+    }
+
 }
 
 pub fn run<S>(state: &mut S, draw: fn(&mut Frame, &S), update: fn(&mut S, Key) -> bool) -> Result<(), string> {

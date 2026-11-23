@@ -162,6 +162,10 @@ impl tui.Backend for TestBackend {
         self.screen.apply_region_diff(&frame,&unknown)
         .Ok
     }
+    fn draw_cells(&mut self, frame: &tui.Frame, previous: &tui.Frame) -> Result<(),string> {
+        self.screen.apply_region_diff(&frame,&previous)
+        .Ok
+    }
     fn present(&mut self, frame: &tui.Frame, previous: &tui.Frame) -> Result<(),string> {
         self.screen.apply_region_diff(&frame,&previous)
         match frame.cursor_position() {

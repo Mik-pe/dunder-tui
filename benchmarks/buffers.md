@@ -81,3 +81,21 @@ Dunder skrev 4 839 210 byte till pseudoterminalen och Ratatui skrev 8 096 420. I
 | macOS ARM64 | 559 458 | 25 823 | 10 334 467 | 129 153 308 | 2 064 | 2 976 |
 | Linux ARM64 | 559 458 | 25 819 | 10 334 467 | 129 153 109 | 428 | 2 024 |
 | Linux x86-64, översatt | 559 458 | 25 817 | 10 334 467 | 129 152 800 | 6 128 | 5 728 |
+
+## Ommätning i 0.17.0
+
+Samma 1 100 bilder jämfördes med den nya arbetsbufferten och anropet som tömmer backendens utmatning. Tabellen visar median och p95 i mikrosekunder per bild i en pseudoterminal. I resultatfilen finns alla fem arbetslaster i minne och terminal, inklusive spridningen mellan körningarna. [Samtliga 60 mätserier](results/terminal-0.17.0.tsv)
+
+| Plattform | Oförändrad, Dunder | Oförändrad, Ratatui | Rullning, Dunder | Rullning, Ratatui | Full omritning, Dunder | Full omritning, Ratatui |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| macOS ARM64 | 102 / 112 | 93 / 104 | 171 / 190 | 169 / 201 | 176 / 197 | 197 / 222 |
+| Linux ARM64 | 102 / 109 | 98 / 103 | 143 / 151 | 132 / 137 | 144 / 150 | 145 / 154 |
+| Linux x86-64, översatt | 930 / 1014 | 182 / 196 | 1244 / 1351 | 234 / 250 | 1292 / 1363 | 259 / 274 |
+
+Dunder skrev 4 838 820 byte till pseudoterminalen och Ratatui skrev 8 096 420. Det är 390 byte mindre för Dunder än i 0.16.0. Första diffen utgår nu från en tom bild med terminalens faktiska mått. Allokeringsanropen inkluderar återanvändning av poolminne. RSS är medianen av tre körningars högsta residenta minne.
+
+| Plattform | Anrop Dunder | Anrop Ratatui | Begärda byte Dunder | Begärda byte Ratatui | RSS Dunder, KiB | RSS Ratatui, KiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| macOS ARM64 | 559 462 | 25 822 | 10 334 579 | 129 152 500 | 2 064 | 2 960 |
+| Linux ARM64 | 559 462 | 25 819 | 10 334 579 | 129 153 109 | 428 | 2 024 |
+| Linux x86-64, översatt | 559 462 | 25 817 | 10 334 579 | 129 152 800 | 6 192 | 5 664 |

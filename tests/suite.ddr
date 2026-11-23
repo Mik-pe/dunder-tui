@@ -1008,3 +1008,69 @@ impl VisitCount {
     positions := next.diff_positions(&old).unwrap()
     assert(positions.len == 1 && positions[0] == (2,1))
 }
+struct BufferedOutput {
+    device: testing.TestBackend, pending: []u8, sent: []u8, writes: i32, flushes: i32, fail_write: bool, fail_flush: bool,
+}
+impl tui.Backend for BufferedOutput {
+    fn size(&mut self) -> (i32,i32) { (4,2) }
+    fn draw_cells(&mut self, f:&tui.Frame, previous:&tui.Frame) -> Result<(),string> {
+        self.writes += 1
+        f.ansi_cells(&previous,&mut self.pending)
+        self.device.draw_cells(&f,&previous)?
+        if self.fail_write { return .Err("cell write") }
+        .Ok
+    }
+    fn present(&mut self, f:&tui.Frame, previous:&tui.Frame) -> Result<(),string> {
+        self.writes += 1
+        f.ansi_diff(&previous,&mut self.pending)
+        self.device.present(&f,&previous)
+    }
+    fn flush(&mut self) -> Result<(),string> {
+        self.flushes += 1
+        if self.fail_flush { return .Err("backend flush") }
+        bytes.extend_range(&mut self.sent,&self.pending,0,self.pending.len)
+        self.pending.clear()
+        .Ok
+    }
+}
+
+@test fn manual_cell_flush_retains_the_staging_buffer_and_backend_output_until_requested() {
+    mut t := tui.Terminal<BufferedOutput>::new(BufferedOutput { device:testing.TestBackend::new(4,2), pending:[], sent:[],
+        writes:0, flushes:0, fail_write:false, fail_flush:false })
+    a := t.viewport_area()
+    f := t.get_frame()
+    f.label(a,"AC")
+    f.set_cursor_position(3,1)
+    assert(t.get_frame().cursor_position().is_none() && t.current_buffer_mut().line(0) == "AC  ")
+    t.backend_mut().device.show_cursor()
+    assert(t.flush().is_ok() && t.flush().is_ok())
+    assert(t.backend().device.cursor_visible() && t.backend().device.cursor_position() == (0,0))
+    assert(bytes.decode(&t.backend().pending).unwrap() == "\x1b[1;1HAC\x1b[1;1HAC")
+    assert(t.backend().sent.len == 0 && t.backend().writes == 2 && t.backend().flushes == 0)
+    t.swap_buffers()
+    assert(t.get_frame().count() == 0 && t.current_buffer_mut().line(0) == "    " && t.completed().line(0) == "AC  ")
+    assert(t.backend_mut().flush().is_ok() && t.backend().flushes == 1 && t.backend().pending.len == 0)
+    t.current_buffer_mut().label(a,"SZ")
+    assert(t.apply_buffer_with_cursor(.Some((3,1))).is_ok())
+    assert(t.backend().device.buffer().line(0) == "SZ  " && t.backend().device.cursor_position() == (3,1))
+    assert(t.backend().flushes == 2 && t.get_frame().count() == 1)
+    t.current_buffer_mut().label(a,"keep")
+    t.backend_mut().fail_write = true
+    assert(t.flush().unwrap_err() == "cell write" && t.backend().flushes == 2)
+    t.backend_mut().fail_write = false
+    assert(t.flush().is_ok() && t.completed().line(0) == "SZ  ")
+    t.backend_mut().fail_flush = true
+    assert(t.apply_buffer().unwrap_err() == "backend flush" && t.completed().line(0) == "SZ  ")
+    assert(t.get_frame().count() == 1 && t.current_buffer_mut().line(0) == "    ")
+    t.backend_mut().fail_flush = false
+    t.current_buffer_mut().label(a,"next")
+    assert(t.apply_buffer().is_ok() && t.completed().line(0) == "next" && t.get_frame().count() == 2)
+    assert(!t.backend().device.cursor_visible())
+}
+
+@test fn a_backend_can_support_full_frames_without_supporting_manual_cell_writes() {
+    mut t := tui.Terminal<CursorFailure>::new(CursorFailure { output:[] })
+    t.get_frame().label(tui.Rect{x:0,y:0,w:4,h:1},"test")
+    assert(t.flush().is_err())
+    assert(t.apply_buffer().is_ok() && t.completed().line(0) == "test        ")
+}

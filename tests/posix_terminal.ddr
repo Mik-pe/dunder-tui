@@ -69,7 +69,9 @@ fn resized_screen(output: string) -> bool {
 fn update(state: &mut Probe, key: tui.Key) -> bool {
     rendered := output(state.master)
     if state.step == 0 {
-        state.ok = text.contains(rendered, "\x1b[?1049h") && text.contains(rendered, "Steg 0 med bredd 32") &&
+        mut initial := driver.Screen::new(32,7)
+        initial.apply(rendered)
+        state.ok = text.contains(rendered, "\x1b[?1049h") && initial.contains(1,"Steg 0 med bredd 32") &&
         text.contains(rendered, "\x1b[96;58;5;199;3;4mRubrik") && text.contains(rendered, "▁▂▃▄▅▆▇█")
         match key { .Up => {}, _ => { state.ok = false }, }
     } else if state.step == 1 {
