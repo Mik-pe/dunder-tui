@@ -1,0 +1,15 @@
+import ..src.text as rich
+import ..src.tui
+
+pub fn document() -> rich.Paragraph {
+    mut lines: []rich.Line = []
+    for i in 0..48 {
+        title := if i % 2 == 0 { "Polarnatt" } else { "Efterglöd" }
+        lines.push(rich.Line::new([
+            rich.Span::styled(move title, tui.ink(.Cyan).bold()),
+            rich.Span::raw("  界  Ljus över skogen 👩🏽‍💻 och staden  ·  "),
+            rich.Span::styled("Koi 🇸🇪   Färg i rörelse och stilla vatten", tui.ink(.Magenta).italic()),
+        ]))
+    }
+    rich.Paragraph::new(rich.Text::new(move lines)).wrap(.Trim)
+}

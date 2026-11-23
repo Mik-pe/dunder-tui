@@ -1,0 +1,51 @@
+capability stdio
+
+import tui
+import tui.text as rich
+import std.cmp as cmp
+import sys
+
+struct Reader { article: rich.PreparedParagraph, top: i32, last: i32 }
+
+fn draw(frame: &mut tui.Frame, reader: &mut Reader) {
+    area := frame.area()
+    (body, footer) := area.rows(area.h - 1)
+    page := frame.panel(body, " Nattjournal ", tui.ink(.Cyan))
+    reader.article.resize(page.w)
+    reader.last = cmp.max<i32>(0, reader.article.height() - page.h)
+    reader.top = cmp.min<i32>(reader.top, reader.last)
+    reader.article.set_top(reader.top)
+    reader.article.render(&mut frame, page)
+    frame.label(footer, "↑ ↓ skrolla   Home början   q avsluta")
+}
+
+fn update(reader: &mut Reader, key: tui.Key) -> bool {
+    match key {
+        .Up if reader.top > 0 => { reader.top -= 1 },
+        .Down if reader.top < reader.last => { reader.top += 1 },
+        .Home => { reader.top = 0 },
+        .End => { reader.top = reader.last },
+        .Escape => { return false },
+        .Char(c) if c == `q` => { return false },
+        _ => {},
+    }
+    true
+}
+
+fn main() -> i32 {
+    mut lines: []rich.Line = [rich.Line::raw("Vid vattnet").styled(tui.ink(.LightMagenta).bold()).align(.Center), rich.Line::raw("")]
+    for hour in 18..24 {
+        lines.push(rich.Line::new([
+            rich.Span::styled(f"{hour}.00  ", tui.ink(.LightCyan)),
+            rich.Span::raw("Dammen ligger stilla. Under ytan rör sig en "),
+            rich.Span::styled("kopparfärgad koi", tui.plain().foreground_rgb(0xff986a).italic()),
+            rich.Span::raw(". På andra sidan har de första ljusen tänts."),
+        ]))
+        lines.push(rich.Line::raw(""))
+    }
+    mut reader := Reader { article: rich.Paragraph::new(rich.Text::new(move lines)).wrap(.Trim).prepare(0), top: 0, last: 0 }
+    match tui.run_stateful(&mut reader, draw, update) {
+        .Ok => 0,
+        .Err(message) => { _ := sys.eprint(message); 1 },
+    }
+}

@@ -206,6 +206,14 @@ fn clamp(n: i32, limit: i32) -> i32 {
 }
 
 impl Rect {
+    pub fn intersection(self, other: Rect) -> Rect {
+        x := cmp.max<i32>(self.x, other.x)
+        y := cmp.max<i32>(self.y, other.y)
+        right := cmp.min<i64>(i64(self.x) + i64(self.w), i64(other.x) + i64(other.w))
+        bottom := cmp.min<i64>(i64(self.y) + i64(self.h), i64(other.y) + i64(other.h))
+        Rect { x: x, y: y, w: i32(cmp.max<i64>(0, right - i64(x))), h: i32(cmp.max<i64>(0, bottom - i64(y))) }
+    }
+
     pub fn rows(self, first: i32) -> (Rect, Rect) {
         n := clamp(first, self.h)
         (Rect { x: self.x, y: self.y, w: self.w, h: n },
@@ -227,11 +235,12 @@ impl Rect {
     }
 }
 
-const TRAIL: i32 = -1
+const OFFSET_MASK: i32 = 4095
 const CLUSTER: i32 = 0x110000
+const ZERO_CLUSTER: i32 = 0x110001
 const WIDE: i32 = 0x200000
 
-pub opaque struct Frame { bounds: Rect, glyphs: []i32, styles: []i64, decorations: []i64, clusters: []string }
+pub opaque struct Frame { bounds: Rect, glyphs: []i32, styles: []i64, decorations: []i64, clusters: []string, cluster_cells: []i32 }
 
 impl Frame {
     pub fn new(w: i32, h: i32) -> Self {
@@ -243,7 +252,7 @@ impl Frame {
         glyphs.reserve(n)
         styles.reserve(n)
         for _ in 0..n { glyphs.push(0); styles.push(0) }
-        Self { bounds: Rect { x: 0, y: 0, w: cols, h: rows }, glyphs: glyphs, styles: styles, decorations: [], clusters: [] }
+        Self { bounds: Rect { x: 0, y: 0, w: cols, h: rows }, glyphs: glyphs, styles: styles, decorations: [], clusters: [], cluster_cells: [] }
     }
 
     pub fn area(&self) -> Rect { self.bounds }
@@ -303,32 +312,48 @@ impl Frame {
             mut x := left
             while x < right {
                 i := y * self.bounds.w + x
-                start := if self.glyphs[i] == TRAIL { i - 1 } else { i }
+                start := self.head(i)
                 old := self.styles[start]
                 if old != last { last = old; result = self.composite(old, &overlay) }
                 self.styles[start] = result
-                if self.glyphs[start] >= WIDE { self.styles[start + 1] = result }
-                x = start - y * self.bounds.w + 1 + self.glyphs[start].shr(21)
+                span := self.advance(start)
+                for j in 1..span { self.styles[start + j] = result }
+                x = start - y * self.bounds.w + span
             }
         }
     }
 
-    fn erase_span(&mut self, i: i32) {
+    fn head(&self, i: i32) -> i32 {
         code := self.glyphs[i]
-        if code == TRAIL { self.glyphs[i - 1] = 0; self.styles[i - 1] = 0 }
-        if code >= WIDE { self.glyphs[i + 1] = 0; self.styles[i + 1] = 0 }
+        if code < 0 { i - (-code).bit_and(OFFSET_MASK) } else { i }
+    }
+
+    fn advance(&self, i: i32) -> i32 {
+        if self.glyphs[i] >= WIDE { (-self.glyphs[i + 1]).shr(12) } else { 1 }
+    }
+
+    fn erase_span(&mut self, i: i32) {
+        if self.glyphs[i] >= 0 && self.glyphs[i] < WIDE { return }
+        first := self.head(i)
+        end := first + self.advance(first)
+        for j in first..end {
+            if j != i { self.glyphs[j] = 0; self.styles[j] = 0 }
+        }
     }
 
     fn put(&mut self, x: i32, y: i32, symbol: i32, span: i32, style: i64) {
         if x < 0 || y < 0 || y >= self.bounds.h || x > self.bounds.w - span { return }
         i := y * self.bounds.w + x
         self.erase_span(i)
-        if span == 2 {
-            self.erase_span(i + 1)
-            self.glyphs[i + 1] = TRAIL
-            self.styles[i + 1] = style
+        for j in 1..span { self.erase_span(i + j) }
+        self.glyphs[i] = symbol - 32
+        if span > 1 {
+            self.glyphs[i] = self.glyphs[i].bit_or(WIDE)
+            for j in 1..span {
+                self.glyphs[i + j] = -(span.shl(12).bit_or(j))
+                self.styles[i + j] = style
+            }
         }
-        self.glyphs[i] = (symbol - 32).bit_or((span - 1) * WIDE)
         self.styles[i] = style
     }
 
@@ -346,21 +371,26 @@ impl Frame {
 
     fn ascii_line(&mut self, area: Rect, value: string, brush: i64, overlay: &Style) -> bool {
         for j in 0..value.len { if value[j] < 32 || value[j] >= 127 { return false } }
-        if area.y < 0 || area.y >= self.bounds.h { return true }
+        self.ascii_slice(area, value, 0, value.len, brush, &overlay)
+        true
+    }
+
+    fn ascii_slice(&mut self, area: Rect, value: string, offset: i32, finish: i32, brush: i64, overlay: &Style) {
+        if area.y < 0 || area.y >= self.bounds.h { return }
         start := if area.x < 0 { -i64(area.x) } else { i64(0) }
         fit := i64(self.bounds.w) - i64(area.x)
-        end := i64(clamp(value.len, area.w))
+        end := i64(clamp(finish - offset, area.w))
         limit := if fit < end { fit } else { end }
-        if start >= limit { return true }
+        if start >= limit { return }
         i := area.y * self.bounds.w + i32(i64(area.x) + start)
         mut at := i
         if overlay.empty() {
             for j in i32(start)..i32(limit) {
-                if self.glyphs[at] == TRAIL || self.glyphs[at] >= WIDE { self.erase_span(at) }
-                self.glyphs[at] = i32(value[j]) - 32
+                if self.glyphs[at] < 0 || self.glyphs[at] >= WIDE { self.erase_span(at) }
+                self.glyphs[at] = i32(value[offset + j]) - 32
                 at += 1
             }
-            return true
+            return
         }
         mut last: i64 = 0
         mut combined := brush
@@ -370,12 +400,11 @@ impl Frame {
                 last = old
                 combined = if old == 0 || old == brush { brush } else { self.composite(old, &overlay) }
             }
-            if self.glyphs[at] == TRAIL || self.glyphs[at] >= WIDE { self.erase_span(at) }
-            self.glyphs[at] = i32(value[j]) - 32
+            if self.glyphs[at] < 0 || self.glyphs[at] >= WIDE { self.erase_span(at) }
+            self.glyphs[at] = i32(value[offset + j]) - 32
             self.styles[at] = combined
             at += 1
         }
-        true
     }
 
     pub fn text(&mut self, area: Rect, value: string, style: Style) {
@@ -398,7 +427,7 @@ impl Frame {
             single := glyph.end == at + 1
             at = glyph.end
             offset += glyph.bytes
-            if cp == 10 { x = 0; y += 1; continue }
+            if cp == 10 || (cp == 13 && !single) { x = 0; y += 1; continue }
             if glyph.span < 1 || x >= area.w { continue }
             if glyph.span > area.w - x { x = area.w; continue }
             px := i64(area.x) + i64(x)
@@ -409,16 +438,40 @@ impl Frame {
                 combined := if old == 0 || old == brush { brush } else { self.composite(old, &overlay) }
                 if single { self.put(i32(px), i32(py), cp, glyph.span, combined) }
                 else {
-                    if self.clusters.len == 0 {
-                        self.clusters.reserve(self.glyphs.len)
-                        for _ in 0..self.glyphs.len { self.clusters.push("") }
-                    }
-                    self.put(i32(px), i32(py), CLUSTER, glyph.span, combined)
-                    self.clusters[cell] = value[start..offset]
+                    self.put_cluster(i32(px), i32(py), value[start..offset], glyph.span, combined)
                 }
             }
             x += glyph.span
         }
+    }
+
+    fn put_cluster(&mut self, x: i32, y: i32, move value: string, cells: i32, brush: i64) {
+        if self.clusters.len == 0 {
+            self.clusters.reserve(self.glyphs.len)
+            for _ in 0..self.glyphs.len { self.clusters.push("") }
+        }
+        self.put(x, y, if cells == 0 { ZERO_CLUSTER } else { CLUSTER }, cmp.max<i32>(1, cells), brush)
+        i := y * self.bounds.w + x
+        if self.clusters[i] == "" { self.cluster_cells.push(i) }
+        self.clusters[i] = move value
+    }
+
+    pub fn set_cell(&mut self, x: i32, y: i32, value: string, style: Style) -> bool {
+        if x < 0 || y < 0 || y >= self.bounds.h || x >= self.bounds.w || value.len == 0 { return false }
+        chars := value.runes()
+        mut at := 0
+        mut cells := 0
+        while at < chars.len {
+            g := width.glyph(&chars, at)
+            if g.span < 0 || (cells > 0 && g.span > 0) { return false }
+            cells += g.span
+            at = g.end
+        }
+        if cells > self.bounds.w - x { return false }
+        brush := self.composite(self.styles[y * self.bounds.w + x], &style)
+        if chars.len == 1 && width.columns(i32(chars[0])) > 0 { self.put(x, y, i32(chars[0]), cells, brush) }
+        else { self.put_cluster(x, y, value.clone(), cells, brush) }
+        true
     }
 
     pub fn label(&mut self, area: Rect, value: string) { self.write_text(area, value, 0, &plain()) }
@@ -460,10 +513,13 @@ impl Frame {
         self.put(x, y, 0x2580, 1, brush.packed())
     }
 
-    fn append_cell(&self, out: &mut []u8, i: i32) {
-        if self.glyphs[i] == TRAIL { return }
+    fn append_cell(&self, out: &mut []u8, i: i32, terminal_output: bool) {
+        if self.glyphs[i] < 0 { return }
         cp := self.glyphs[i].bit_and(WIDE - 1) + 32
-        if cp == CLUSTER { bytes.append_utf8(&mut out, self.clusters[i]) }
+        if cp == CLUSTER || cp == ZERO_CLUSTER {
+            if terminal_output && cp == ZERO_CLUSTER { out.push(b' ') }
+            bytes.append_utf8(&mut out, self.clusters[i])
+        }
         else if cp == 0 { return }
         else if cp < 128 { out.push(u8(cp)) }
         else if cp < 2048 {
@@ -480,17 +536,25 @@ impl Frame {
         }
     }
 
+    pub fn symbol_at(&self, x: i32, y: i32) -> Option<string> {
+        if x < 0 || y < 0 || x >= self.bounds.w || y >= self.bounds.h { return .None }
+        mut out: []u8 = []
+        self.append_cell(&mut out, y * self.bounds.w + x, false)
+        .Some(bytes.decode(&out).unwrap())
+    }
+
     pub fn line(&self, y: i32) -> string {
         if y < 0 || y >= self.bounds.h { return "" }
         mut out: []u8 = []
         start := y * self.bounds.w
-        for i in start..(start + self.bounds.w) { self.append_cell(&mut out, i) }
+        for i in start..(start + self.bounds.w) { self.append_cell(&mut out, i, false) }
         bytes.decode(&out).unwrap()
     }
 
     pub fn clear(&mut self) {
         self.decorations.clear()
-        self.clusters.clear()
+        for i in &self.cluster_cells { self.clusters[i] = "" }
+        self.cluster_cells.clear()
         if self.glyphs.len > 0 {
             unsafe {
                 bytes.zero_memory(addr(&mut self.glyphs[0]), usize(self.glyphs.len) * size_of(i32))
@@ -501,7 +565,7 @@ impl Frame {
 
     fn changed(&self, previous: &Frame, i: i32) -> bool {
         self.glyphs[i] != previous.glyphs[i] || !self.same_style(&previous, i) ||
-        (self.glyphs[i].bit_and(WIDE - 1) == CLUSTER - 32 && self.clusters[i] != previous.clusters[i])
+        (self.glyphs[i].bit_and(WIDE - 1) >= CLUSTER - 32 && self.clusters[i] != previous.clusters[i])
     }
 
     fn shared_style_floor(&self, previous: &Frame) -> i64 {
@@ -516,10 +580,15 @@ impl Frame {
     }
 
     fn same_row(&self, previous: &Frame, row: i32, shared_floor: i64) -> bool {
-        if self.clusters.len > 0 || previous.clusters.len > 0 || self.bounds.w == 0 { return false }
+        if self.bounds.w == 0 { return false }
         unsafe {
             if !bytes.equal_memory(addr(&self.glyphs[row]), addr(&previous.glyphs[row]), usize(self.bounds.w) * size_of(i32)) ||
             !bytes.equal_memory(addr(&self.styles[row]), addr(&previous.styles[row]), usize(self.bounds.w) * size_of(i64)) { return false }
+        }
+        if self.cluster_cells.len > 0 {
+            for i in row..(row + self.bounds.w) {
+                if self.glyphs[i] >= 0 && self.glyphs[i].bit_and(WIDE - 1) >= CLUSTER - 32 && self.clusters[i] != previous.clusters[i] { return false }
+            }
         }
         if shared_floor != -9223372036854775808 {
             for i in row..(row + self.bounds.w) { if self.styles[i] < shared_floor { return false } }
@@ -530,7 +599,7 @@ impl Frame {
     fn run_start(&self, previous: &Frame, i: i32, end: i32, full: bool) -> i32 {
         mut start := i
         while start < end {
-            if self.glyphs[start] != TRAIL && (full || self.changed(&previous, start)) { break }
+            if self.glyphs[start] >= 0 && (full || self.changed(&previous, start)) { break }
             start += 1
         }
         start
@@ -539,7 +608,7 @@ impl Frame {
     fn run_end(&self, previous: &Frame, start: i32, end: i32, full: bool) -> i32 {
         mut finish := start
         while finish < end && (full || self.changed(&previous, finish)) {
-            finish += 1 + self.glyphs[finish].shr(21)
+            finish += self.advance(finish)
         }
         finish
     }
@@ -565,8 +634,8 @@ impl Frame {
                         paint.transition(&mut out, self.decoration(current), self.decoration(style))
                         current = style
                     }
-                    self.append_cell(&mut out, i)
-                    i += 1 + self.glyphs[i].shr(21)
+                    self.append_cell(&mut out, i, true)
+                    i += self.advance(i)
                 }
                 at = finish
             }
@@ -593,8 +662,8 @@ impl Frame {
                     x := i - row
                     run.clear()
                     while i < finish && self.styles[i] == style {
-                        self.append_cell(&mut run, i)
-                        i += 1 + self.glyphs[i].shr(21)
+                        self.append_cell(&mut run, i, true)
+                        i += self.advance(i)
                     }
                     if !windows.paint(&term.win, x, y, bytes.decode(&run).unwrap(), paint.Brush::unpack(self.decoration(style).packed)) { return false }
                 }
@@ -616,18 +685,107 @@ impl Frame {
     }
 }
 
+pub opaque struct GlyphRun { source: string, ascii: bool, zero_width: bool, tokens: []i32, clusters: []string, columns: i32 }
+
+impl GlyphRun {
+    pub fn new(move value: string) -> Self {
+        mut ascii := true
+        for i in 0..value.len { if value[i] < 32 || value[i] > 126 { ascii = false; break } }
+        mut tokens: []i32 = []
+        mut clusters: []string = []
+        mut columns := value.len
+        mut zero_width := false
+        if !ascii {
+            columns = 0
+            chars := value.runes()
+            mut at := 0
+            mut offset := 0
+            while at < chars.len {
+                group := width.glyph(&chars, at)
+                if group.span >= 0 {
+                    cp := i32(chars[at])
+                    symbol := if group.end == at + 1 { cp } else {
+                        clusters.push(value[offset..(offset + group.bytes)])
+                        -clusters.len
+                    }
+                    tokens.push(symbol)
+                    tokens.push(group.span)
+                    columns += group.span
+                    if group.span == 0 { zero_width = true }
+                }
+                offset += group.bytes
+                at = group.end
+            }
+        }
+        Self { source: move value, ascii: ascii, zero_width: zero_width, tokens: move tokens, clusters: move clusters, columns: columns }
+    }
+
+    pub fn has_zero_width(&self) -> bool { self.zero_width }
+    pub fn count(&self) -> i32 { if self.ascii { self.source.len } else { self.tokens.len / 2 } }
+    pub fn width(&self) -> i32 { self.columns }
+    pub fn width_at(&self, index: i32) -> i32 { if self.ascii { 1 } else { self.tokens[index * 2 + 1] } }
+    pub fn space_at(&self, index: i32) -> bool {
+        if self.ascii { return self.source[index] == 32 }
+        cp := self.tokens[index * 2]
+        cp == 32 || cp == 0x1680 || (cp >= 0x2000 && cp <= 0x200b) ||
+        cp == 0x2028 || cp == 0x2029 || cp == 0x202f || cp == 0x205f || cp == 0x3000
+    }
+
+    pub fn symbol_at(&self, index: i32) -> string {
+        if self.ascii { return self.source[index..(index + 1)] }
+        cp := self.tokens[index * 2]
+        if cp >= 0 { rune(cp).str() } else { self.clusters[-1 - cp].clone() }
+    }
+
+    pub fn render(&self, frame: &mut Frame, bounds: Rect, first: i32, end: i32, style: Style) {
+        if bounds.w <= 0 || bounds.h <= 0 || bounds.y < 0 || bounds.y >= frame.bounds.h { return }
+        start := clamp(first, self.count())
+        finish := clamp(end, self.count())
+        if start >= finish { return }
+        brush := frame.encode(style)
+        if self.ascii { frame.ascii_slice(bounds, self.source, start, finish, brush, &style); return }
+        mut x := i64(bounds.x)
+        right := cmp.min<i64>(i64(frame.bounds.w), x + i64(bounds.w))
+        mut last: i64 = 0
+        mut combined := brush
+        for i in start..finish {
+            cp := self.tokens[i * 2]
+            cells := self.tokens[i * 2 + 1]
+            if cells == 0 { continue }
+            if x + i64(cells) > right { break }
+            if x >= 0 {
+                index := bounds.y * frame.bounds.w + i32(x)
+                old := frame.styles[index]
+                if old != last {
+                    last = old
+                    combined = if old == 0 || old == brush { brush } else { frame.composite(old, &style) }
+                }
+                if cp >= 0 { frame.put(i32(x), bounds.y, cp, cells, combined) }
+                else { frame.put_cluster(i32(x), bounds.y, self.clusters[-1 - cp].clone(), cells, combined) }
+            }
+            x += i64(cells)
+        }
+    }
+}
+
 pub enum Key { Char(rune), Up, Down, Left, Right, Home, End, Delete, Backspace, Tab, Enter, Escape }
 
+enum Renderer<S> { Draw(fn(&mut Frame, &S)), Stateful(fn(&mut Frame, &mut S)) }
+
 pub fn run<S>(state: &mut S, draw: fn(&mut Frame, &S), update: fn(&mut S, Key) -> bool) -> Result<(), string> {
-    drive<S>(&mut state, draw, update, 0, fn(_state: &mut S, _elapsed: i64) -> bool { false })
+    drive<S>(&mut state, Renderer<S>.Draw(draw), update, 0, fn(_state: &mut S, _elapsed: i64) -> bool { false })
+}
+
+pub fn run_stateful<S>(state: &mut S, draw: fn(&mut Frame, &mut S), update: fn(&mut S, Key) -> bool) -> Result<(), string> {
+    drive<S>(&mut state, Renderer<S>.Stateful(draw), update, 0, fn(_state: &mut S, _elapsed: i64) -> bool { false })
 }
 
 pub fn animate<S>(state: &mut S, fps: i32, draw: fn(&mut Frame, &S), update: fn(&mut S, Key) -> bool, tick: fn(&mut S, i64) -> bool) -> Result<(), string> {
     if fps < 1 || fps > 1000 { return .Err("Frame rate must be between 1 and 1000.") }
-    drive<S>(&mut state, draw, update, fps, tick)
+    drive<S>(&mut state, Renderer<S>.Draw(draw), update, fps, tick)
 }
 
-fn drive<S>(state: &mut S, draw: fn(&mut Frame, &S), update: fn(&mut S, Key) -> bool, fps: i32, tick: fn(&mut S, i64) -> bool) -> Result<(), string> {
+fn drive<S>(state: &mut S, renderer: Renderer<S>, update: fn(&mut S, Key) -> bool, fps: i32, tick: fn(&mut S, i64) -> bool) -> Result<(), string> {
     mut term := terminal.session()
     (cols, rows) := term.size()
     if cols <= 0 || rows <= 0 || !term.open() { return .Err("An interactive terminal is required on stdin and stdout.") }
@@ -656,7 +814,10 @@ fn drive<S>(state: &mut S, draw: fn(&mut Frame, &S), update: fn(&mut S, Key) -> 
         if dirty || next_w != previous.bounds.w || next_h != previous.bounds.h {
             if frame.bounds.w != next_w || frame.bounds.h != next_h { frame = Frame::new(next_w, next_h) }
             else { frame.clear() }
-            draw(&mut frame, &state)
+            match &renderer {
+                .Draw(draw) => { draw(&mut frame, &state) },
+                .Stateful(draw) => { draw(&mut frame, &mut state) },
+            }
             if !frame.present(&term, &previous, &mut output) { return .Err("Could not write the frame.") }
             frame = replace(&mut previous, move frame)
             dirty = false

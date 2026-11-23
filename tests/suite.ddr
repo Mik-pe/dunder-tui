@@ -1,3 +1,7 @@
+import ..src.text as rich
+import .grapheme_cases as cases
+import std.parse as parse
+import std.text as words
 import std.bytes as bytes
 import ..src.canvas
 import ..src.tui
@@ -228,4 +232,102 @@ import ..src.width
     mut out: []u8 = []
     frame.ansi_diff(&old, &mut out)
     assert(bytes.decode(&out).unwrap() == "\x1b[1;1H\x1b[1;2;5;6ma\x1b[22;25;2;5mb\x1b[22;25;6mc\x1b[0m")
+}
+
+@test fn unicode17_grapheme_breaks() {
+    mut count := 0
+    for row in words.split(cases.unicode17(), "\n") {
+        mut chars: []rune = []
+        mut ends: []i32 = []
+        for token in words.split(row, " ") {
+            if token == "/" {
+                if chars.len > 0 { ends.push(chars.len) }
+            } else { chars.push(rune(parse.hex(token).value)) }
+        }
+        mut pos := 0
+        for expected in ends {
+            next := width.glyph(&chars, pos)
+            assert(next.end == expected)
+            pos = next.end
+        }
+        count += 1
+    }
+    assert(count == 766)
+}
+
+@test fn wrapped_words_and_scroll() {
+    mut frame := tui.Frame::new(5, 3)
+    p := rich.Paragraph::raw("one two three four").wrap(.Trim).scroll(1, 0)
+    p.render(&mut frame, frame.area())
+    assert(frame.line(0) == "two  " && frame.line(1) == "three" && frame.line(2) == "four ")
+}
+
+@test fn wide_word_wrap_stays_inside_panel_and_prepared_matches_immediate() {
+    area := tui.Rect { x: 1, y: 1, w: 4, h: 2 }
+    mut frame := tui.Frame::new(6, 4)
+    frame.label(frame.area(), "------\n|    |\n|    |\n------")
+    p := rich.Paragraph::raw("aaa界").wrap(.Trim)
+    p.render(&mut frame, area)
+    assert(frame.line(0) == "------" && frame.line(1) == "|aaa |")
+    assert(frame.line(2) == "|界  |" && frame.line(3) == "------")
+    mut prepared := rich.Paragraph::raw("aaa界").wrap(.Trim).prepare(4)
+    assert(prepared.height() == 2)
+    for w in [4, 3, 0, 1, 6] {
+        for top in [0, 1, 2, 2147483647] {
+            mut a := tui.Frame::new(w, 3)
+            mut b := tui.Frame::new(w, 3)
+            prepared.set_top(top)
+            prepared.render(&mut a, a.area())
+            immediate := rich.Paragraph::raw("aaa界").wrap(.Trim).scroll(top, 0)
+            immediate.render(&mut b, b.area())
+            for y in 0..3 { assert(a.line(y) == b.line(y)) }
+            prepared.resize(w)
+            a.clear()
+            prepared.render(&mut a, a.area())
+            for y in 0..3 { assert(a.line(y) == b.line(y)) }
+        }
+    }
+}
+
+@test fn text_builders_measure_lines_mask_scalars_and_inherit_alignment() {
+    assert(rich.masked("a👩🏽‍💻", `•`) == "•••••")
+    assert(rich.Text::raw("").height() == 1 && rich.Text::raw("a\r\n\nb\n").height() == 3)
+    text := rich.Text::new([
+        rich.Line::new([rich.Span::styled("K", tui.ink(.Cyan)), rich.Span::raw("oi")]).styled(tui.plain().bold()),
+        rich.Line::raw("界").align(.Right),
+    ]).align(.Center).styled(tui.plain().background(.Blue))
+    assert(text.width() == 3 && text.height() == 2)
+    mut frame := tui.Frame::new(7, 3)
+    text.render(&mut frame, frame.area())
+    assert(frame.line(0) == "  Koi  " && frame.line(1) == "     界")
+    assert(frame.style_at(2, 0).unwrap().get_foreground() == .Some(tui.Color.Cyan))
+    assert(frame.style_at(6, 0).unwrap().has(.Bold))
+    assert(frame.style_at(6, 2).unwrap().get_background() == .Some(tui.Color.Blue))
+    rich.Line::raw("abcdefghijkl").align(.Center).render(&mut frame, frame.area())
+    assert(frame.line(0) == "cdefghi")
+}
+
+@test fn frame_keeps_long_clusters_atomic_in_diffs_and_overlap() {
+    mut old := tui.Frame::new(6, 1)
+    assert(old.set_cell(1, 0, "ｶﾞ", tui.ink(.Cyan)))
+    assert(old.symbol_at(1, 0).unwrap() == "ｶﾞ" && old.symbol_at(2, 0).unwrap() == "" && old.symbol_at(3, 0).unwrap() == "")
+    assert(!old.set_cell(4, 0, "ｶﾞ", tui.plain()) && !old.set_cell(0, 0, "\x1b", tui.plain()))
+    assert(!old.set_cell(0, 0, "abc", tui.plain()))
+    old.apply_style(tui.Rect { x: 3, y: 0, w: 1, h: 1 }, tui.plain().bold())
+    for x in 1..4 { assert(old.style_at(x, 0).unwrap().has(.Bold)) }
+    mut next := tui.Frame::new(6, 1)
+    next.label(next.area(), " abcd")
+    mut data: []u8 = []
+    next.ansi_diff(&old, &mut data)
+    assert(bytes.decode(&data).unwrap() == "\x1b[1;2Habcd")
+    old.label(tui.Rect { x: 2, y: 0, w: 1, h: 1 }, "!")
+    assert(old.line(0) == "  !   ")
+    next.clear()
+    old.clear()
+    assert(next.set_cell(0, 0, "\u{301}", tui.plain()))
+    assert(next.set_cell(1, 0, "z", tui.plain()))
+    assert(next.symbol_at(0, 0).unwrap() == "\u{301}")
+    data.clear()
+    next.ansi_diff(&old, &mut data)
+    assert(bytes.decode(&data).unwrap() == "\x1b[1;1H \u{301}z")
 }

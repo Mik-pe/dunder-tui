@@ -1,0 +1,128 @@
+capability stdio
+
+import ..benchmarks.paragraph_doc as fixture
+import ..src.text as rich
+import ..src.tui
+import ..src.width
+import sys
+import std.bytes as bytes
+
+fn sample(case: i32) -> rich.Text {
+    if case == 0 { return rich.Text::raw("  alpha   beta \n\n gamma\n  \n\r\nZ\n") }
+    if case == 1 { return rich.Text::raw("界x 👩🏽‍💻  y中🇸🇪\nKör अक्क 각\n1️⃣　✈️   z") }
+    if case == 2 { return rich.Text::raw("a\u{a0}b c\u{200b}de\u{2003}f\tg\rz\nabcdefghijklmno   PQ") }
+    first := rich.Line::new([rich.Span::styled("  fle", tui.ink(.Red).bold()), rich.Span::styled("rfärg ", tui.ink(.Cyan)),
+        rich.Span::styled("界  z", tui.plain().italic())]).styled(tui.plain().background(.Blue))
+    last := rich.Line::new([rich.Span::raw("  "), rich.Span::styled("tre ord", tui.ink(.Red)), rich.Span::raw(" x")]).align(.Right)
+    rich.Text::new([move first, rich.Line::raw(""), move last]).styled(tui.ink(.Cyan)).align(.Center)
+}
+
+fn snapshot(frame: &tui.Frame, area: tui.Rect, out: &mut []u8) {
+    out.clear()
+    for y in area.y..(area.y + area.h) {
+        for x in area.x..(area.x + area.w) {
+            symbol := frame.symbol_at(x, y).unwrap()
+            if symbol == "" { out.push(b'~'); continue }
+            style := frame.style_at(x, y).unwrap()
+            fg := style.get_foreground().unwrap().code()
+            bg := style.get_background().unwrap().code()
+            out.push(u8(65 + fg + 1))
+            out.push(u8(65 + bg + 1))
+            out.push(u8(65 + (if style.has(.Bold) { 1 } else { 0 }) + 2 * (if style.has(.Italic) { 1 } else { 0 })))
+            bytes.append_utf8(&mut out, symbol)
+            out.push(b'|')
+        }
+    }
+    print(bytes.decode(&out).unwrap())
+}
+
+fn main() -> i32 {
+    if sys.arg_count() > 1 && sys.arg(1) == "--widths" {
+        mut columns: []u8 = []
+        columns.reserve(0x110000)
+        for cp in 0..0x110000 {
+            if cp < 32 || (cp >= 127 && cp < 160) || (cp >= 0xd800 && cp <= 0xdfff) { continue }
+            columns.push(u8(48 + width.columns(cp)))
+        }
+        print(bytes.decode(&columns).unwrap())
+        return 0
+    }
+    aligns: [rich.Alignment; 4] = [.Inherit, .Left, .Center, .Right]
+    wraps: [rich.Wrap; 3] = [.Clip, .Trim, .Preserve]
+    mut out: []u8 = []
+    if sys.arg_count() > 1 && sys.arg(1) == "--benchmark" {
+        mut p := fixture.document()
+        mut cached := fixture.document().prepare(60)
+        for w in [44, 60] {
+            cached.resize(w)
+            for top in 0..48 {
+                mut frame := tui.Frame::new(w, 18)
+                mut check := tui.Frame::new(w, 18)
+                p.set_scroll(top, 0)
+                p.render(&mut frame, frame.area())
+                cached.set_top(top)
+                cached.render(&mut check, check.area())
+                mut diff: []u8 = []
+                check.ansi_diff(&frame, &mut diff)
+                assert(diff.len == 0)
+                snapshot(&frame, frame.area(), &mut out)
+            }
+        }
+        return 0
+    }
+    if sys.arg_count() > 1 && sys.arg(1) == "--inline" {
+        for w in [1, 2, 3, 4, 5, 6, 9, 14] {
+            for a in aligns {
+                for kind in [0, 1, 3] {
+                    mut frame := tui.Frame::new(w, 3)
+                    mut doc := sample(kind)
+                    if a != .Inherit { doc = doc.align(a) }
+                    doc.render(&mut frame, frame.area())
+                    snapshot(&frame, frame.area(), &mut out)
+                }
+            }
+            for value in ["Koi界", "\u{301}a", "\u{200b}", "Kör", "👩🏽‍💻", "1️⃣", "q\u{ad}"] {
+                mut frame := tui.Frame::new(w, 1)
+                rich.Span::styled(value.clone(), tui.ink(.Red).bold()).render(&mut frame, frame.area())
+                snapshot(&frame, frame.area(), &mut out)
+            }
+        }
+        return 0
+    }
+    for kind in 0..4 {
+        for w in [1, 2, 3, 4, 5, 6, 9, 14] {
+            for a in aligns {
+                for wrap in wraps {
+                    for top in [0, 1, 3, 12] {
+                        for left in [0, 1, 3] {
+                            mut frame := tui.Frame::new(w + 2, 5)
+                            area := tui.Rect { x: 1, y: 1, w: w, h: 3 }
+                            for y in 0..5 {
+                                for x in 0..(w + 2) {
+                                    if y == 0 || y == 4 || x == 0 || x == w + 1 {
+                                        assert(frame.set_cell(x, y, "#", tui.ink(.Red)))
+                                    }
+                                }
+                            }
+                            doc := sample(kind)
+                            mut p := rich.Paragraph::new(move doc).styled(tui.plain().background(.Magenta)).wrap(wrap).scroll(top, left)
+                            if a != .Inherit { p = p.align(a) }
+                            p.render(&mut frame, area)
+                            for y in 0..5 {
+                                for x in 0..(w + 2) {
+                                    if y == 0 || y == 4 || x == 0 || x == w + 1 {
+                                        assert(frame.symbol_at(x, y).unwrap() == "#")
+                                        assert(frame.style_at(x, y).unwrap().get_foreground() == .Some(tui.Color.Red))
+                                        assert(frame.style_at(x, y).unwrap().get_background() == .Some(tui.Color.Default))
+                                    }
+                                }
+                            }
+                            snapshot(&frame, area, &mut out)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    0
+}

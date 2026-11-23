@@ -1,0 +1,465 @@
+import .tui
+import std.bytes as bytes
+import std.cmp as cmp
+
+pub enum Alignment { Inherit, Left, Center, Right }
+pub enum Wrap { Clip, Preserve, Trim }
+
+pub fn masked(value: string, mask: rune) -> string {
+    symbol := mask.str()
+    mut out: []u8 = []
+    for b in value.bytes() { if b.bit_and(192) != 128 { bytes.append_utf8(&mut out, symbol) } }
+    bytes.decode(&out).unwrap()
+}
+
+pub opaque struct Span { glyphs: tui.GlyphRun, style: tui.Style }
+
+impl Span {
+    pub fn raw(move value: string) -> Self { Span::styled(move value, tui.plain()) }
+    pub fn styled(move value: string, style: tui.Style) -> Self { Self { glyphs: tui.GlyphRun::new(move value), style: style } }
+    pub fn width(&self) -> i32 { self.glyphs.width() }
+    fn count(&self) -> i32 { self.glyphs.count() }
+}
+
+struct Token { span: i32, start: i32, end: i32, cells: i32, space: bool }
+
+pub opaque struct Line {
+    spans: []Span, starts: []i32, ends: []i32, groups: []i32, count: i32, columns: i32, style: tui.Style, alignment: Alignment,
+}
+
+impl Line {
+    pub fn raw(move value: string) -> Self { Line::new([Span::raw(move value)]) }
+
+    pub fn new(move spans: []Span) -> Self {
+        mut starts: []i32 = []
+        mut ends: []i32 = []
+        mut groups: []i32 = []
+        mut was_space := false
+        mut count := 0
+        mut columns := 0
+        for i in 0..spans.len {
+            starts.push(count)
+            count += spans[i].count()
+            for j in 0..spans[i].count() {
+                columns += spans[i].glyphs.width_at(j)
+                space := spans[i].glyphs.space_at(j)
+                if ends.len > 0 && space != was_space { groups.push(ends.len) }
+                ends.push(if space { -1 - columns } else { columns })
+                was_space = space
+            }
+        }
+        groups.push(ends.len)
+        Self { spans: move spans, starts: move starts, ends: move ends, groups: move groups, count: count, columns: columns,
+            style: tui.plain(), alignment: .Inherit }
+    }
+
+    pub fn styled(move self, style: tui.Style) -> Self { mut line := move self; line.style = style; move line }
+    pub fn align(move self, alignment: Alignment) -> Self { mut line := move self; line.alignment = alignment; move line }
+    pub fn width(&self) -> i32 { self.columns }
+
+    fn before(&self, at: i32) -> i32 {
+        if at == 0 { return 0 }
+        value := self.ends[at - 1]
+        if value < 0 { -1 - value } else { value }
+    }
+
+    fn span_at(&self, at: i32) -> i32 {
+        mut first := 0
+        mut end := self.spans.len
+        while first + 1 < end {
+            mid := first + (end - first) / 2
+            if self.starts[mid] <= at { first = mid } else { end = mid }
+        }
+        first
+    }
+
+    fn token(&self, at: i32) -> Token {
+        first := self.span_at(at)
+        index := at - self.starts[first]
+        span := &self.spans[first]
+        Token { span: first, start: index, end: index + 1, cells: span.glyphs.width_at(index), space: span.glyphs.space_at(index) }
+    }
+}
+
+pub opaque struct Text { lines: []Line, columns: i32, style: tui.Style, alignment: Alignment }
+
+impl Text {
+    pub fn new(move lines: []Line) -> Self {
+        mut columns := 0
+        for i in 0..lines.len { columns = cmp.max<i32>(columns, lines[i].columns) }
+        Self { lines: move lines, columns: columns, style: tui.plain(), alignment: .Inherit }
+    }
+
+    pub fn raw(move value: string) -> Self {
+        mut lines: []Line = []
+        mut start := 0
+        for i in 0..value.len {
+            if value[i] == 10 {
+                end := if i > start && value[i - 1] == 13 { i - 1 } else { i }
+                lines.push(Line::raw(value[start..end]))
+                start = i + 1
+            }
+        }
+        if start == 0 { lines.push(Line::raw(move value)) }
+        else if start < value.len { lines.push(Line::raw(value[start..value.len])) }
+        Text::new(move lines)
+    }
+
+    pub fn styled(move self, style: tui.Style) -> Self { mut doc := move self; doc.style = style; move doc }
+    pub fn align(move self, alignment: Alignment) -> Self { mut doc := move self; doc.alignment = alignment; move doc }
+    pub fn width(&self) -> i32 { self.columns }
+    pub fn height(&self) -> i32 { self.lines.len }
+}
+
+pub opaque struct Paragraph { text: Text, style: tui.Style, alignment: Alignment, wrap_mode: Wrap, top: i32, left: i32 }
+
+impl Paragraph {
+    pub fn new(move text: Text) -> Self {
+        alignment := text.alignment
+        Self { text: move text, style: tui.plain(), alignment: alignment, wrap_mode: .Clip, top: 0, left: 0 }
+    }
+
+    pub fn raw(move value: string) -> Self { Paragraph::new(Text::raw(move value)) }
+    pub fn styled(move self, style: tui.Style) -> Self { mut p := move self; p.style = style; move p }
+    pub fn wrap(move self, mode: Wrap) -> Self { mut p := move self; p.wrap_mode = mode; move p }
+    pub fn align(move self, alignment: Alignment) -> Self { mut p := move self; p.alignment = alignment; move p }
+    pub fn scroll(move self, top: i32, left: i32) -> Self { mut p := move self; p.set_scroll(top, left); move p }
+    pub fn set_scroll(&mut self, top: i32, left: i32) {
+        self.top = cmp.max<i32>(0, top)
+        self.left = cmp.max<i32>(0, left)
+    }
+}
+
+fn aligned(value: Alignment, parent: Alignment) -> Alignment { if value == .Inherit { parent } else { value } }
+
+struct Rows { lines: []i32, offsets: []i32, starts: []i32, runs: []i32 }
+
+impl Rows {
+    fn new() -> Self { Rows { lines: [], offsets: [], starts: [], runs: [] } }
+
+    fn begin(&mut self, line: i32) {
+        self.lines.push(line)
+        self.offsets.push(0)
+        self.starts.push(self.runs.len)
+    }
+
+    fn add(&mut self, token: Token) {
+        if token.cells == 0 { return }
+        end := self.runs.len
+        if end > self.starts[self.starts.len - 1] && self.runs[end - 4] == token.span && self.runs[end - 2] == token.start {
+            self.runs[end - 2] = token.end
+            self.runs[end - 1] += token.cells
+        } else {
+            self.runs.push(token.span)
+            self.runs.push(token.start)
+            self.runs.push(token.end)
+            self.runs.push(token.cells)
+        }
+    }
+
+    fn add_segment(&mut self, line: &Line, first: i32, end: i32) {
+        mut at := first
+        while at < end {
+            span := line.span_at(at)
+            base := line.starts[span]
+            finish := cmp.min<i32>(end, base + line.spans[span].count())
+            cells := line.before(finish) - line.before(at)
+            self.add(Token { span: span, start: at - base, end: finish - base, cells: cells, space: false })
+            at = finish
+        }
+    }
+
+    fn indent(&mut self, alignment: Alignment, columns: i32, limit: i32) {
+        self.offsets[self.offsets.len - 1] = match alignment {
+            .Center => limit / 2 - columns / 2, .Right => limit - columns, _ => 0,
+        }
+    }
+}
+
+fn clip_line(rows: &mut Rows, index: i32, line: &Line, limit: i32, alignment: Alignment, scroll: i32) {
+    rows.begin(index)
+    mut skip := if alignment == .Left || alignment == .Inherit { scroll } else { 0 }
+    mut columns := 0
+    for i in 0..line.count {
+        token := line.token(i)
+        if token.cells > limit { continue }
+        if token.cells > limit - columns { break }
+        if skip > 0 {
+            if token.cells <= skip { skip -= token.cells; continue }
+            skip = 0
+        }
+        rows.add(token)
+        columns += token.cells
+    }
+    rows.indent(alignment, columns, limit)
+}
+
+struct Runs { bounds: []i32, head: i32 }
+
+impl Runs {
+    fn new() -> Self { Self { bounds: [], head: 0 } }
+    fn empty(&self) -> bool { self.head == self.bounds.len }
+    fn add(&mut self, first: i32, end: i32) {
+        last := self.bounds.len - 1
+        if last >= self.head && self.bounds[last] == first { self.bounds[last] = end }
+        else { self.bounds.push(first); self.bounds.push(end) }
+    }
+    fn append(&mut self, other: &Runs) {
+        mut i := other.head
+        while i < other.bounds.len { self.add(other.bounds[i], other.bounds[i + 1]); i += 2 }
+    }
+    fn clear(&mut self) { self.bounds.clear(); self.head = 0 }
+    fn pop_front(&mut self) {
+        self.bounds[self.head] += 1
+        if self.bounds[self.head] == self.bounds[self.head + 1] { self.head += 2 }
+    }
+}
+
+struct Words {
+    ready: Runs, spaces: Runs, word: Runs,
+    columns: i32, spaces_width: i32, word_width: i32,
+}
+
+impl Words {
+    fn new() -> Self { Self { ready: Runs::new(), spaces: Runs::new(), word: Runs::new(), columns: 0, spaces_width: 0, word_width: 0 } }
+
+    fn commit(&mut self, trim: bool) {
+        if !self.ready.empty() || !trim {
+            self.ready.append(&self.spaces)
+            self.columns += self.spaces_width
+        }
+        self.ready.append(&self.word)
+        self.columns += self.word_width
+        self.word.clear()
+        self.spaces.clear()
+        self.word_width = 0
+        self.spaces_width = 0
+    }
+
+    fn emit(&mut self, rows: &mut Rows, index: i32, line: &Line, limit: i32, alignment: Alignment, visible: bool) {
+        if visible {
+            rows.begin(index)
+            mut i := self.ready.head
+            while i < self.ready.bounds.len {
+                rows.add_segment(&line, self.ready.bounds[i], self.ready.bounds[i + 1])
+                i += 2
+            }
+            rows.indent(alignment, self.columns, limit)
+        }
+        self.ready.clear()
+        self.columns = 0
+    }
+}
+
+fn wrap_line(rows: &mut Rows, index: i32, line: &Line, limit: i32, alignment: Alignment, trim: bool,
+    skip: &mut i32, height: i32, words: &mut Words) {
+    mut last_word := false
+    mut emitted := false
+    mut group := 0
+    mut pos := 0
+    while pos < line.count {
+        i := pos
+        end := line.groups[group]
+        space := line.ends[i] < 0
+        before := line.before(i)
+        chunk := line.before(end) - before
+        pending := words.word_width + words.spaces_width
+        if words.columns < limit && chunk <= limit - words.columns - pending {
+            if last_word && space { words.commit(trim) }
+            if space { words.spaces.add(i, end); words.spaces_width += chunk }
+            else { words.word.add(i, end); words.word_width += chunk }
+            last_word = !space
+            pos = end
+            group += 1
+            continue
+        }
+        cells := line.before(i + 1) - before
+        pos += 1
+        if pos == end { group += 1 }
+        if cells > limit { continue }
+        split := if trim { cmp.max<i32>(words.word_width, words.spaces_width) } else { words.word_width + words.spaces_width }
+        if (last_word && space) || (words.ready.empty() && split + cells > limit) { words.commit(trim) }
+        if words.columns >= limit || (cells > 0 && words.columns + words.word_width + words.spaces_width + cells > limit) {
+            mut room := limit - words.columns
+            words.emit(&mut rows, index, &line, limit, alignment, skip == 0)
+            emitted = true
+            if skip > 0 { skip -= 1 }
+            if rows.lines.len >= height { return }
+            while !words.spaces.empty() {
+                at := words.spaces.bounds[words.spaces.head]
+                size := line.before(at + 1) - line.before(at)
+                if room < size { break }
+                words.spaces.pop_front()
+                words.spaces_width -= size
+                room -= size
+            }
+            if space && words.spaces.empty() { continue }
+        }
+        if space { words.spaces.add(i, i + 1); words.spaces_width += cells }
+        else { words.word.add(i, i + 1); words.word_width += cells }
+        last_word = !space
+    }
+    blank := words.ready.empty() && words.word.empty() && !words.spaces.empty() && trim
+    words.commit(trim)
+    if !words.ready.empty() || !emitted || blank {
+        words.emit(&mut rows, index, &line, limit, alignment, skip == 0)
+        if skip > 0 { skip -= 1 }
+    }
+}
+
+impl Paragraph {
+    fn layout(&self, limit: i32, top: i32, height: i32) -> Rows {
+        mut rows := Rows::new()
+        if limit <= 0 || height <= 0 { return move rows }
+        mut skip := top
+        start := if self.wrap_mode == .Clip { cmp.min<i32>(top, self.text.lines.len) } else { 0 }
+        mut words := Words::new()
+        for i in start..self.text.lines.len {
+            if rows.lines.len >= height { break }
+            line := &self.text.lines[i]
+            alignment := aligned(line.alignment, self.alignment)
+            if self.wrap_mode == .Clip { clip_line(&mut rows, i, &line, limit, alignment, self.left) }
+            else { wrap_line(&mut rows, i, &line, limit, alignment, self.wrap_mode == .Trim, &mut skip, height, &mut words) }
+        }
+        move rows
+    }
+
+    fn paint(&self, frame: &mut tui.Frame, area: tui.Rect, rows: &Rows, top: i32) {
+        frame.apply_style(area, self.style)
+        count := cmp.min<i32>(area.h, rows.lines.len - top)
+        for y in 0..count {
+            row := y + top
+            line := &self.text.lines[rows.lines[row]]
+            base := self.text.style.patch(line.style)
+            mut x := rows.offsets[row]
+            mut at := rows.starts[row]
+            end := if row + 1 < rows.starts.len { rows.starts[row + 1] } else { rows.runs.len }
+            while at < end {
+                span := &line.spans[rows.runs[at]]
+                start := rows.runs[at + 1]
+                finish := rows.runs[at + 2]
+                cells := rows.runs[at + 3]
+                target := tui.Rect { x: area.x + x, y: area.y + y, w: cells, h: 1 }
+                span.glyphs.render(&mut frame, target, start, finish, base.patch(span.style))
+                at += 4
+                x += cells
+            }
+        }
+    }
+
+    pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
+        area := bounds.intersection(frame.area())
+        if area.w == 0 || area.h == 0 { return }
+        rows := self.layout(area.w, self.top, area.h)
+        self.paint(&mut frame, area, &rows, 0)
+    }
+
+    pub fn prepare(move self, columns: i32) -> PreparedParagraph {
+        rows := self.layout(columns, 0, 2147483647)
+        PreparedParagraph { paragraph: move self, columns: columns, rows: move rows }
+    }
+}
+
+pub opaque struct PreparedParagraph { paragraph: Paragraph, columns: i32, rows: Rows }
+
+impl PreparedParagraph {
+    pub fn height(&self) -> i32 { self.rows.lines.len }
+    pub fn resize(&mut self, columns: i32) {
+        if columns == self.columns { return }
+        self.rows = self.paragraph.layout(columns, 0, 2147483647)
+        self.columns = columns
+    }
+    pub fn set_top(&mut self, top: i32) { self.paragraph.top = cmp.max<i32>(0, top) }
+
+    pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
+        area := bounds.intersection(frame.area())
+        if area.w != self.columns { self.paragraph.render(&mut frame, area); return }
+        self.paragraph.paint(&mut frame, area, &self.rows, self.paragraph.top)
+    }
+}
+
+impl Span {
+    fn draw(&self, frame: &mut tui.Frame, area: tui.Rect, skip: i32) {
+        mut left := skip
+        mut x := 0
+        if !self.glyphs.has_zero_width() {
+            mut first := 0
+            while left > 0 && first < self.count() {
+                cells := self.glyphs.width_at(first)
+                if left < cells { x = cells - left }
+                left = cmp.max<i32>(0, left - cells)
+                first += 1
+            }
+            self.glyphs.render(&mut frame, tui.Rect { x: area.x + x, y: area.y, w: area.w - x, h: 1 }, first, self.count(), self.style)
+            return
+        }
+        mut previous := -1
+        mut prefix := ""
+        for n in 0..self.count() {
+            cells := self.glyphs.width_at(n)
+            if left > 0 {
+                if left < cells { x = cells - left }
+                left = cmp.max<i32>(0, left - cells)
+                continue
+            }
+            if cells > area.w - x { break }
+            value := self.glyphs.symbol_at(n)
+            if cells == 0 {
+                if previous < 0 {
+                    prefix = prefix + value
+                    if x < area.w { _ := frame.set_cell(area.x + x, area.y, prefix, self.style) }
+                } else {
+                    old := frame.symbol_at(area.x + previous, area.y).unwrap_or("")
+                    if old != "" { _ := frame.set_cell(area.x + previous, area.y, old + value, self.style) }
+                }
+            } else {
+                if prefix == "" { _ := frame.set_cell(area.x + x, area.y, value, self.style) }
+                else { _ := frame.set_cell(area.x + x, area.y, prefix + value, self.style); prefix = "" }
+                previous = x
+                x += cells
+            }
+        }
+    }
+
+    pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
+        area := bounds.intersection(frame.area())
+        if area.w > 0 && area.h > 0 { self.draw(&mut frame, area, 0) }
+    }
+}
+
+impl Line {
+    fn draw(&self, frame: &mut tui.Frame, area: tui.Rect, parent: Alignment) {
+        if self.columns <= 0 || area.w <= 0 || area.h <= 0 { return }
+        (row, _) := area.rows(1)
+        frame.apply_style(row, self.style)
+        alignment := aligned(self.alignment, parent)
+        delta := row.w - self.columns
+        shift := match alignment { .Center => delta / 2, .Right => delta, _ => 0, }
+        mut x := cmp.max<i32>(0, shift)
+        mut skip := cmp.max<i32>(0, -shift)
+        for i in 0..self.spans.len {
+            span := &self.spans[i]
+            if skip >= span.width() { skip -= span.width(); continue }
+            if x >= row.w { break }
+            span.draw(&mut frame, tui.Rect { x: row.x + x, y: row.y, w: row.w - x, h: 1 }, skip)
+            x += span.width() - skip
+            skip = 0
+        }
+    }
+
+    pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
+        self.draw(&mut frame, bounds.intersection(frame.area()), .Left)
+    }
+}
+
+impl Text {
+    pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
+        area := bounds.intersection(frame.area())
+        if area.w <= 0 || area.h <= 0 { return }
+        frame.apply_style(area, self.style)
+        for i in 0..cmp.min<i32>(area.h, self.lines.len) {
+            row := tui.Rect { x: area.x, y: area.y + i, w: area.w, h: 1 }
+            self.lines[i].draw(&mut frame, row, self.alignment)
+        }
+    }
+}

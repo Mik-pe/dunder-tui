@@ -1,0 +1,49 @@
+capability stdio
+
+import .paragraph_doc as sample
+import ..src.text as rich
+import ..src.tui
+import std.array as array
+import std.time as clock
+import sys
+
+fn bench(mode: string, prepared: bool, timed: bool) {
+    mut old := tui.Frame::new(60, 18)
+    mut next := tui.Frame::new(60, 18)
+    mut doc := if prepared { rich.Paragraph::raw("") } else { sample.document() }
+    mut cache := (if prepared { sample.document() } else { rich.Paragraph::raw("") }).prepare(60)
+    mut samples: []i64 = []
+    mut out: []u8 = []
+    mut total: i64 = 0
+    for i in 0..220 {
+        columns := if mode == "resize" && i % 2 == 0 { 44 } else { 60 }
+        top := if mode == "scroll" { i % 48 } else { 0 }
+        started := if timed { clock.monotonic_ns() } else { i64(0) }
+        if next.area().w != columns { next = tui.Frame::new(columns, 18) } else { next.clear() }
+        if prepared {
+            cache.resize(columns)
+            cache.set_top(top)
+            cache.render(&mut next, next.area())
+        } else { doc.set_scroll(top, 0); doc.render(&mut next, next.area()) }
+        out.clear()
+        next.ansi_diff(&old, &mut out)
+        next = replace(&mut old, move next)
+        if i >= 20 {
+            if timed { samples.push(clock.monotonic_ns() - started) }
+            total += i64(out.len)
+        }
+    }
+    if !timed { print(total); return }
+    array.sort<i64>(&mut samples)
+    print(f"{mode} {samples[99]} {samples[189]} {total / 200}")
+}
+
+fn main() {
+    mut timed := true
+    mut prepared := false
+    for i in 1..sys.arg_count() {
+        if sys.arg(i) == "--prepared" { prepared = true }
+        if sys.arg(i) == "--allocations" { timed = false }
+    }
+    for mode in ["idle", "scroll", "resize"] { bench(mode, prepared, timed) }
+}

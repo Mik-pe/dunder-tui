@@ -54,3 +54,37 @@ build/render-profile --styles --color-values --allocations
 cargo run --locked --release --manifest-path benchmarks/reference/Cargo.toml --target-dir build/rust --features allocation-counts -- --allocations
 cargo run --locked --release --manifest-path benchmarks/reference/Cargo.toml --target-dir build/rust --features style-oracle,allocation-counts -- --styles --allocations
 ```
+
+## Radbruten, färgsatt Unicode-text i 0.4.0
+
+Båda programmen visar 18 rader ur samma dokument med 48 styckerader, tre textspann per rad, breda tecken, flaggor och sammansatta emoji. Bredden är 60 kolumner och växlar till 44 vid storleksändring. Skrollprovet flyttar en rad per bild genom 48 lägen. Alla 96 kombinationer av bredd och läsposition har jämförts cell för cell. Tidtagningen omfattar nollställning, layout, ritning, celldiff och kodning till en bytebuffert. [Dunder](paragraph.ddr) · [Ratatui](reference/examples/paragraph.rs) · [Bildjämförelsen](../tests/text_reference.ddr)
+
+Apple M5, macOS 27.2.1, Dunder 0.11 och Rust 1.99.1. Två uppvärmningskörningar följdes av sju mätkörningar med roterande startordning. Varje rad nedan visar medianen för körningarnas p50 och p95 i mikrosekunder från 200 bilder efter 20 uppvärmningsbilder.
+
+| Ändring | Paragraph p50 / p95 | Förberedd p50 / p95 | Ratatui p50 / p95 | Byte per bild Dunder / Ratatui |
+| --- | ---: | ---: | ---: | ---: |
+| Oförändrad | 15 / 16 | 9 / 10 | 27 / 29 | 0 / 19 |
+| Skrollning | 31 / 37 | 19 / 20 | 60 / 77 | 2 053 / 2 376 |
+| Breddändring | 19 / 24 | 48 / 51 | 27 / 36 | 1 574 / 2 076 |
+
+Vanliga stycken räknar fram raderna fram till vyns nederkant. Förberedd layout räknar vid `resize` om hela dokumentet så att `height()` och hopp till valfri rad har ett färdigt resultat. Under breddändring tog detta längre tid än i Ratatui. Körningarnas p50 för breddändring låg mellan 18 och 23 µs för vanlig layout, mellan 47 och 48 µs för förberedd och mellan 26 och 32 µs för Ratatui.
+
+| Alla tre arbetslaster tillsammans | Allokeringsanrop | Begärda byte | Högsta RSS, byte |
+| --- | ---: | ---: | ---: |
+| Paragraph | 27 797 | 2 960 252 | 1 916 928 |
+| Förberedd | 16 868 | 3 873 698 | 1 933 312 |
+| Ratatui | 61 187 | 21 472 547 | 2 801 664 |
+
+Allokerings- och minnesproven inkluderar uppbyggnaden av dokumenten. De kördes separat med samma räknare som ovan. 26 192 respektive 15 254 av Dunders anrop återanvände poolminne.
+
+```sh
+dunder build --locked --offline benchmarks/paragraph.ddr -o build/paragraph
+cargo build --locked --release --manifest-path benchmarks/reference/Cargo.toml --target-dir build/rust --example paragraph
+build/paragraph
+build/paragraph --prepared
+build/rust/release/examples/paragraph
+dunder build --locked --offline --runtime-profile benchmarks/paragraph.ddr -o build/paragraph-profile
+build/paragraph-profile --allocations
+build/paragraph-profile --prepared --allocations
+cargo run --locked --release --manifest-path benchmarks/reference/Cargo.toml --features allocation-counts --example paragraph -- --allocations
+```
