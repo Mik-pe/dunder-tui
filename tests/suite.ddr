@@ -697,6 +697,25 @@ fn draw_number(frame: &mut tui.Frame, n: &mut i32) {
     if n != 0 { frame.set_cursor_position(1,0) }
 }
 
+@test fn window_metrics_report_the_backend_independently_of_the_viewport() {
+    area := tui.Rect { x:1, y:2, w:5, h:3 }
+    mut t := tui.Terminal<testing.TestBackend>::with_viewport(testing.TestBackend::new(20,10),.Fixed(area)).unwrap()
+    expected := tui.WindowSize { columns:20, rows:10, pixel_width:640, pixel_height:480 }
+    assert(t.window_size().unwrap() == expected)
+    t.backend_mut().resize(0,0)
+    assert(t.autoresize().is_ok() && t.viewport_area() == area)
+    (w,h) := t.size()
+    m := t.window_size().unwrap()
+    assert(w == 0 && h == 0 && m.columns == 0 && m.rows == 0 && m.pixel_width == 640 && m.pixel_height == 480)
+    mut custom := tui.Terminal<FailingTerminal>::new(FailingTerminal {device:testing.TestBackend::new(6,2),fail:false,writes:0})
+    custom_size := custom.window_size().unwrap()
+    assert(custom_size == tui.WindowSize { columns:6, rows:2, pixel_width:0, pixel_height:0 })
+    assert(custom.autoresize().is_ok() && custom.viewport_area().w == 6 && custom.backend().writes == 0)
+    custom.backend_mut().device.resize(8,4)
+    assert(custom.autoresize().is_ok() && custom.viewport_area().w == 8 && custom.backend().writes == 1)
+    assert(custom.autoresize().is_ok() && custom.backend().writes == 1)
+}
+
 fn reject_number(frame: &mut tui.Frame, n: &mut i32) -> Result<(),string> {
     draw_number(&mut frame,&mut n)
     .Err("rejected")

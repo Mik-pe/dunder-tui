@@ -145,6 +145,10 @@ impl tui.Backend for TestBackend {
     fn clear_screen(&mut self, area: tui.Rect) -> Result<(),string> { self.clear_region(.All); .Ok }
 
     fn size(&mut self) -> (i32,i32) { (self.screen.area().w,self.screen.area().h) }
+    fn window_size(&mut self) -> Result<tui.WindowSize,string> {
+        area := self.screen.area()
+        .Ok(tui.WindowSize { columns:area.w, rows:area.h, pixel_width:640, pixel_height:480 })
+    }
     fn read_cursor(&mut self) -> Result<(i32,i32),string> { .Ok(self.cursor_position()) }
     fn move_to(&mut self, x: i32, y: i32) -> Result<(),string> { self.set_cursor_position(x,y); .Ok }
     fn extend_lines(&mut self, rows: i32) -> Result<(),string> { self.append_lines(rows); .Ok }

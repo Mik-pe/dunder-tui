@@ -1,0 +1,30 @@
+capability stdio, unsafe
+import ..src.tui
+import sys
+
+fn display(m: tui.WindowSize) -> string { f"{m.columns}x{m.rows} {m.pixel_width}x{m.pixel_height}" }
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 2 }
+    if sys.arg(1) == "--probe-window" {
+        match tui.window_size() { .Ok(m) => print(display(m)), .Err(_) => print("unavailable"), }
+        return 0
+    }
+    if sys.arg(1) != "--live-window" { return 2 }
+    mut t: tui.Terminal<tui.LiveBackend> = tui.open(.Fullscreen).unwrap()
+    for step in 0..5 {
+        m := t.window_size().unwrap()
+        if m != tui.window_size().unwrap() { return 1 }
+        print(f"\x1b[H{display(m)} step {step}\x1b[K")
+        if step < 4 {
+            mut input: []u8 = []
+            input.reserve(1)
+            unsafe { while true {
+                input.clear()
+                if sys.fd_read(0,&mut input,1) != 1 { return 1 }
+                if input[0] == 10 { break }
+            } }
+        }
+    }
+    0
+}

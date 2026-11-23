@@ -13,7 +13,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna tecken, individuella kanter, justerade titlar, utfyllnad och skuggor. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
 | Övriga widgets | Clear och Fill på Frame, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, månadskalender med händelser och egna datumstilar, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. | Logotyp och maskot. |
 | Egna widgets och tester | Frame ritar egna och inbyggda widgets med `render_widget` och `render_stateful_widget`. Tillstånd kan uppdateras vid ritning med `run_stateful`. Egna backends kan anslutas till Terminal. TestBackend har skrollhistorik, markör, fem rensningslägen och regionskrollning. | Bredare testning av specialiserade terminalbackends. |
-| Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, markörstyrning från Frame, bildräknare, ANSI och Win32. Fast och inbäddad vyport, loggrader, rensning och regionskrollning. Återställning efter skrivfel och uteblivet markörsvar har provats. | Fönstrets pixelmått, fler felprov vid delvis genomförd skrollning och täckning i nativ Windowskonsol. |
+| Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, markörstyrning från Frame, bildräknare, ANSI och Win32. Fast och inbäddad vyport, explicit storleksanpassning, terminalens tecken- och pixelmått, loggrader, rensning och regionskrollning. Återställning efter skrivfel och uteblivet markörsvar har provats. | Fler felprov vid delvis genomförd skrollning och täckning i nativ Windowskonsol. |
 | Stabil Rust-integration | Jämförelseprogrammen använder den låsta Rustreferensen. Dunder-appar byggs offline. | Kontrollera Dunder-motsvarigheter till bekvämlighetsmakron, serialisering, cachning och backendval där dessa påverkar appens beteende. |
 | Effektivitet och plattformar | Tid, minne, allokeringar och faktiska terminalbyte för en widgetvy på macOS och Linux. Pseudoterminalprov på macOS och Linux ARM64/x86-64. Win32-prov under Wine. | Nativ Windows x64, fler arbetslaster med komplex layout, lägre kostnad för dynamiska färgvärden och paritet på fysisk x86-64. |
 
@@ -222,4 +222,21 @@ dunder build --locked --offline tests/merge_reference.ddr -o build/merges
 cargo build --release --locked --manifest-path benchmarks/reference/Cargo.toml --features style-oracle --example buffers --example merges --target-dir build/rust
 build/buffers | build/rust/release/examples/buffers
 build/merges | build/rust/release/examples/merges
+```
+
+## Fönstermått och storleksanpassning i 0.15.0
+
+På macOS och Linux frågar `window_size()` först processens styrterminal och använder standardutmatningen om styrterminalen inte går att öppna. Operativsystemet lämnar både tecken- och pixelmått i samma svar. En lyckad fråga kan ge noll på valfri axel. När båda terminalvägarna saknas returneras ett fel. Win32-backenden ger ett fel för pixelmått, precis som den jämförda Crossterm-versionen. Egna backends som bara implementerar `size` återanvänder dessa cellmått och ger noll på båda pixelaxlarna. Testbackenden rapporterar 640 × 480 pixlar oavsett cellmått. [Ratatuis backendgränssnitt](https://github.com/ratatui/ratatui/blob/ratatui-v0.30.2/ratatui-core/src/backend.rs) · [Frågan i Dunder](../src/posix.ddr)
+
+Ett terminalprov startar båda implementationerna i egna sessioner. Det ändrar först enbart pixelmåtten och sedan både celler och pixlar. Det provar även 16-bitarsgränserna, nollstorlek, en omdirigerad standardutmatning med och utan styrterminal och två olika terminaler i samma process. I tmux på macOS gav båda programmen 60 × 16 celler och 960 × 512 pixlar, följt av 79 × 27 celler och 1 264 × 864 pixlar efter storleksändring. Ett separat prov jämför 1 440 tillstånd för helskärm, fast och inbäddad vy. Det läser storleken utan att rita, ändrar storlek före första ritningen och jämför vyport, markör, skrollhistorik och varje cells tecken och stil med Ratatui. [Terminalprov](../tests/window_terminal.ddr) · [Dunderprogram](../tests/window_probe.ddr) · [Ratatui-program](../benchmarks/reference/examples/viewports.rs)
+
+```sh
+mkdir -p build
+dunder build --offline --locked tests/viewport_reference.ddr -o build/views
+dunder build --offline --locked tests/window_probe.ddr -o build/window-probe
+dunder build --offline --locked tests/window_terminal.ddr -o build/window-terminal
+cargo build --release --locked --manifest-path benchmarks/reference/Cargo.toml --features terminal-oracle --example viewports --target-dir build/rust
+build/views --window | build/rust/release/examples/viewports --window
+build/window-terminal build/window-probe
+build/window-terminal build/rust/release/examples/viewports
 ```

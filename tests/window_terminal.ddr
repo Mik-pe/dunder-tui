@@ -1,0 +1,77 @@
+capability stdio, process, unsafe
+import ..tools.pty
+import .terminal_driver as driver
+import std.process as proc
+import std.text as text
+import sys
+
+@extern("c", "setsid")
+unsafe fn new_session() -> i32
+@extern("c", "fork")
+unsafe fn fork_process() -> i32
+@extern("c", "waitpid")
+unsafe fn wait_child(pid:i32, status:ptr, options:i32) -> i32
+@c_variadic(2)
+@extern("c", "ioctl")
+unsafe fn ioctl(fd:i32, request:usize, arg:i32) -> i32
+@extern("c", "signal")
+unsafe fn signal_handler(number:i32, handler:ptr) -> ptr
+
+fn exercise(master:i32, slave:i32, screen:&mut driver.Screen) -> bool {
+    unsafe {
+        if !driver.wait_for(master,&mut screen,0,"45x8 0x0 step 0","") { return false }
+        for i in 0..4 {
+            widths: [u16;4] = [45, 51, 51, 32]
+            heights: [u16;4] = [8, 7, 7, 5]
+            pixels_w: [u16;4] = [813, 0, 65535, 0]
+            pixels_h: [u16;4] = [719, 432, 65534, 0]
+            if !pty.resize_window(slave,widths[i],heights[i],pixels_w[i],pixels_h[i]) { return false }
+            screen = driver.Screen::new(i32(widths[i]),i32(heights[i]))
+            expected := f"{widths[i]}x{heights[i]} {pixels_w[i]}x{pixels_h[i]} step {i+1}"
+            if !driver.send(master,"n\n") || !driver.wait_for(master,&mut screen,0,expected,"") { return false }
+        }
+    }
+    true
+}
+
+fn other_terminal(master:i32, slave:i32, screen:&mut driver.Screen) -> bool {
+    unsafe { return driver.wait_for(master,&mut screen,0,"41x6 1280x721","") }
+    false
+}
+
+fn capture(program:string, expected:string) -> bool {
+    cmd := proc.Command::new(program.clone(),["--probe-window"])
+    output := cmd.exec()
+    output.succeeded() && text.trim(output.stdout_text()) == expected
+}
+
+unsafe fn verify(program:string) -> bool {
+    if new_session() < 0 { _ := sys.eprint("setsid failed"); return false }
+    if !capture(program,"unavailable") { _ := sys.eprint("detached pipe"); return false }
+    if !driver.test_with_args(program,["--live-window"],45,8,exercise) { return false }
+
+    mut master := -1; mut slave := -1
+    if !pty.open(&mut master,&mut slave,41,6) { return false }
+    defer { _ := sys.fd_close(slave); _ := sys.fd_close(master) }
+    if !pty.resize_window(slave,41,6,1280,721) { return false }
+    _ := signal_handler(1,ptr(1))
+    request := if target_is("macos") { usize(0x20007461) } else { usize(0x540e) }
+    if ioctl(slave,request,0) != 0 { _ := sys.eprint("TIOCSCTTY failed"); return false }
+    if !capture(program,"41x6 1280x721") { _ := sys.eprint("controlling terminal with piped stdout"); return false }
+    if !driver.test_with_args(program,["--probe-window"],45,8,other_terminal) { return false }
+    if !pty.resize_window(slave,65535,65534,0,0) || !capture(program,"65535x65534 0x0") { return false }
+    pty.resize_window(slave,0,0,0,0) && capture(program,"0x0 0x0")
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 2 }
+    unsafe {
+        child := fork_process()
+        if child < 0 { return 1 }
+        if child == 0 { return if verify(sys.arg(1)) { 0 } else { 1 } }
+        mut status := -1
+        if wait_child(child,addr(&mut status),0) != child || status != 0 { return 1 }
+    }
+    print("Window size, pixel-only resizes, controlling terminal and detached pipes passed")
+    0
+}

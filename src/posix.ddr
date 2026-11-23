@@ -14,21 +14,45 @@ unsafe fn make_raw(buf: ptr)
 @c_variadic(2)
 @extern("c", "ioctl")
 unsafe fn mac_ioctl(fd: i32, request: usize, buf: ptr) -> i32
+@c_variadic(2)
+@extern("c", "open")
+unsafe fn mac_open(path: ptr, flags: i32) -> i32
 
 pub struct State { saved: [u64; 16], pending: []u8 }
 
 pub fn state() -> State { State { saved: [0; 16], pending: [] } }
 
-pub fn size() -> (i32, i32) {
-    mut winsize: [u16; 4] = [0; 4]
+fn read_size(fd: i32, winsize: &mut [u16; 4]) -> bool {
     unsafe {
         if target_is("linux") {
-            if sys.linux_syscall(29, 1, 0x5413, i64(usize(addr(&mut winsize[0]))), 0, 0, 0) != 0 { return (0, 0) }
+            return sys.linux_syscall(29, i64(fd), 0x5413, i64(usize(addr(&mut winsize[0]))), 0, 0, 0) == 0
         } else if target_is("macos") {
-            if mac_ioctl(1, 0x40087468, addr(&mut winsize[0])) != 0 { return (0, 0) }
+            return mac_ioctl(fd, 0x40087468, addr(&mut winsize[0])) == 0
         }
     }
+    false
+}
+
+pub fn size() -> (i32, i32) {
+    mut winsize: [u16; 4] = [0; 4]
+    if !read_size(1, &mut winsize) { return (0, 0) }
     (i32(winsize[1]), i32(winsize[0]))
+}
+
+pub fn window_size(winsize: &mut [u16; 4]) -> bool {
+    mut tty := -1
+    unsafe {
+        if target_is("linux") {
+            tty = i32(sys.linux_syscall(56, -100, i64(usize(cstr("/dev/tty"))), 0x80000, 0, 0, 0))
+        } else if target_is("macos") {
+            tty = mac_open(cstr("/dev/tty"), 0x1000000)
+        }
+        if tty >= 0 {
+            defer { _ := sys.fd_close(tty) }
+            return read_size(tty, &mut winsize)
+        }
+    }
+    read_size(1, &mut winsize)
 }
 
 pub fn open(state: &mut State) -> bool {

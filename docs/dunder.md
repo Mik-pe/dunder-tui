@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Terminalstorlek i pixlar
+
+`std.terminal.size()` i Dunder 0.11.2 hämtar ett Unix-svar med fyra 16-bitarsfält men exponerar bara kolumner och rader. I en pseudoterminal kunde pixelmåtten ändras från 0 × 0 till 813 × 719 medan teckenmåtten förblev 45 × 8. Om standardbiblioteket exponerar de två pixelmåtten från samma systemanrop kan appar använda dem även när bara en axel är känd. [Terminalprovet](../tests/window_terminal.ddr) · [Standardbiblioteket i 0.11.2](https://github.com/Mik-pe/dunder/blob/v0.11.2/stdlib/terminal.ddr) · [Nästa steg för terminalhandtag](https://github.com/Mik-pe/dunder/blob/main/docs/next-steps.md#styr-en-separat-terminal-via-dess-handtag)
+
 ## Typnamn i diagnostiken för konstanter
 
 En konstant palett byggd som en post med två heltal ger E3007 i Dunder 0.11.2. I diagnostiken kallas posten `__dunder_module_0` trots att källkoden säger `Scale`. Både `check` och `build` reproducerar felet. En fast array med samma värden fungerar. Bibliotekets paletter använder sådana skrivskyddade tabeller. På macOS ARM64 rapporterade `--runtime-profile` noll allokeringar för 65 536 uppslag via `tailwind.rgb` med växlande familj och nyans. [Postprov](../tests/dogfood/compiler/record_constant.ddr) · [Arrayprov](../tests/dogfood/compiler/array_constant.ddr) · [Uppslagsmätning](../benchmarks/language/palette_lookup.ddr) · [Dunders nästa steg](https://github.com/Mik-pe/dunder/blob/8d8f882/docs/next-steps.md#visa-källkodens-typnamn-i-fel-för-konstanter)

@@ -1419,6 +1419,24 @@ pub enum Key { Char(rune), Up, Down, Left, Right, Home, End, Delete, Backspace, 
 
 pub enum Viewport { Fullscreen, Fixed(Rect), Inline(i32) }
 
+pub struct WindowSize { columns: i32, rows: i32, pixel_width: i32, pixel_height: i32 }
+
+impl Eq for WindowSize {
+    fn eq(&self, other: &Self) -> bool {
+        self.columns == other.columns && self.rows == other.rows &&
+            self.pixel_width == other.pixel_width && self.pixel_height == other.pixel_height
+    }
+}
+
+pub fn window_size() -> Result<WindowSize,string> {
+    if target_is("windows") { return .Err("Window pixel size is unavailable on the Windows console.") }
+    else {
+        mut size: [u16; 4] = [0; 4]
+        if !posix.window_size(&mut size) { return .Err("Could not read the terminal window size.") }
+        .Ok(WindowSize { columns:i32(size[1]), rows:i32(size[0]), pixel_width:i32(size[2]), pixel_height:i32(size[3]) })
+    }
+}
+
 fn valid_area(area: Rect) -> bool {
     area.x >= 0 && area.y >= 0 && area.w >= 0 && area.h >= 0 && area.w <= 4096 && area.h <= 4096 &&
         i64(area.x)+i64(area.w) <= 65536 && i64(area.y)+i64(area.h) <= 65536 && area.cell_count() <= 1048576
@@ -1426,6 +1444,10 @@ fn valid_area(area: Rect) -> bool {
 
 pub trait Backend {
     fn size(&mut self) -> (i32,i32)
+    fn window_size(&mut self) -> Result<WindowSize,string> {
+        (w,h) := self.size()
+        .Ok(WindowSize { columns:w, rows:h, pixel_width:0, pixel_height:0 })
+    }
     fn present(&mut self, frame: &Frame, previous: &Frame) -> Result<(),string>
     fn clear_screen(&mut self, area: Rect) -> Result<(),string> {
         blank := Frame::at(area)
@@ -1451,7 +1473,8 @@ enum Renderer<S> {
 impl Terminal<B> {
     pub fn new(move device: B) -> Self {
         empty := Rect { x:0,y:0,w:0,h:0 }
-        Self { device: move device, viewport:.Fullscreen, area:empty, screen:empty, last_y:0, buffers: [Frame::new(0,0),Frame::new(0,0)], front: 0, number: 0, invalid: true }
+        pending := Rect { x:-1,y:0,w:0,h:0 }
+        Self { device: move device, viewport:.Fullscreen, area:empty, screen:pending, last_y:0, buffers: [Frame::new(0,0),Frame::new(0,0)], front: 0, number: 0, invalid: true }
     }
 
     pub fn with_viewport(move device: B, viewport: Viewport) -> Result<Self,string> {
@@ -1468,7 +1491,8 @@ impl Terminal<B> {
             },
             .Inline(height) => {
                 if height < 1 || height > 4096 { return .Err("Invalid inline height.") }
-                _ := term.reserve_inline(height,0)?
+                position := term.reserve_inline(height,0)?
+                term.last_y = position.1
             },
         }
         term.buffers[0] = Frame::at(term.area)
@@ -1484,11 +1508,20 @@ impl Terminal<B> {
         below := cmp.max<i32>(0,self.screen.h-pos.1-1)
         top := cmp.max<i32>(0,pos.1-cmp.max<i32>(0,reserve-below)-offset)
         self.area = Rect { x:0,y:top,w:self.screen.w,h:cmp.min<i32>(height,self.screen.h) }
-        self.last_y = pos.1
         .Ok(pos)
     }
 
     pub fn viewport_area(&self) -> Rect { self.area }
+
+    pub fn size(&mut self) -> (i32,i32) { self.device.size() }
+
+    pub fn window_size(&mut self) -> Result<WindowSize,string> { self.device.window_size() }
+
+    pub fn autoresize(&mut self) -> Result<(),string> {
+        match self.viewport { .Fixed(_) => { return .Ok }, _ => {}, }
+        (w,h) := self.device.size()
+        self.fit(w,h)
+    }
 
     pub fn clear(&mut self) -> Result<(),string> {
         pos := self.device.read_cursor()?
@@ -1613,21 +1646,26 @@ impl Terminal<B> {
     }
 
     fn prepare(&mut self, w: i32, h: i32) -> Result<(),string> {
-        screen := Rect { x:0,y:0,w:w,h:h }
-        if !valid_area(screen) { return .Err("Invalid terminal viewport size.") }
-        viewport := self.viewport
-        match viewport {
-            .Fullscreen => {
-                if self.number > 0 && screen != self.screen { self.resize(screen)? }
-                else { self.area = screen; self.screen = screen }
-            },
-            .Inline(_) if screen != self.screen => { self.resize(screen)? },
-            _ => {},
-        }
+        self.fit(w,h)?
         back := 1-self.front
         self.buffers[back].reset_area(self.area)
         self.buffers[back].hide_cursor()
         self.buffers[back].number = self.number
+        .Ok
+    }
+
+    fn fit(&mut self, w: i32, h: i32) -> Result<(),string> {
+        screen := Rect { x:0,y:0,w:w,h:h }
+        if !valid_area(screen) { return .Err("Invalid terminal viewport size.") }
+        viewport := self.viewport
+        match viewport {
+            .Fullscreen if screen != self.screen => {
+                if self.screen.x < 0 { self.area = screen; self.screen = screen }
+                else { self.resize(screen)? }
+            },
+            .Inline(_) if screen != self.screen => { self.resize(screen)? },
+            _ => {},
+        }
         .Ok
     }
 
@@ -1739,6 +1777,7 @@ impl Backend for LiveBackend {
     }
 
     fn scrollback_needs_full_screen(&self) -> bool { true }
+    fn window_size(&mut self) -> Result<WindowSize,string> { window_size() }
     fn size(&mut self) -> (i32,i32) {
         (w,h) := self.session.size()
         self.width = w

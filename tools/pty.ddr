@@ -27,7 +27,11 @@ pub unsafe fn open(master: &mut i32, slave: &mut i32, w: u16, h: u16) -> bool {
 }
 
 pub unsafe fn resize(slave: i32, w: u16, h: u16) -> bool {
-    mut size: [u16; 4] = [h, w, 0, 0]
+    resize_window(slave,w,h,0,0)
+}
+
+pub unsafe fn resize_window(slave: i32, w: u16, h: u16, pixels_w: u16, pixels_h: u16) -> bool {
+    mut size: [u16; 4] = [h, w, pixels_w, pixels_h]
     request := if target_is("macos") { usize(0x80087467) } else { usize(0x5414) }
     ioctl(slave, request, addr(&size[0])) == 0
 }

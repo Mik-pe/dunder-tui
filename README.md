@@ -84,7 +84,7 @@ Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.14.0", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.15.0", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.
@@ -160,6 +160,10 @@ fn main() {
 Implementera `tui.Backend` med `size` och `present` för att ansluta en egen utmatning. `present` får aktuell och föregående bild. `frame.ansi_diff(&previous,&mut output)` skriver ändrade celler och markörkommandon till en bytebuffert. Med `try_draw` kan ritfunktionen returnera ett fel före utmatningen. Om backenden rapporterar ett skrivfel får den en hel bild nästa gång. `completed()` ger den senast lyckade bilden. Anropa `invalidate()` för att tvinga fram en hel omritning efter externa ändringar. [Backend med felprov](tests/suite.ddr) · [Testterminalens skrollhistorik](src/testing.ddr)
 
 ## Rita i en del av terminalen
+
+`terminal.size()` ger hela backendens kolumner och rader. Använd `frame.area()` för ytan du får rita i. Om terminalen ändrar storlek mellan två bilder kan du anropa `terminal.autoresize()?` och sedan läsa `viewport_area()`. En fast vy behåller sitt läge och sina mått.
+
+För grafik kan `terminal.window_size()` även ge `pixel_width` och `pixel_height`. På macOS och Linux går det att fråga med `tui.window_size()` redan före första bilden. En terminal kan lämna noll i ett eller båda pixelmåtten. Windowsbackenden returnerar ett fel för pixelfrågan. Kolumn- och radmått finns via `terminal.size()` på alla tre systemen.
 
 Kör `dunder run --example loggbok`. Appen visar två rader under skalets tidigare utmatning. Enter lägger en händelse ovanför vyn. När terminalen är full hamnar de äldsta raderna i skrollhistoriken. Tryck **q** för att fortsätta i skalet under loggboken. [Hela exemplet](examples/loggbok/main.ddr)
 

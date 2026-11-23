@@ -237,6 +237,9 @@ unsafe fn embedded(out: ptr) -> i32 {
     if result != 0 { return result }
     mut count := 0
     mut fixed: tui.Terminal<tui.LiveBackend> = tui.open(.Fixed(tui.Rect {x:4,y:2,w:8,h:2})).unwrap()
+    (columns,rows) := fixed.size()
+    if columns != i32(bounds[7])-x+1 || rows != i32(bounds[8])-y+1 { return 98 }
+    if !fixed.window_size().is_err() || !tui.window_size().is_err() || fixed.autoresize().is_err() { return 99 }
     if fixed.draw(&mut count,embedded_frame).is_err() || unit_at(out,x+4,y+2) != 86 || unit_at(out,0,0) != 35 { return 51 }
     fixed.backend_mut().close()
     if position(out,u32(x).bit_or(u32(y+1).shl(16))) == 0 { return 52 }

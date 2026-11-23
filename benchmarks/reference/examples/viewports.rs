@@ -83,7 +83,34 @@ fn live(fixed: bool) -> io::Result<()> {
 }
 
 fn main() {
+    let windows = std::env::args().nth(1).as_deref() == Some("--window");
     match std::env::args().nth(1).as_deref() {
+        Some("--probe-window") => {
+            let mut backend = ratatui::backend::CrosstermBackend::new(io::stdout());
+            match backend.window_size() {
+                Ok(m) => println!(
+                    "{}x{} {}x{}",
+                    m.columns_rows.width, m.columns_rows.height, m.pixels.width, m.pixels.height
+                ),
+                Err(_) => println!("unavailable"),
+            }
+            return;
+        }
+        Some("--live-window") => {
+            let mut t =
+                Terminal::new(ratatui::backend::CrosstermBackend::new(io::stdout())).unwrap();
+            for step in 0..5 {
+                let m = t.backend_mut().window_size().unwrap();
+                println!(
+                    "\x1b[H{}x{} {}x{} step {step}\x1b[K",
+                    m.columns_rows.width, m.columns_rows.height, m.pixels.width, m.pixels.height
+                );
+                if step < 4 {
+                    io::stdin().read_line(&mut String::new()).unwrap();
+                }
+            }
+            return;
+        }
         Some("--fixed") => return live(true).unwrap(),
         Some("--inline") => return live(false).unwrap(),
         _ => {}
@@ -103,6 +130,8 @@ fn main() {
             .unwrap();
         let viewport = if seed % 3 == 0 {
             Viewport::Fixed(Rect::new(2, 1, w - 4, h - 2))
+        } else if windows && seed % 3 == 1 {
+            Viewport::Fullscreen
         } else {
             Viewport::Inline(1 + seed % (h + 3))
         };
@@ -110,6 +139,15 @@ fn main() {
         for stage in 0..16 {
             match stage {
                 0 => {}
+                1 | 3 | 5 | 9 if windows => {
+                    match stage {
+                        1 => t.backend_mut().resize(w + 3, h + 2),
+                        5 => t.backend_mut().resize(w - 1, h - 1),
+                        9 => t.backend_mut().resize(w, h),
+                        _ => {}
+                    }
+                    t.autoresize().unwrap();
+                }
                 2 | 4 | 8 | 10 => {
                     let count = (seed + stage) % (2 * h + 3);
                     t.insert_before(count, |b| {
@@ -153,6 +191,24 @@ fn main() {
                     })
                     .unwrap();
                 }
+            }
+            if windows && stage > 0 {
+                let s = t.size().unwrap();
+                let m = t.backend_mut().window_size().unwrap();
+                let line = format!(
+                    "{} {} {} {} {} {}",
+                    s.width,
+                    s.height,
+                    m.columns_rows.width,
+                    m.columns_rows.height,
+                    m.pixels.width,
+                    m.pixels.height
+                );
+                assert_eq!(
+                    records.next().unwrap().unwrap(),
+                    line,
+                    "window {seed}/{stage}"
+                );
             }
             let a = t.get_frame().area();
             let p = t.backend_mut().get_cursor_position().unwrap();
