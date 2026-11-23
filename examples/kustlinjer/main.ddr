@@ -1,0 +1,107 @@
+capability stdio
+import tui
+import tui.plot as plot
+import tui.chart as chart
+import tui.text as rich
+import std.cmp as cmp
+import sys
+
+struct Atlas {
+    map: plot.Plot, profile: chart.Chart, detail: plot.MapResolution,
+    counts: [i32;72], bin: i32, paused: bool, clock: i64,
+}
+
+fn reload(app: &mut Atlas) {
+    app.counts = [0;72]
+    for i in 0..app.detail.len() {
+        point := app.detail.point(i).unwrap()
+        if point.0 < -180.0 || point.0 > 180.0 { continue }
+        bin := cmp.clamp<i32>(i32((point.0+180.0)/5.0),0,71)
+        app.counts[bin] += 1
+    }
+    mut peak := 1
+    mut data: [](f64,f64) = []
+    data.reserve(72)
+    for i in 0..72 {
+        peak = cmp.max<i32>(peak,app.counts[i])
+        data.push((-177.5+5.0*f64(i),f64(app.counts[i])))
+    }
+    app.profile.datasets[0].data = move data
+    app.profile.y_axis.bounds = [0.0,f64(peak)]
+    app.profile.y_axis.labels = [rich.Line::raw("0"),rich.Line::raw(peak.str())]
+}
+
+fn atlas() -> Atlas {
+    mut coast := plot.Plot::new([-180.0,180.0],[-90.0,90.0])
+    coast.background = tui.rgb(0x101d2a)
+    mut profile := chart.Dataset::new([])
+    profile.graph_type = .Area
+    profile.marker = .Braille
+    profile.style = tui.plain().foreground_rgb(0x4ec5bc)
+    mut cursor := chart.Dataset::new([(0.0,0.0)])
+    cursor.marker = .Block
+    cursor.style = tui.plain().foreground_rgb(0xffa566)
+    mut graph := chart.Chart::new([move profile,move cursor])
+    graph.style = tui.plain().background_rgb(0x101d2a)
+    graph.x_axis = chart.Axis::new([-180.0,180.0])
+    graph.x_axis.labels = [rich.Line::raw("180° V"),rich.Line::raw("0°"),rich.Line::raw("180° Ö")]
+    graph.x_axis.style = tui.plain().foreground_rgb(0x416279)
+    graph.y_axis.style = graph.x_axis.style
+    graph.y_axis.title = .Some(rich.Line::raw("Kustpunkter per 5°").styled(tui.plain().foreground_rgb(0xe0efa7)))
+    graph.y_axis.alignment = .Right
+    mut app := Atlas { map:move coast,profile:move graph,detail:.High,counts:[0;72],bin:36,paused:false,clock:-1 }
+    reload(&mut app)
+    move app
+}
+
+fn draw(frame: &mut tui.Frame, app: &mut Atlas) {
+    mut area := frame.area()
+    frame.apply_style(area,tui.plain().foreground_rgb(0xccdce6).background_rgb(0x101d2a))
+    frame.text(area.take_rows(1)," Kustlinjer",tui.plain().foreground_rgb(0xffbe8a).bold())
+    body := area.take_rows(cmp.max<i32>(0,area.h-2))
+    mut chart_area := body
+    map_area := chart_area.take_rows(if body.h >= 11 { body.h-body.h/3 } else { body.h })
+    lon := -177.5+5.0*f64(app.bin)
+    p := app.map.begin(&mut frame,map_area)
+    p.map(app.detail,tui.rgb(0x64cbbe))
+    p.set_marker(.Braille)
+    p.line(lon,-85.0,lon,85.0,tui.rgb(0xf6a268))
+    app.map.finish(&mut frame)
+    if chart_area.h > 0 {
+        app.profile.datasets[1].data[0] = (lon,f64(app.counts[app.bin]))
+        app.profile.render(&mut frame,chart_area)
+    }
+    mode := match app.detail { .High => "Fin", .Low => "Grov", }
+    pace := if app.paused { "Paus" } else { "Svep" }
+    edge := -180+5*app.bin
+    frame.text(area.take_rows(1),f" {mode} · {pace} · {edge}° till {edge+5}° · {app.counts[app.bin]} kustpunkter",tui.plain().foreground_rgb(0xffbe8a))
+    frame.label(area," ← → longitud   Home 0°   Tab detalj   Mellanslag paus   q avsluta")
+}
+
+fn update(app: &mut Atlas, key: tui.Key) -> bool {
+    match key {
+        .Left => { app.bin = (app.bin+71)%72; app.paused = true },
+        .Right => { app.bin = (app.bin+1)%72; app.paused = true },
+        .Home => { app.bin = 36; app.paused = true },
+        .Tab => { app.detail = match app.detail { .High => .Low, .Low => .High, }; reload(&mut app) },
+        .Char(c) if c == ` ` => { app.paused = !app.paused },
+        .Escape => { return false }, .Char(c) if c == `q` => { return false }, _ => {},
+    }
+    true
+}
+
+fn tick(app: &mut Atlas, elapsed: i64) -> bool {
+    step := elapsed/200
+    previous := app.clock
+    app.clock = step
+    if app.paused || previous < 0 || step <= previous { return false }
+    app.bin = (app.bin+i32((step-previous)%72))%72
+    true
+}
+
+fn main() -> i32 {
+    mut app := atlas()
+    match tui.animate_stateful(&mut app,10,draw,update,tick) {
+        .Ok => 0, .Err(message) => { _ := sys.eprint(message); 1 },
+    }
+}

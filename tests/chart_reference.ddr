@@ -1,0 +1,79 @@
+capability stdio
+import ..src.tui
+import ..src.chart
+import ..src.block
+import ..src.text as rich
+import .widget_cells as cells
+import ..benchmarks.chart_scene
+import sys
+
+fn align(k:i32) -> rich.Alignment {
+    match k%3 { 0 => .Left, 1 => .Center, _ => .Right, }
+}
+
+fn labels(n:i32, horizontal:bool) -> []rich.Line {
+    mut out: []rich.Line = []
+    for i in 0..n {
+        if i == 0 { out.push(rich.Line::raw(if horizontal { "start" } else { "low" }).styled(tui.ink(.Red))) }
+        else if i == n-1 { out.push(rich.Line::raw(if horizontal { "end" } else { "max" }).styled(tui.ink(.Cyan))) }
+        else { out.push(rich.Line::raw(i.str())) }
+    }
+    move out
+}
+
+fn view(k:i32, series:i32, legend:i32) -> chart.Chart {
+    mut sets: []chart.Dataset = []
+    for n in 0..series {
+        mut d := chart.Dataset::new([(-7.0,4.0),(-2.0,-3.0),(0.0,2.0),(2.0,-2.0),(6.0,3.0)])
+        if n == 1 { d.data = [(-4.0,1.0),(4.0,1.0)] }
+        if n == 2 { d.data = [(0.0,0.0)] }
+        if k%4 == 2 && n == 0 { d.data = [] }
+        d.graph_type = match (k+n)%4 { 0 => .Scatter, 1 => .Line, 2 => .Bar, _ => .Area, }
+        d.marker = match (k+n)%6 { 0 => .Braille, 1 => .Dot, 2 => .Quadrant, 3 => .Octant, 4 => .HalfBlock, _ => .Sextant, }
+        d.fill_to_y = if k%2 == 0 { -1.5 } else { 2.0 }
+        d.style = if n == 0 { tui.ink(.Magenta).background(.Blue) } else { tui.ink(.Yellow).italic() }
+        if n == 0 && k%3 != 1 {
+            d.name = .Some(rich.Line::new([rich.Span::styled("A",tui.ink(.Cyan)),rich.Span::raw("bc")]).styled(tui.ink(.Green).bold()))
+        } else if n == 1 { d.name = .Some(rich.Line::raw(if k%3 == 0 { "" } else { "Echo" }).align(.Right)) }
+        sets.push(move d)
+    }
+    mut c := chart.Chart::new(move sets)
+    c.x_axis = chart.Axis::new([-5.0,5.0]); c.y_axis = chart.Axis::new([-3.0,3.0])
+    c.x_axis.labels = labels(k%5,true); c.y_axis.labels = labels((k/3)%5,false)
+    c.x_axis.alignment = align(k); c.y_axis.alignment = align(k/2)
+    c.x_axis.style = tui.ink(.Yellow); c.y_axis.style = tui.ink(.Cyan)
+    if k%3 != 1 { c.x_axis.title = .Some(rich.Line::raw("time").styled(tui.ink(.Red))) }
+    if k%4 != 1 { c.y_axis.title = .Some(rich.Line::raw("Y").styled(tui.ink(.Green))) }
+    if k%2 == 0 { c.style = tui.plain().background(.Black) }
+    if k%4 == 0 { c.block = block.Block::bordered() }
+    if k%3 == 0 { c.set_legend_constraints(.Fill(1),.Fill(1)) }
+    if k%3 == 1 { c.set_legend_constraints(.Length(10),.Percentage(70)) }
+    c.legend_position = match legend {
+        0 => .None, 1 => .Some(.TopRight), 2 => .Some(.Top), 3 => .Some(.TopLeft), 4 => .Some(.Left),
+        5 => .Some(.Right), 6 => .Some(.BottomLeft), 7 => .Some(.Bottom), _ => .Some(.BottomRight),
+    }
+    move c
+}
+
+fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--benchmark" {
+        mut scene := chart_scene.Scene::new()
+        for mode in ["idle","cell","scroll","resize","repaint"] {
+            for n in 0..220 {
+                w := if mode == "resize" && n%2 == 0 { 80 } else { 96 }
+                mut frame := tui.Frame::new(w,24)
+                scene.draw(&mut frame,mode,n)
+                cells.snapshot(&frame)
+            }
+        }
+        return
+    }
+    for k in 0..15 { for series in 0..4 { for legend in 0..9 {
+        mut c := view(k,series,legend)
+        for dims in [(0,0),(1,1),(3,2),(6,5),(9,6),(13,7),(21,11),(42,17)] {
+            mut frame := cells.seeded(dims.0,dims.1)
+            c.render(&mut frame,tui.Rect {x:1,y:1,w:dims.0,h:dims.1})
+            cells.snapshot(&frame)
+        }
+    } } }
+}

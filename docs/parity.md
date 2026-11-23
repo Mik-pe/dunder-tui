@@ -2,7 +2,7 @@
 
 Referensen är taggen `ratatui-v0.30.2`, inklusive de stabila tillvalen. Tabellen följer de publika områdena i den versionen. En genomförd jämförelse anges med sitt konkreta prov. [Referenskod](https://github.com/ratatui/ratatui/tree/ratatui-v0.30.2) · [Publikt API](https://docs.rs/ratatui/0.30.2/ratatui/) · [Funktionsflaggor](https://docs.rs/crate/ratatui/0.30.2/features)
 
-Funktionsparitet styr ordningen. Nästa användarflöde är diagram med axlar och en canvas med koordinatgränser, markörer och lager. Därefter följer vyportar och testbackend. Prestanda mäts tillsammans med beteendet så att en långsammare arbetslast kan prioriteras utifrån vad användaren märker. [Fynd för Dunder-språket och standardbiblioteket](dunder.md)
+Funktionsparitet styr ordningen. Nästa användarflöde är vyportar, markörstyrning och en testbackend för program som kombinerar vanlig terminalutskrift med en interaktiv vy. Prestanda mäts tillsammans med beteendet så att en långsammare arbetslast kan prioriteras utifrån vad användaren märker. [Fynd för Dunder-språket och standardbiblioteket](dunder.md)
 
 | Område | Finns i Dunder | Återstår att leverera eller verifiera |
 | --- | --- | --- |
@@ -11,7 +11,7 @@ Funktionsparitet styr ordningen. Nästa användarflöde är diagram med axlar oc
 | Text | Span, Line, Text, Paragraph, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. | Strängbredder för skriftspecifika ligaturer över grafemgränser, full täckning för sammansatta emoji och alla operationer på fristående texttyper. |
 | Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering och cache. 15 076 jämförda layouter, 1 200 rektangelprov och 1 100 jämförda bilder. | Utökad täckning av överbestämda system med många olika paneler och upprepade ändringar av reglerna. |
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna tecken, individuella kanter, justerade titlar, utfyllnad och skuggor. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
-| Övriga widgets | Clear och Fill på Frame, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, Paragraph och RGB-canvas med punkter, linjer och halvblock. | Chart, kalender med datumstilar, logotyp och maskot. Canvas med koordinatgränser, lager, markörer, former, kartor och etiketter. |
+| Övriga widgets | Clear och Fill på Frame, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. | Kalender med datumstilar, logotyp och maskot. |
 | Egna widgets och tester | Funktioner ritar på en Frame. Tillstånd kan uppdateras vid ritning med `run_stateful`. En Frame kan testas utan terminal. | Gemensamma gränssnitt för widgets med eget tillstånd och utbytbara backends, testbackend med skrollhistorik och markör. |
 | Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, ANSI och Win32. | Fast och infogad vyport, innehåll ovanför vyn, markörstyrning från Frame, regionrensning och regionskrollning, fönstrets pixelmått, livscykel- och felprov. |
 | Stabil Rust-integration | Jämförelseprogrammen använder den låsta Rustreferensen. Dunder-appar byggs offline. | Kontrollera Dunder-motsvarigheter till bekvämlighetsmakron, serialisering, cachning och backendval där dessa påverkar appens beteende. |
@@ -123,3 +123,25 @@ build/table-check --benchmark | build/rust/release/examples/tables --benchmark
 dunder build --locked --offline --example avganger -o build/avganger
 dunder run --locked --offline tests/table_terminal.ddr -- build/avganger
 ```
+
+## Diagram och canvas i 0.9.0
+
+Ritprovet ger 8 424 identiska bilder mot Ratatui 0.30.2. Det täcker koordinatomvandling, klippning, linjer med och utan fyllning, rektanglar, cirklar, kartor, markeringsbyte, upprepade lager och stiliserade etiketter. Alla 2 304 prov med subpixelmönster matchar i både tecken och färger. Separat jämförs de exakta flyttalsbitarna för kartornas 1 166 respektive 5 125 koordinatpar. [Dunderprov](../tests/plot_reference.ddr) · [Ratatui-prov](../benchmarks/reference/examples/plot.rs) · [Ratatuis ritgränssnitt](https://docs.rs/ratatui/0.30.2/ratatui/widgets/canvas/)
+
+Diagramprovet omfattar 4 320 bilder med fyra graftyper, båda axlarna, rubriker, justering, tomma dataserier och samtliga åtta legendpositioner. I 4 104 bilder matchar hela bufferten direkt. I 216 bilder börjar Ratatuis första högerjusterade x-etikett utanför diagrammet. Där verifieras att referensen faktiskt ändrade en kontrollcell. Därefter ritas samma diagram med Ratatui i en buffert med diagrammets gränser och hela bilden jämförs på nytt. Dunder håller även en centrerad, fullhög teckenförklaring inom diagrammet när dess vänsterkant har förskjutits. Alla 1 100 bilder i prestandaprovet matchar cell för cell. [Diagramprov](../tests/chart_reference.ddr) · [Ratatui-prov](../benchmarks/reference/examples/charts.rs) · [Mätningar](../benchmarks/charts.md)
+
+Proven använder Dunders publika API. Win32-provet läser tillbaka halvblockets båda färger och en ritad diagramlinje. Unixprovet startar den färdigbyggda kartappen, byter longitud och detaljgrad, pausar och återupptar svepet, ändrar terminalstorlek och kontrollerar återställning. [Terminalprov](../tests/coast_terminal.ddr) · [Konsolprov](../tests/windows_console.ddr)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/plot_reference.ddr -o build/plot-check
+dunder build --locked --offline tests/chart_reference.ddr -o build/chart-check
+cargo build --locked --release --manifest-path benchmarks/reference/Cargo.toml --features layout-cache --example plot --example charts --target-dir build/rust
+build/plot-check | build/rust/release/examples/plot
+build/plot-check --patterns | build/rust/release/examples/plot --patterns
+build/plot-check --coordinates | build/rust/release/examples/plot --coordinates ~/.cargo/registry/src/*/ratatui-widgets-0.3.2/src/canvas/world.rs
+build/chart-check | build/rust/release/examples/charts
+build/chart-check --benchmark | build/rust/release/examples/charts --benchmark
+```
+
+Kartdata ligger i paketet och kan återskapas med `dunder run tools/coastlines.ddr -- world.dat world_110m.txt`. Generatorn läser originalens koordinater och skriver en Dundermodul till standardutgången. Lågupplösningsserien utelämnar slutpunkten (−69,31°, −52,81°) för att matcha referensens urval. [Lågupplösta data](https://gnuplotting.org/data/world.dat) · [Högupplösta data från Natural Earth](https://gnuplotting.org/data/world_110m.txt) · [Data och villkor](../src/COASTLINE-NOTICES.txt)

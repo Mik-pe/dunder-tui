@@ -1,0 +1,41 @@
+import .grapheme_cases as cases
+import std.text as text
+import std.bytes as bytes
+import std.bytes.utf8 as utf8
+import std.parse as parse
+
+@test fn released_grapheme_iterator_matches_unicode17_byte_offsets() {
+    mut tested := 0
+    for line in text.split(cases.unicode17(),"\n") {
+        mut source: []u8 = []
+        mut ends: []i32 = []
+        for token in text.split(line," ") {
+            if token == "/" { if source.len > 0 { ends.push(source.len) } }
+            else { bytes.append_utf8(&mut source,rune(parse.hex(token).value).str()) }
+        }
+        value := bytes.decode(&source).unwrap()
+        mut i := 0; mut start := 0
+        for part in text.graphemes(value) {
+            assert(i < ends.len && part.start() == start && part.end() == ends[i])
+            assert(part.as_str() == value[start..ends[i]])
+            start = ends[i]; i += 1
+        }
+        assert(i == ends.len && start == value.len)
+        tested += 1
+    }
+    assert(tested == 766)
+}
+
+@test fn prefix_decoder_handles_split_terminal_events() {
+    for ch in [`A`,`å`,`茶`,`🌍`] {
+        data := ch.str().bytes()
+        for k in 0..data.len {
+            match utf8.decode_prefix(&data[0..k]) { .Incomplete => {}, _ => { assert(false) }, }
+        }
+        mut combined := data.clone()
+        combined.push(27)
+        match utf8.decode_prefix(&combined) { .Scalar(c,n) => { assert(c == ch && n == data.len) }, _ => { assert(false) }, }
+    }
+    invalid: []u8 = [0xed,0xa0,0x80]
+    match utf8.decode_prefix(&invalid) { .Invalid => {}, _ => { assert(false) }, }
+}

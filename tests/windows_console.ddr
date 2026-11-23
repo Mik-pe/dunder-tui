@@ -2,6 +2,8 @@ capability unsafe, stdio
 
 import ..src.tui
 import ..src.table
+import ..src.plot
+import ..src.chart as graphs
 import ..src.layout
 import ..src.list as lists
 import ..src.widgets as ui
@@ -81,6 +83,17 @@ fn draw(frame: &mut tui.Frame, probe: &Probe) {
     cursor.select_cell(.Some((1,1)))
     grid.render_stateful(&mut frame,parts[3].resize(12,2),&mut cursor)
     assert(cursor.selected == .Some(1) && cursor.selected_column == .Some(1))
+    mut coast := plot.Plot::new([0.0,1.0],[0.0,1.0])
+    coast.marker = .HalfBlock
+    p := coast.begin(&mut frame,tui.Rect {x:0,y:6,w:3,h:1})
+    p.paint(0,0,.LightCyan); p.paint(0,1,.Blue)
+    coast.finish(&mut frame)
+    mut d := graphs.Dataset::new([(0.0,0.0),(1.0,1.0)])
+    d.graph_type = .Line; d.marker = .Custom(`*`); d.style = tui.ink(.Yellow)
+    mut diagram := graphs.Chart::new([move d])
+    diagram.x_axis = graphs.Axis::new([0.0,1.0]); diagram.y_axis = graphs.Axis::new([0.0,1.0])
+    diagram.render(&mut frame,tui.Rect {x:3,y:6,w:3,h:2})
+
 }
 
 fn update(probe: &mut Probe, key: tui.Key) -> bool {
@@ -118,6 +131,10 @@ fn update(probe: &mut Probe, key: tui.Key) -> bool {
         table_line := ">B   02"
         for i in 0..7 { if meter[i] != u16(table_line[i]) { probe.failure = 39; return false } }
         if read_attr(out,addr(&mut attr),1,table_row+5,addr(&mut n)) == 0 || attr.bit_and(255) != 27 { probe.failure = 40; return false }
+        plot_row := u32(bounds[5]).bit_or(u32(i32(bounds[6])+6).shl(16))
+        if read_text(out,addr(&mut meter[0]),1,plot_row,addr(&mut n)) == 0 || meter[0] != 0x2580 { probe.failure = 41; return false }
+        if read_attr(out,addr(&mut attr),1,plot_row,addr(&mut n)) == 0 || attr.bit_and(255) != 27 { probe.failure = 42; return false }
+        if read_text(out,addr(&mut meter[0]),1,plot_row+5,addr(&mut n)) == 0 || meter[0] != 42 { probe.failure = 43; return false }
         if probe.step == 0 {
             mut rect: [i16; 4] = [bounds[5], bounds[6], i16(i32(bounds[7]) - 1), bounds[8]]
             if set_window(out, 1, addr(&rect[0])) == 0 { probe.failure = 32; return false }

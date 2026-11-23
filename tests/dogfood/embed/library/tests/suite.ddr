@@ -1,2 +1,3 @@
 import ..src.lib
-@test fn load_sample() { assert(lib.sample() == "sample\n") }
+import std.bytes as bytes
+@test fn load_sample() { assert(lib.sample() == "sample\n" && bytes.decode(&lib.bytes()).unwrap() == lib.sample()) }

@@ -28,3 +28,7 @@ required-features = ["layout-cache"]
 [[example]]
 name = "table_bench"
 required-features = ["layout-cache"]
+
+[[example]]
+name = "chart_bench"
+required-features = ["layout-cache"]

@@ -1,0 +1,27 @@
+capability unsafe, stdio, process
+import .terminal_driver as driver
+import ..tools.pty
+import sys
+
+fn exercise(master:i32, slave:i32, screen:&mut driver.Screen) -> bool {
+    unsafe {
+        if !driver.wait_for(master,&mut screen,21,"Fin · Svep","\x1b[?1049h") || !screen.contains(0,"Kustlinjer") { return false }
+        if !driver.send(master,"\x1b[H") || !driver.wait_for(master,&mut screen,21,"Fin · Paus · 0° till 5°","") { return false }
+        if !driver.send(master,"\x1b[C") || !driver.wait_for(master,&mut screen,21,"5° till 10°","") { return false }
+        if !driver.send(master,"\t") || !driver.wait_for(master,&mut screen,21,"Grov · Paus · 5° till 10°","") { return false }
+        if !pty.resize(slave,29,7) { return false }
+        screen = driver.Screen::new(29,7)
+        if !driver.wait_for(master,&mut screen,5,"Grov · Paus","") { return false }
+        if !driver.send(master," ") || !driver.wait_for(master,&mut screen,5,"Grov · Svep","") { return false }
+        if !driver.send(master,"q") || !driver.wait_for(master,&mut screen,0,"","\x1b[?1049l") { return false }
+    }
+    true
+}
+
+fn main() -> i32 {
+    if sys.arg_count() == 2 && (target_is("macos") || target_is("linux")) {
+        unsafe { if driver.test(sys.arg(1),76,23,exercise) { print("kustlinjer terminal OK"); return 0 } }
+    }
+    _ := sys.eprint("Run on macOS or Linux with the kustlinjer executable as argument.")
+    1
+}

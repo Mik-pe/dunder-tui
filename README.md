@@ -4,9 +4,9 @@ Bygg interaktiva terminalappar i Dunder för macOS, Linux och Windows. Skriv en 
 
 ## Prova
 
-Vill du se animationerna direkt? Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i en terminal. Samma paket innehåller signalvisualiseraren `signal`, boklistan `bokhylla` och tidtabellen `avganger`. [Ladda ner för macOS, Linux eller Windows](https://github.com/Mik-pe/dunder-tui/releases/latest)
+Vill du se animationerna direkt? Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i en terminal. Samma paket innehåller kustkartan `kustlinjer`, signalvisualiseraren `signal`, boklistan `bokhylla` och tidtabellen `avganger`. [Ladda ner för macOS, Linux eller Windows](https://github.com/Mik-pe/dunder-tui/releases/latest)
 
-Med Dunder 0.11.1 installerat kan du starta exemplen med deras namn. [Installera Dunder](https://github.com/Mik-pe/dunder#installera-och-kör)
+Med Dunder 0.11.1 eller senare installerat kan du starta exemplen med deras namn. [Installera Dunder](https://github.com/Mik-pe/dunder#installera-och-kör)
 
 ```sh
 git clone https://github.com/Mik-pe/dunder-tui.git
@@ -50,13 +50,19 @@ dunder run --example signal
 
 Signalen syntetiseras i appen och kräver ingen ljudenhet. [Källkod](examples/signal/main.ddr)
 
+### Kustlinjer
+
+`dunder run --example kustlinjer` visar en världskarta och ett diagram över antalet kustpunkter per fem längdgrader. Piltangenterna flyttar meridianen, Tab växlar kartans upplösning och mellanslag pausar svepet. [Exemplets källkod](examples/kustlinjer/main.ddr)
+
+![En orange meridian sveper över en turkos världskarta och markerar motsvarande intervall i diagrammet](docs/kustlinjer.webp)
+
 ## Skriv en egen app
 
 Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `dunder.toml`.
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.8.0", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.9.0", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.
@@ -137,6 +143,41 @@ level.render(&mut frame, area)
 | `tui.block` | Ramar med egna kanttecken, flera titlar, marginal innanför kanten och skuggor. Delade kanter kan slås ihop. |
 
 `area.take_rows(n)` tar ut de första raderna och låter `area` fortsätta direkt under dem. `take_cols(n)` gör motsvarande för kolumner. Använd `frame.fill_symbol(area, "🌊", style)` för att upprepa hela grafem eller `frame.clear_area(area)` för att tömma ytan före en överlagring. [Exempel med flikar, paneler och diagram](examples/signal/main.ddr)
+
+## Rita i egna koordinater
+
+Med `tui.plot` kan du ge ritytan egna x- och y-gränser. Lägg flera former i ett lager med `point`, `line`, `filled_line`, `rectangle`, `circle` och `map`. Anropa `layer()` för att lägga nästa form ovanpå. Det finns nio markörtyper, bland annat braille, halvblock med två färger och egna tecken.
+
+```dunder
+import tui.plot as plot
+
+mut view := plot.Plot::new([-10.0,10.0],[-5.0,5.0])
+p := view.begin(&mut frame,area)
+p.line(-12.0,-3.0,12.0,3.0,.Cyan)
+p.set_marker(.HalfBlock)
+p.circle(0.0,0.0,3.0,.Yellow)
+view.finish(&mut frame)
+```
+
+Med `tui.chart` delar flera dataserier samma axlar. Varje serie kan ritas som punkter, linje, staplar eller fylld yta. För en interaktiv app kan du spara diagrammet i tillståndet och ändra `graph.datasets[0].data` eller axelgränserna före nästa ritning.
+
+```dunder
+import tui
+import tui.chart as chart
+import tui.text as rich
+
+mut samples := chart.Dataset::new([(0.0,1.0),(1.0,3.0),(2.0,2.0)])
+samples.graph_type = .Line
+samples.marker = .Braille
+samples.style = tui.ink(.Cyan)
+mut graph := chart.Chart::new([move samples])
+graph.x_axis = chart.Axis::new([0.0,2.0])
+graph.y_axis = chart.Axis::new([0.0,4.0])
+graph.y_axis.labels = [rich.Line::raw("0"),rich.Line::raw("4")]
+graph.render(&mut frame,area)
+```
+
+`tui.animate_stateful` låter ritfunktionen ta `&mut S` så att diagram och ritytor kan återanvända sina buffertar mellan bilder. [Kustkartans båda vyer](examples/kustlinjer/main.ddr) · [Jämförelse med Ratatui](docs/parity.md#diagram-och-canvas-i-090)
 
 ## Listor med markering
 
@@ -224,4 +265,4 @@ Korsbygg exempelvis en Windowsapp med `dunder build examples/counter/main.ddr --
 
 Text delas vid grafemgränserna i Unicode 17.0. För enskilda teckens cellbredd används Unicode 18.0 med Ratatuis terminalanpassningar. Emoji, kombinerande tecken och flaggor hålls ihop vid radbrytning och klippning. Terminalens typsnitt och Unicode-stöd påverkar hur de visas. [Unicode 17](https://www.unicode.org/Public/17.0.0/ucd/) · [Unicode 18](https://www.unicode.org/Public/18.0.0/ucd/) · [Licens för tabellerna](src/UNICODE-LICENSE.txt)
 
-Biblioteket används också för att prova själva Dunder. [Reproducerade språk- och standardbiblioteksfynd](docs/dunder.md)
+Biblioteket och exemplen kan byggas med Dunder 0.10.0. Pseudoterminalproven och proven för det nya standardbiblioteket använder Dunder 0.11.2 eller senare. [Reproducerade språk- och standardbiblioteksfynd](docs/dunder.md)

@@ -468,14 +468,14 @@ impl Frame {
     }
 
     fn composite(&mut self, old: i64, overlay: &Style) -> i64 {
-        decoration := self.decoration(old)
-        mut brush := paint.Brush::unpack(decoration.packed)
-        if overlay.fg != INHERIT { brush.fg = overlay.fg }
-        if overlay.bg != INHERIT { brush.bg = overlay.bg }
-        brush.modifiers = brush.modifiers.bit_and(overlay.removed.bit_not()).bit_or(overlay.added).bit_and(511)
-        underline := if overlay.underline == INHERIT { decoration.underline } else { overlay.underline }
-        packed := brush.packed()
-        if packed == decoration.packed && underline == decoration.underline { return old }
+        mut packed := if old >= 0 { old } else { self.decorations[i32(i64(-1)-old)] }
+        if overlay.fg != INHERIT { packed = packed.bit_and(i64(0x3ffffff).bit_not()).bit_or(i64(overlay.fg+1)) }
+        if overlay.bg != INHERIT { packed = packed.bit_and(i64(0x3ffffff).shl(26).bit_not()).bit_or(i64(overlay.bg+1).shl(26)) }
+        packed = packed.bit_and(i64(overlay.removed).shl(52).bit_not()).bit_or(i64(overlay.added).shl(52))
+        if old >= 0 && overlay.underline < 0 { return packed }
+        inherited := if old < 0 { i32(self.decorations[i32(-old)]) } else { -1 }
+        underline := if overlay.underline == INHERIT { inherited } else { overlay.underline }
+        if old < 0 && self.decorations[i32(i64(-1)-old)] == packed && underline == inherited { return old }
         self.style_key(packed, underline)
     }
 
@@ -695,6 +695,18 @@ impl Frame {
             style := if item == selected { highlight } else { plain() }
             self.text(Rect { x: area.x, y: area.y + row, w: area.w, h: 1 }, items[item], style)
         }
+    }
+
+    pub fn styled_rune(&mut self, x: i32, y: i32, right: i32, symbol: rune, style: &Style) {
+        if x < 0 || y < 0 || x >= right || x >= self.bounds.w || y >= self.bounds.h { return }
+        span := width.columns(i32(symbol))
+        if span < 1 || span > cmp.min<i32>(right,self.bounds.w)-x { return }
+        i := y*self.bounds.w+x
+        brush := self.composite(self.styles[i], &style)
+        if span == 1 && self.glyphs[i] >= 0 && self.glyphs[i] < WIDE {
+            self.glyphs[i] = if symbol == ` ` { WRITTEN_SPACE } else { i32(symbol)-32 }
+            self.styles[i] = brush
+        } else { self.put(x,y,i32(symbol),span,brush) }
     }
 
     pub fn half_block(&mut self, x: i32, y: i32, upper: u32, lower: u32) {
@@ -988,19 +1000,24 @@ pub enum Key { Char(rune), Up, Down, Left, Right, Home, End, Delete, Backspace, 
 enum Renderer<S> { Draw(fn(&mut Frame, &S)), Stateful(fn(&mut Frame, &mut S)) }
 
 pub fn run<S>(state: &mut S, draw: fn(&mut Frame, &S), update: fn(&mut S, Key) -> bool) -> Result<(), string> {
-    drive<S>(&mut state, Renderer<S>.Draw(draw), update, 0, fn(_state: &mut S, _elapsed: i64) -> bool { false })
+    drive<S>(&mut state, Renderer<S>.Draw(draw), update, .None, fn(_state: &mut S, _elapsed: i64) -> bool { false })
 }
 
 pub fn run_stateful<S>(state: &mut S, draw: fn(&mut Frame, &mut S), update: fn(&mut S, Key) -> bool) -> Result<(), string> {
-    drive<S>(&mut state, Renderer<S>.Stateful(draw), update, 0, fn(_state: &mut S, _elapsed: i64) -> bool { false })
+    drive<S>(&mut state, Renderer<S>.Stateful(draw), update, .None, fn(_state: &mut S, _elapsed: i64) -> bool { false })
 }
 
 pub fn animate<S>(state: &mut S, fps: i32, draw: fn(&mut Frame, &S), update: fn(&mut S, Key) -> bool, tick: fn(&mut S, i64) -> bool) -> Result<(), string> {
-    if fps < 1 || fps > 1000 { return .Err("Frame rate must be between 1 and 1000.") }
-    drive<S>(&mut state, Renderer<S>.Draw(draw), update, fps, tick)
+    drive<S>(&mut state, Renderer<S>.Draw(draw), update, .Some(fps), tick)
 }
 
-fn drive<S>(state: &mut S, renderer: Renderer<S>, update: fn(&mut S, Key) -> bool, fps: i32, tick: fn(&mut S, i64) -> bool) -> Result<(), string> {
+pub fn animate_stateful<S>(state: &mut S, fps: i32, draw: fn(&mut Frame, &mut S), update: fn(&mut S, Key) -> bool, tick: fn(&mut S, i64) -> bool) -> Result<(), string> {
+    drive<S>(&mut state, Renderer<S>.Stateful(draw), update, .Some(fps), tick)
+}
+
+fn drive<S>(state: &mut S, renderer: Renderer<S>, update: fn(&mut S, Key) -> bool, rate: Option<i32>, tick: fn(&mut S, i64) -> bool) -> Result<(), string> {
+    fps := rate.unwrap_or(0)
+    if rate.is_some() && (fps < 1 || fps > 1000) { return .Err("Frame rate must be between 1 and 1000.") }
     mut term := terminal.session()
     (cols, rows) := term.size()
     if cols <= 0 || rows <= 0 || !term.open() { return .Err("An interactive terminal is required on stdin and stdout.") }

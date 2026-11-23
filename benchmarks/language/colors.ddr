@@ -1,0 +1,47 @@
+capability stdio
+import sys
+
+enum Color { Default, Rgb(u8,u8,u8) }
+
+fn encode(color: &Color) -> i32 {
+    match color { .Default => -1, .Rgb(r,g,b) => i32(r)*65536+i32(g)*256+i32(b), }
+}
+
+fn owned(color: Color) -> i32 { encode(&color) }
+
+fn optional(color: Option<Color>) -> i32 {
+    match color { .Some(c) => encode(&c), .None => -1, }
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 1 }
+    mut sum: i64 = 0
+    mode := sys.arg(1)
+    match mode {
+        "borrowed" | "owned" | "optional" => {
+            mut palette: []Color = []
+            palette.reserve(256)
+            for i in 0..256 { palette.push(.Rgb(u8(i),u8(255-i),u8(i))) }
+            for pass in 0..256 {
+                if mode == "owned" {
+                    for i in 0..256 { sum += i64(owned(palette[(i+pass)%256])) }
+                } else if mode == "optional" {
+                    for i in 0..256 { sum += i64(optional(.Some(palette[(i+pass)%256]))) }
+                } else {
+                    for i in 0..256 { sum += i64(encode(&palette[(i+pass)%256])) }
+                }
+            }
+        },
+        "packed" => {
+            mut palette: []i32 = []
+            palette.reserve(256)
+            for i in 0..256 { palette.push(i*65536+(255-i)*256+i) }
+            for pass in 0..256 {
+                for i in 0..256 { sum += i64(palette[(i+pass)%256]) }
+            }
+        },
+        _ => { return 1 },
+    }
+    print(sum)
+    0
+}

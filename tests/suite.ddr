@@ -10,6 +10,8 @@ import .grapheme_cases as cases
 import std.parse as parse
 import std.text as words
 import std.bytes as bytes
+import ..src.plot as plot
+import ..src.chart as graphs
 import ..src.canvas
 import ..src.tui
 import ..src.input
@@ -582,4 +584,80 @@ import ..src.width
     assert(frame.style_at(2,0).unwrap().has(.Bold) && !frame.style_at(2,0).unwrap().has(.Underlined))
     target := frame.style_at(4,0).unwrap()
     assert(target.get_foreground() == .Some(tui.Color.Cyan) && target.has(.Underlined) && target.has(.Bold))
+}
+
+@test fn plot_coordinates_layers_and_labels_survive_resizing() {
+    mut frame := tui.Frame::new(5,3)
+    frame.fill(frame.area(), `.`,tui.ink(.Yellow).background(.Black).bold())
+    mut view := plot.Plot::new([-1.0,1.0],[-1.0,1.0])
+    view.marker = .HalfBlock
+    view.background = .Blue
+    p := view.begin(&mut frame,tui.Rect {x:1,y:1,w:3,h:1})
+    top := p.get_point(-1.0,1.0).unwrap()
+    bottom := p.get_point(1.0,-1.0).unwrap()
+    assert(top.0 == 0 && top.1 == 0 && bottom.0 == 2 && bottom.1 == 1)
+    assert(p.get_point(1.01,0.0).is_none() && p.get_point(f64.from_bits(0x7ff8000000000000),0.0).is_none())
+    p.paint(0,0,.Cyan); p.paint(0,1,.Red); p.layer()
+    p.paint(0,1,.Green); p.paint(3,0,.Magenta); p.paint(-1,-1,.Magenta)
+    p.label(0.0,0.0,rich.Line::raw("x"))
+    p.set_marker(.Custom(`界`)); p.point(1.0,1.0,.Cyan)
+    view.finish(&mut frame)
+    assert(frame.line(1) == ".▄x.." && frame.line(0) == "....." && frame.line(2) == ".....")
+    style := frame.style_at(1,1).unwrap()
+    assert(style.get_foreground() == .Some(tui.Color.Green) && style.get_background() == .Some(tui.Color.Red) && style.has(.Bold))
+    frame.clear()
+    p2 := view.begin(&mut frame,frame.area())
+    p2.set_marker(.Octant)
+    p2.paint(0,0,.Default)
+    view.finish(&mut frame)
+    assert(frame.symbol_at(0,0).unwrap() == "𜺨" && frame.line(1) == "     ")
+}
+
+@test fn chart_reuses_state_and_clips_axes_to_its_rectangle() {
+    mut frame := tui.Frame::new(10,6)
+    mut view := graphs.Chart::new([])
+    view.x_axis = graphs.Axis::new([0.0,1.0]); view.y_axis = graphs.Axis::new([0.0,1.0])
+    view.x_axis.labels = [rich.Line::raw("start"),rich.Line::raw("end")]
+    view.x_axis.alignment = .Right
+    frame.fill(frame.area(),`.`,tui.plain())
+    area := tui.Rect {x:1,y:1,w:8,h:4}
+    view.render(&mut frame,area)
+    assert(frame.line(4)[0] == b'.' && frame.line(4)[9] == b'.')
+    mut d := graphs.Dataset::new([(0.0,0.0),(1.0,1.0)])
+    d.graph_type = .Area; d.name = .Some(rich.Line::raw("A")); view.datasets.push(move d)
+    view.legend_position = .None
+    view.render(&mut frame,area)
+    assert(frame.symbol_at(8,1).unwrap() == "•")
+    view.datasets.clear()
+    frame.clear()
+    view.render(&mut frame,area)
+    assert(frame.symbol_at(8,1).unwrap() == " ")
+}
+
+@test fn chart_centers_a_full_height_legend_inside_an_offset_viewport() {
+    mut series := graphs.Dataset::new([])
+    series.name = .Some(rich.Line::raw("ABC"))
+    mut view := graphs.Chart::new([move series])
+    view.legend_position = .Some(.Top)
+    view.set_legend_constraints(.Fill(1),.Fill(1))
+    mut frame := tui.Frame::new(12,6)
+    frame.fill(frame.area(),`.`,tui.plain())
+    view.render(&mut frame,tui.Rect {x:5,y:2,w:5,h:3})
+    assert(frame.line(2) == ".....┌───┐.." && frame.line(3) == ".....│ABC│..")
+    assert(frame.line(4) == ".....└───┘.." && frame.line(5) == "............")
+}
+
+@test fn wide_custom_plot_markers_follow_layer_order_and_preserve_underline() {
+    mut frame := tui.Frame::new(5,1)
+    frame.fill(frame.area(),`.`,tui.plain().underline_color(.Red).underlined())
+    mut view := plot.Plot::new([0.0,4.0],[0.0,1.0])
+    p := view.begin(&mut frame,frame.area())
+    p.set_marker(.Custom(`界`))
+    p.paint(1,0,.Red); p.paint(0,0,.Blue)
+    p.set_marker(.Custom(`!`)); p.paint(2,0,.Green); p.paint(4,0,.Magenta)
+    p.set_marker(.Custom(`界`)); p.paint(1,0,.Yellow)
+    view.finish(&mut frame)
+    assert(frame.line(0) == " 界.!" && frame.style_at(1,0).unwrap().get_foreground() == .Some(tui.Color.Yellow))
+    s := frame.style_at(4,0).unwrap()
+    assert(s.get_foreground() == .Some(tui.Color.Magenta) && s.get_underline_color() == .Some(tui.Color.Red) && s.has(.Underlined))
 }

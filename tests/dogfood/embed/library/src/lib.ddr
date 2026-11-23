@@ -1,1 +1,2 @@
 pub fn sample() -> string { @embed_file("src/data.txt") }
+pub fn bytes() -> []u8 { @embed_bytes("src/data.txt") }

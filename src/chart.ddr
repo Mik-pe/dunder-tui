@@ -1,0 +1,197 @@
+import .tui
+import .text as rich
+import .block
+import .plot
+import .layout
+import std.cmp as cmp
+
+pub enum GraphType { Scatter, Line, Bar, Area }
+pub enum LegendPosition { Top, TopRight, TopLeft, Left, Right, Bottom, BottomRight, BottomLeft }
+
+pub struct Axis {
+    bounds: [f64;2], title: Option<rich.Line>, labels: []rich.Line,
+    style: tui.Style, alignment: rich.Alignment,
+}
+
+impl Axis {
+    pub fn new(bounds: [f64;2]) -> Self {
+        Self { bounds: bounds.clone(), title: .None, labels: [], style: tui.plain(), alignment: .Left }
+    }
+}
+
+pub struct Dataset {
+    data: [](f64,f64), name: Option<rich.Line>, marker: plot.Marker, graph_type: GraphType,
+    style: tui.Style, fill_to_y: f64,
+}
+
+impl Dataset {
+    pub fn new(move data: [](f64,f64)) -> Self {
+        Self { data: move data, name: .None, marker: .Dot, graph_type: .Scatter, style: tui.plain(), fill_to_y: 0.0 }
+    }
+
+    fn draw(&self, p: &mut plot.Painter) {
+        color := self.style.get_foreground().unwrap_or(tui.Color.Default)
+        p.set_marker(self.marker)
+        p.points(&self.data,color)
+        match self.graph_type {
+            .Scatter => {},
+            .Bar => { for v in &self.data { p.line(v.0,0.0,v.0,v.1,color) } },
+            .Line | .Area => {
+                for i in 1..self.data.len {
+                    a := self.data[i-1]; b := self.data[i]
+                    if self.graph_type == .Area { p.filled_line(a.0,a.1,b.0,b.1,self.fill_to_y,color) }
+                    else { p.line(a.0,a.1,b.0,b.1,color) }
+                }
+            },
+        }
+    }
+}
+
+pub opaque struct Legend {
+    width: layout.Layout, height: layout.Layout, border: block.Block,
+}
+
+pub struct Chart {
+    datasets: []Dataset, x_axis: Axis, y_axis: Axis, style: tui.Style, block: block.Block,
+    legend_position: Option<LegendPosition>, legend: Legend, surface: plot.Plot,
+}
+
+struct Axes { graph: tui.Rect, x_line: bool, y_line: bool, x_labels: bool }
+
+impl Chart {
+    pub fn new(move datasets: []Dataset) -> Self {
+        Self { datasets: move datasets, x_axis: Axis::new([0.0,0.0]), y_axis: Axis::new([0.0,0.0]),
+            style: tui.plain(), block: block.Block::new(), legend_position: .Some(.TopRight),
+            legend: Legend { width: layout.Layout::horizontal([.Ratio(1,4)]), height: layout.Layout::vertical([.Ratio(1,4)]), border: block.Block::bordered() },
+            surface: plot.Plot::new([0.0,0.0],[0.0,0.0]) }
+    }
+
+    pub fn set_legend_constraints(&mut self, width: layout.Constraint, height: layout.Constraint) {
+        self.legend.width.set_constraints([width])
+        self.legend.height.set_constraints([height])
+    }
+
+    fn axes(&self, area: tui.Rect) -> Axes {
+        mut margin := 0
+        for label in &self.y_axis.labels { margin = cmp.max<i32>(margin,label.width()) }
+        has_y := self.y_axis.labels.len > 0
+        if self.x_axis.labels.len > 0 {
+            w := self.x_axis.labels[0].width()
+            first := match self.x_axis.alignment {
+                .Right => 0, .Center => w/2, _ => w - (if has_y { 1 } else { 0 }),
+            }
+            margin = cmp.max<i32>(margin,first)
+        }
+        margin = cmp.min<i32>(margin,area.w/3)
+        has_x := self.x_axis.labels.len > 0
+        x_labels := has_x && area.h >= 2
+        x_line := has_x && area.h >= 3
+        y_line := has_y && margin+1 < area.w
+        left := margin+(if y_line { 1 } else { 0 })
+        height := area.h-(if x_labels { 1 } else { 0 })-(if x_line { 1 } else { 0 })
+        Axes { graph: tui.Rect { x:area.x+left, y:area.y, w:area.w-left, h:height },
+            x_line:x_line, y_line:y_line, x_labels:x_labels }
+    }
+
+    fn draw_axes(&self, frame: &mut tui.Frame, area: tui.Rect, axes: &Axes) {
+        g := axes.graph
+        if axes.x_labels && self.x_axis.labels.len >= 2 {
+            labels := &self.x_axis.labels
+            step := g.w/labels.len
+            y := area.bottom()-1
+            first := labels[0].width()
+            (left,right,align) := match self.x_axis.alignment {
+                .Center => (area.x,g.x+cmp.min<i32>(step,first),rich.Alignment.Center),
+                .Right => (cmp.max<i32>(area.x,g.x-1),g.x+step,rich.Alignment.Left),
+                _ => (area.x,g.x,rich.Alignment.Right),
+            }
+            labels[0].render_aligned(&mut frame,row(left,y,right-left),align)
+            for i in 1..(labels.len-1) {
+                labels[i].render_aligned(&mut frame,row(g.x+i*step+1,y,step-1),.Center)
+            }
+            labels[labels.len-1].render_aligned(&mut frame,row(g.right()-step,y,step),.Right)
+        }
+        if self.y_axis.labels.len >= 2 {
+            for i in 0..self.y_axis.labels.len {
+                offset := i32(i64(i)*i64(g.h-1)/i64(self.y_axis.labels.len-1))
+                self.y_axis.labels[i].render_aligned(&mut frame,row(area.x,g.bottom()-1-offset,g.x-area.x-1),self.y_axis.alignment)
+            }
+        }
+        if axes.x_line { frame.fill(row(g.x,g.bottom(),g.w),`─`,self.x_axis.style) }
+        if axes.y_line { frame.fill(tui.Rect { x:g.x-1,y:g.y,w:1,h:g.h },`│`,self.y_axis.style) }
+        if axes.x_line && axes.y_line { frame.fill(row(g.x-1,g.bottom(),1),`└`,self.x_axis.style) }
+    }
+
+    fn draw_legend(&mut self, frame: &mut tui.Frame, g: tui.Rect, xt: i32, yt: i32, original: tui.Style) {
+        if self.legend_position.is_none() { return }
+        mut count := 0
+        mut max_name := 0
+        for ds in &self.datasets {
+            match &ds.name { .Some(name) => { count += 1; max_name = cmp.max<i32>(max_name,name.width()) }, .None => {}, }
+        }
+        if max_name == 0 { return }
+        w := max_name+2; h := count+2
+        if w > self.legend.width.arrange(g).regions().areas[0].w || h > self.legend.height.arrange(g).regions().areas[0].h { return }
+        reserve := (if xt > 0 { 1 } else { 0 }) + (if yt > 0 { 1 } else { 0 })
+        if g.h-h < reserve { return }
+        position := self.legend_position.unwrap()
+        x := match position {
+            .TopLeft | .Left | .BottomLeft => g.x, .Top | .Bottom => g.x+(g.w-w)/2, _ => g.right()-w,
+        }
+        y := match position {
+            .TopLeft => g.y + if yt > 0 { 1 } else { 0 },
+            .TopRight => g.y + if w+yt > g.w { 1 } else { 0 },
+            .Top => g.y + if g.x+yt > (g.w-w)/2 { 1 } else { 0 },
+            .Left | .Right => g.y + cmp.max<i32>(0,(g.h-h)/2+(if yt > 0 { 1 } else { 0 })-(if xt > 0 { 1 } else { 0 })),
+            .BottomLeft => g.bottom()-h-(if xt+w > g.w { 1 } else { 0 }),
+            .BottomRight => g.bottom()-h-(if xt > 0 { 1 } else { 0 }),
+            .Bottom => g.bottom()-h-(if x+w > g.right()-xt { 1 } else { 0 }),
+        }
+        bounds := tui.Rect { x:x, y:cmp.clamp<i32>(y,g.y,g.bottom()-h), w:w, h:h }
+        frame.apply_style(bounds,original)
+        _ := self.legend.border.render(&mut frame,bounds)
+        mut line := bounds.y+1
+        for ds in &self.datasets {
+            match &ds.name {
+                .Some(name) => { name.render_patched(&mut frame,row(x+1,line,w-2),ds.style); line += 1 },
+                .None => {},
+            }
+        }
+    }
+
+    pub fn render(&mut self, frame: &mut tui.Frame, bounds: tui.Rect) {
+        outer := bounds.intersection(frame.area())
+        frame.apply_style(outer,self.style)
+        area := self.block.render(&mut frame,outer)
+        if area.is_empty() { return }
+        original := frame.style_at(outer.x,outer.y).unwrap()
+        axes := self.axes(area)
+        self.draw_axes(&mut frame,area,&axes)
+        g := axes.graph
+        self.surface.x_bounds = self.x_axis.bounds.clone()
+        self.surface.y_bounds = self.y_axis.bounds.clone()
+        self.surface.background = self.style.get_background().unwrap_or(tui.Color.Default)
+        p := self.surface.begin(&mut frame,g)
+        for dataset in &self.datasets { dataset.draw(&mut p) }
+        self.surface.finish(&mut frame)
+        mut xt := 0
+        mut yt := 0
+        if g.h > 2 {
+            match &self.x_axis.title { .Some(title) if title.width() < g.w => {
+                xt = title.width()
+                draw_title(&mut frame,row(g.right()-xt,g.bottom()-1,xt),&title,original)
+            }, _ => {}, }
+            match &self.y_axis.title { .Some(title) if title.width()+1 < g.w => {
+                yt = title.width()
+                draw_title(&mut frame,row(g.x,g.y,yt),&title,original)
+            }, _ => {}, }
+        }
+        self.draw_legend(&mut frame,g,xt,yt,original)
+    }
+}
+
+fn row(x: i32, y: i32, w: i32) -> tui.Rect { tui.Rect { x:x,y:y,w:cmp.max<i32>(0,w),h:1 } }
+fn draw_title(frame: &mut tui.Frame, area: tui.Rect, line: &rich.Line, style: tui.Style) {
+    frame.apply_style(area,style)
+    _ := line.write(&mut frame,area)
+}

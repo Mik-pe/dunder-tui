@@ -1,0 +1,353 @@
+import .tui
+import .block
+import .text as rich
+import .plot_symbols as symbols
+import .coastline_data as coasts
+import std.math as math
+import std.cmp as cmp
+import std.array as array
+import .width
+
+pub enum Marker { Dot, Block, Bar, Braille, HalfBlock, Quadrant, Sextant, Octant, Custom(rune) }
+pub enum MapResolution { Low, High }
+
+impl MapResolution {
+    fn data(self) -> string { match self { .Low => coasts.low(), .High => coasts.high(), } }
+    pub fn len(self) -> i32 { self.data().len / 10 }
+    pub fn point(self, index: i32) -> Option<(f64,f64)> {
+        data := self.data()
+        if index < 0 || index >= data.len/10 { return .None }
+        .Some((coordinate(data,index*10),coordinate(data,index*10+5)))
+    }
+}
+
+fn coordinate(packed: string, i: i32) -> f64 {
+    n := (i32(packed[i])-35)*16777216 + (i32(packed[i+1])-35)*262144 + (i32(packed[i+2])-35)*4096 +
+        (i32(packed[i+3])-35)*64 + i32(packed[i+4])-35
+    f64(n-36000000)/100000.0
+}
+
+struct Label { x: f64, y: f64, line: rich.Line }
+
+pub opaque struct Painter {
+    area: tui.Rect, xs: [f64;2], ys: [f64;2], marker: Marker, dx: i32, dy: i32,
+    mask: []u8, upper: []i32, lower: []i32, touched: []i32, labels: []Label, palette: []tui.Color, inks: []tui.Style,
+    symbols: []rune, foreground: []i32, background: []i32, drawn: []i32,
+}
+
+pub struct Plot {
+    x_bounds: [f64;2], y_bounds: [f64;2], marker: Marker,
+    background: tui.Color, block: block.Block, painter: Painter,
+}
+
+impl Plot {
+    pub fn new(x_bounds: [f64;2], y_bounds: [f64;2]) -> Self {
+        Self { x_bounds: x_bounds.clone(), y_bounds: y_bounds.clone(), marker: .Braille, background: .Default,
+            block: block.Block::new(), painter: Painter::new() }
+    }
+
+    pub fn begin(&mut self, frame: &mut tui.Frame, bounds: tui.Rect) -> &mut Painter from self {
+        area := self.block.render(&mut frame, bounds.intersection(frame.area()))
+        frame.apply_style(area, tui.plain().background(self.background))
+        self.painter.reset(area, self.x_bounds, self.y_bounds, self.marker)
+        &mut self.painter
+    }
+
+    pub fn finish(&mut self, frame: &mut tui.Frame) { self.painter.finish(&mut frame) }
+
+    pub fn render<S>(&mut self, frame: &mut tui.Frame, bounds: tui.Rect, state: &S, draw: fn(&mut Painter,&S)) {
+        painter := self.begin(&mut frame, bounds)
+        if !painter.area.is_empty() { draw(&mut painter, &state) }
+        self.finish(&mut frame)
+    }
+}
+
+impl Painter {
+    fn new() -> Self {
+        Self { area: tui.Rect {x:0,y:0,w:0,h:0}, xs: [0.0,0.0], ys: [0.0,0.0],
+            marker: .Braille, dx: 2, dy: 4, mask: [], upper: [], lower: [],
+            touched: [], labels: [], palette: [], inks: [], symbols: [], foreground: [], background: [], drawn: [] }
+    }
+
+    fn reset(&mut self, area: tui.Rect, xs: [f64;2], ys: [f64;2], marker: Marker) {
+        self.clear_layer()
+        self.clear_drawing()
+        self.labels.clear()
+        self.area = area
+        self.xs = xs.clone()
+        self.ys = ys.clone()
+        self.use_marker(marker)
+        n := i32(area.cell_count())
+        if self.mask.len < n {
+            self.mask.reserve(n); self.upper.reserve(n); self.lower.reserve(n)
+            for _ in self.mask.len..n {
+                self.mask.push(0); self.upper.push(0); self.lower.push(0)
+            }
+        }
+    }
+
+    fn use_marker(&mut self, marker: Marker) {
+        (dx,dy) := match marker {
+            .Braille | .Octant => (2,4), .Sextant => (2,3), .Quadrant => (2,2),
+            .HalfBlock => (1,2), _ => (1,1),
+        }
+        self.marker = marker
+        self.dx = dx
+        self.dy = dy
+    }
+
+    pub fn set_marker(&mut self, marker: Marker) { self.layer(); self.use_marker(marker) }
+    pub fn x_bounds(&self) -> [f64;2] { self.xs.clone() }
+    pub fn y_bounds(&self) -> [f64;2] { self.ys.clone() }
+    pub fn resolution(&self) -> (i32,i32) { (self.area.w * self.dx, self.area.h * self.dy) }
+
+    pub fn get_point(&self, x: f64, y: f64) -> Option<(i32,i32)> {
+        index := self.project(x,y)
+        if index < 0 { return .None }
+        stride := self.area.w*self.dx
+        .Some((index%stride,index/stride))
+    }
+
+    fn project(&self, x: f64, y: f64) -> i32 {
+        if self.area.w == 0 || self.area.h == 0 || !(x >= self.xs[0] && x <= self.xs[1] && y >= self.ys[0] && y <= self.ys[1]) { return -1 }
+        w := self.xs[1]-self.xs[0]; h := self.ys[1]-self.ys[0]
+        if !(w > 0.0 && h > 0.0 && w.is_finite() && h.is_finite()) { return -1 }
+        nx := self.area.w*self.dx; ny := self.area.h*self.dy
+        px := i32(((x-self.xs[0])*f64(nx-1)/w).round())
+        py := i32(((self.ys[1]-y)*f64(ny-1)/h).round())
+        if px < 0 || px >= nx || py < 0 || py >= ny { return -1 }
+        py*nx+px
+    }
+
+    fn ink(&mut self, color: tui.Color) -> i32 {
+        n := self.palette.len
+        if n > 0 && self.palette[n-1] == color { return n-1 }
+        self.palette.push(color)
+        self.inks.push(tui.ink(color))
+        n
+    }
+
+    pub fn paint(&mut self, x: i32, y: i32, color: tui.Color) {
+        if x < 0 || y < 0 || x >= self.area.w*self.dx || y >= self.area.h*self.dy { return }
+        ink := self.ink(color)
+        self.dot(x,y,ink)
+    }
+
+    fn dot(&mut self, x: i32, y: i32, color: i32) {
+        i := y / self.dy * self.area.w + x / self.dx
+        bit := (y % self.dy) * self.dx + x % self.dx
+        self.mark(i,u8(1).shl(bit),color)
+    }
+
+    fn mark(&mut self, i: i32, bits: u8, ink: i32) {
+        if self.mask[i] == 0 { self.touched.push(i) }
+        self.mask[i] = self.mask[i].bit_or(bits)
+        if self.dx == 1 && self.dy == 2 {
+            if bits.bit_and(1) != 0 { self.upper[i] = ink }
+            if bits.bit_and(2) != 0 { self.lower[i] = ink }
+        } else { self.upper[i] = ink }
+    }
+
+    fn fill_column(&mut self, x: i32, top: i32, bottom: i32, ink: i32) {
+        column := x/self.dx
+        stripe := if self.dx == 1 { 3 } else { 0x55.shl(x%2) }
+        mut y := top
+        while y <= bottom {
+            first := y%self.dy
+            rows := cmp.min<i32>(self.dy-first,bottom-y+1)
+            cut := (1.shl(rows*self.dx)-1).shl(first*self.dx)
+            self.mark(y/self.dy*self.area.w+column,u8(stripe.bit_and(cut)),ink)
+            y += rows
+        }
+    }
+
+    pub fn point(&mut self, x: f64, y: f64, color: tui.Color) {
+        ink := self.ink(color)
+        self.place(x,y,ink)
+    }
+
+    fn place(&mut self, x: f64, y: f64, ink: i32) {
+        index := self.project(x,y)
+        if index < 0 { return }
+        stride := self.area.w*self.dx
+        self.dot(index%stride,index/stride,ink)
+    }
+
+    pub fn points(&mut self, coordinates: &[](f64,f64), color: tui.Color) {
+        ink := self.ink(color)
+        for p in coordinates { self.place(p.0,p.1,ink) }
+    }
+
+    pub fn line(&mut self, x1: f64, y1: f64, x2: f64, y2: f64, color: tui.Color) {
+        self.segment(x1,y1,x2,y2,-1,color)
+    }
+
+    pub fn filled_line(&mut self, x1: f64, y1: f64, x2: f64, y2: f64, baseline: f64, color: tui.Color) {
+        base := self.project(self.xs[0],math.clamp(baseline,self.ys[0],self.ys[1]))
+        if base >= 0 { self.segment(x1,y1,x2,y2,base/(self.area.w*self.dx),color) }
+    }
+
+    fn segment(&mut self, x1: f64, y1: f64, x2: f64, y2: f64, baseline: i32, color: tui.Color) {
+        if self.area.is_empty() || !x1.is_finite() || !x2.is_finite() || !y1.is_finite() || !y2.is_finite() { return }
+        if self.xs[0] >= self.xs[1] || self.ys[0] >= self.ys[1] { return }
+        mut ax := x1; mut ay := y1; mut bx := x2; mut by := y2
+        for _ in 0..9 {
+            a := outcode(ax,ay,self.xs,self.ys)
+            b := outcode(bx,by,self.xs,self.ys)
+            if a.bit_and(b) != 0 { return }
+            if a == 0 && b == 0 {
+                from := self.project(ax,ay)
+                to := self.project(bx,by)
+                if from >= 0 && to >= 0 {
+                    ink := self.ink(color)
+                    self.stroke(from,to,baseline,ink)
+                }
+                return
+            }
+            code := if a != 0 { a } else { b }
+            (sx,sy,ex,ey) := if a != 0 { (ax,ay,bx,by) } else { (bx,by,ax,ay) }
+            mut x := 0.0; mut y := 0.0
+            if code.bit_and(3) != 0 {
+                x = if code.bit_and(1) != 0 { self.xs[0] } else { self.xs[1] }
+                y = sy + (x-sx)*(ey-sy)/(ex-sx)
+            } else {
+                y = if code.bit_and(4) != 0 { self.ys[0] } else { self.ys[1] }
+                x = sx + (y-sy)*(ex-sx)/(ey-sy)
+            }
+            if a != 0 { ax = x; ay = y } else { bx = x; by = y }
+        }
+    }
+
+    fn stroke(&mut self, from: i32, to: i32, baseline: i32, color: i32) {
+        stride := self.area.w*self.dx
+        ax := from%stride; ay := from/stride; bx := to%stride; by := to/stride
+        steep := (by-ay).abs() >= (bx-ax).abs()
+        mut u := if steep { ay } else { ax }
+        mut v := if steep { ax } else { ay }
+        mut end := if steep { by } else { bx }
+        mut far := if steep { bx } else { by }
+        if u > end { u = replace(&mut end,u); v = replace(&mut far,v) }
+        length := end-u
+        rise := (far-v).abs()
+        step := if far < v { -1 } else { 1 }
+        mut error := 2*rise-length
+        mut column := -1
+        mut top := baseline; mut bottom := baseline
+        for along in u..(end+1) {
+            x := if steep { v } else { along }
+            y := if steep { along } else { v }
+            if baseline < 0 { self.dot(x,y,color) }
+            else {
+                if x != column {
+                    if column >= 0 { self.fill_column(column,top,bottom,color) }
+                    column = x; top = baseline; bottom = baseline
+                }
+                top = cmp.min<i32>(top,y); bottom = cmp.max<i32>(bottom,y)
+            }
+            if error > 0 { v += step; error -= 2*length }
+            error += 2*rise
+        }
+        if column >= 0 { self.fill_column(column,top,bottom,color) }
+    }
+
+    pub fn rectangle(&mut self, x: f64, y: f64, w: f64, h: f64, color: tui.Color) {
+        self.line(x,y,x,y+h,color); self.line(x,y+h,x+w,y+h,color)
+        self.line(x+w,y+h,x+w,y,color); self.line(x+w,y,x,y,color)
+    }
+
+    pub fn circle(&mut self, x: f64, y: f64, radius: f64, color: tui.Color) {
+        ink := self.ink(color)
+        for degree in 0..360 {
+            angle := f64(degree)*(math.PI/180.0)
+            self.place(x+radius*math.cos(angle),y+radius*math.sin(angle),ink)
+        }
+    }
+
+    pub fn map(&mut self, resolution: MapResolution, color: tui.Color) {
+        if self.area.is_empty() { return }
+        ink := self.ink(color)
+        data := resolution.data()
+        for i in 0..(data.len/10) {
+            x := coordinate(data,i*10)
+            y := coordinate(data,i*10+5)
+            self.place(x,y,ink)
+        }
+    }
+
+    pub fn label(&mut self, x: f64, y: f64, move line: rich.Line) {
+        self.labels.push(Label { x:x, y:y, line:move line })
+    }
+
+    fn save(&mut self, i: i32) {
+        bits := i32(self.mask[i])
+        upper := self.upper[i]
+        self.drawn.push(i)
+        mut fg := upper
+        mut bg := -1
+        symbol := match self.marker {
+            .Dot => `•`, .Bar => `▄`, .Custom(c) => c,
+            .Block => { bg = upper; `█` },
+            .HalfBlock => {
+                if bits == 2 { fg = self.lower[i]; `▄` }
+                else if bits == 1 { `▀` }
+                else {
+                    bg = self.lower[i]
+                    if upper == self.lower[i] || self.palette[upper] == self.palette[self.lower[i]] { `█` } else { `▀` }
+                }
+            },
+            .Braille => symbols.braille(bits), .Quadrant => symbols.quadrant(bits),
+            .Sextant => symbols.sextant(bits), .Octant => symbols.octant(bits),
+        }
+        self.symbols.push(symbol); self.foreground.push(fg); self.background.push(bg)
+    }
+
+    fn clear_drawing(&mut self) {
+        self.drawn.clear(); self.symbols.clear(); self.foreground.clear(); self.background.clear()
+        self.palette.clear(); self.inks.clear()
+    }
+
+    fn clear_layer(&mut self) {
+        for i in &self.touched { self.mask[i] = 0 }
+        self.touched.clear()
+    }
+
+    pub fn layer(&mut self) {
+        match self.marker { .Custom(c) if width.columns(i32(c)) > 1 => { array.sort<i32>(&mut self.touched) }, _ => {}, }
+        for j in 0..self.touched.len { self.save(self.touched[j]) }
+        self.clear_layer()
+    }
+
+    fn finish(&mut self, frame: &mut tui.Frame) {
+        self.layer()
+        right := self.area.right()
+        for j in 0..self.drawn.len {
+            i := self.drawn[j]
+            x := self.area.x+i%self.area.w
+            y := self.area.y+i/self.area.w
+            bg := self.background[j]
+            fg := self.foreground[j]
+            if bg < 0 { frame.styled_rune(x,y,right,self.symbols[j],&self.inks[fg]) }
+            else {
+                both := self.inks[fg].background(self.palette[bg])
+                frame.styled_rune(x,y,right,self.symbols[j],&both)
+            }
+        }
+        if !self.area.is_empty() {
+            for label in &self.labels {
+                if !(label.x >= self.xs[0] && label.x <= self.xs[1] && label.y >= self.ys[0] && label.y <= self.ys[1]) { continue }
+                w := self.xs[1]-self.xs[0]; h := self.ys[1]-self.ys[0]
+                x := self.area.x + if w > 0.0 { i32((label.x-self.xs[0])*f64(self.area.w-1)/w) } else { 0 }
+                y := self.area.y + if h > 0.0 { i32((self.ys[1]-label.y)*f64(self.area.h-1)/h) } else { 0 }
+                _ := label.line.write(&mut frame,tui.Rect {x:x,y:y,w:self.area.right()-x,h:1})
+            }
+        }
+        self.clear_layer()
+        self.clear_drawing()
+        self.labels.clear()
+    }
+}
+
+fn outcode(x: f64,y: f64,xs: [f64;2],ys: [f64;2]) -> i32 {
+    (if x < xs[0] { 1 } else if x > xs[1] { 2 } else { 0 }) +
+    (if y < ys[0] { 4 } else if y > ys[1] { 8 } else { 0 })
+}

@@ -457,17 +457,21 @@ impl Line {
     }
 
     pub fn render_aligned(&self, frame: &mut tui.Frame, bounds: tui.Rect, alignment: Alignment) {
-        self.paint_line(&mut frame, bounds.intersection(frame.area()), alignment)
+        self.paint_line(&mut frame, bounds.intersection(frame.area()), alignment, self.style)
     }
 
     fn draw(&self, frame: &mut tui.Frame, area: tui.Rect, parent: Alignment) {
-        self.paint_line(&mut frame, area, aligned(self.alignment, parent))
+        self.paint_line(&mut frame, area, aligned(self.alignment, parent), self.style)
     }
 
-    fn paint_line(&self, frame: &mut tui.Frame, area: tui.Rect, alignment: Alignment) {
+    pub fn render_patched(&self, frame: &mut tui.Frame, bounds: tui.Rect, overlay: tui.Style) {
+        self.paint_line(&mut frame, bounds.intersection(frame.area()), aligned(self.alignment,.Left),self.style.patch(overlay))
+    }
+
+    fn paint_line(&self, frame: &mut tui.Frame, area: tui.Rect, alignment: Alignment, style: tui.Style) {
         if self.columns <= 0 || area.w <= 0 || area.h <= 0 { return }
         row := tui.Rect { x: area.x, y: area.y, w: area.w, h: 1 }
-        frame.apply_style(row, self.style)
+        frame.apply_style(row, style)
         delta := row.w - self.columns
         shift := match alignment { .Center => delta / 2, .Right => delta, _ => 0, }
         mut x := cmp.max<i32>(0, shift)

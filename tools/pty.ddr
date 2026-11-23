@@ -1,21 +1,29 @@
 capability unsafe, process
-import ..src.posix
 import std.process as proc
 import sys
 
 @extern("c", "openpty")
 unsafe fn open_pty(master: ptr, slave: ptr, name: ptr, attributes: ptr, size: ptr) -> i32
-@extern("c", "dup")
-unsafe fn duplicate(fd: i32) -> i32
-@extern("c", "dup2")
-unsafe fn redirect(fd: i32, target: i32) -> i32
+@extern("c", "tcgetattr")
+unsafe fn get_attributes(fd: i32, buf: ptr) -> i32
+@extern("c", "tcsetattr")
+unsafe fn set_attributes(fd: i32, when: i32, buf: ptr) -> i32
+@extern("c", "cfmakeraw")
+unsafe fn make_raw(buf: ptr)
+@c_variadic(2)
+@extern("c", "fcntl")
+unsafe fn configure_fd(fd:i32, cmd:i32, flags:i32) -> i32
 @c_variadic(2)
 @extern("c", "ioctl")
 unsafe fn ioctl(fd: i32, request: usize, data: ptr) -> i32
 
 pub unsafe fn open(master: &mut i32, slave: &mut i32, w: u16, h: u16) -> bool {
     mut size: [u16; 4] = [h, w, 0, 0]
-    open_pty(addr(&mut master), addr(&mut slave), ptr(0), ptr(0), addr(&size[0])) == 0
+    if open_pty(addr(&mut master), addr(&mut slave), ptr(0), ptr(0), addr(&size[0])) != 0 { return false }
+    if configure_fd(master,2,1) == 0 && configure_fd(slave,2,1) == 0 { return true }
+    _ := sys.fd_close(master); _ := sys.fd_close(slave)
+    master = -1; slave = -1
+    false
 }
 
 pub unsafe fn resize(slave: i32, w: u16, h: u16) -> bool {
@@ -25,18 +33,15 @@ pub unsafe fn resize(slave: i32, w: u16, h: u16) -> bool {
 }
 
 pub unsafe fn launch(program: string, move args: []string, slave: i32, raw: bool) -> Result<proc.Child, sys.IoError> {
-    input := duplicate(0)
-    if input < 0 { return .Err(.BadDescriptor) }
-    defer { _ := redirect(input, 0); _ := sys.fd_close(input) }
-    output := duplicate(1)
-    if output < 0 { return .Err(.BadDescriptor) }
-    defer { _ := redirect(output, 1); _ := sys.fd_close(output) }
-    if redirect(slave, 0) < 0 || redirect(slave, 1) < 0 { return .Err(.BadDescriptor) }
+    if slave < 0 { return .Err(.BadDescriptor) }
     if raw {
-        mut terminal := posix.state()
-        if !posix.open(&mut terminal) { return .Err(.BadDescriptor) }
+        mut settings: [u64;16] = [0;16]
+        p := addr(&mut settings[0])
+        if get_attributes(slave,p) != 0 { return .Err(.BadDescriptor) }
+        make_raw(p)
+        if set_attributes(slave,0,p) != 0 { return .Err(.BadDescriptor) }
     }
     mut command := proc.Command::new(program.clone(), move args)
     command.inherit_stdio()
-    command.spawn()
+    command.spawn_with_handles(.Some(usize(slave)),.Some(usize(slave)),.None)
 }

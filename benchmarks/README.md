@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Resultat för 0.9.0
+
+Ett diagram med tre dataserier mäts i fem arbetslaster med samma färdiga celler för båda implementationerna. [Bildtider, terminalutdata och minne](charts.md)
+
 ## Resultat för 0.8.0
 
 En tabell med 4 096 avgångar mäts i sex arbetslaster, med skrollning och hopp mellan ändarna. [Bildtid, minne och terminalutdata](tables.md)

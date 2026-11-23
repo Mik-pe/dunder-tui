@@ -1,0 +1,128 @@
+capability stdio
+import ..src.tui
+import ..src.block
+import ..src.plot
+import ..src.text as rich
+import .widget_cells as cells
+import sys
+
+fn marker(k: i32) -> plot.Marker {
+    match k { 0 => .Dot, 1 => .Block, 2 => .Bar, 3 => .Braille, 4 => .HalfBlock,
+        5 => .Quadrant, 6 => .Sextant, 7 => .Octant, _ => .Custom(`*`), }
+}
+
+fn paint(p: &mut plot.Painter, scene: &i32) {
+    xs := p.x_bounds(); ys := p.y_bounds()
+    cx := (xs[0]+xs[1])/2.0; cy := (ys[0]+ys[1])/2.0
+    match scene {
+        0 => {},
+        1 => {
+            coords: [](f64,f64) = [(xs[0],ys[0]),(xs[1],ys[1]),(cx,cy),(xs[0],ys[1]),(xs[1],ys[0]),(92.5,-50.0)]
+            p.points(&coords,.Yellow)
+            p.point(cx,cy,.Red)
+        },
+        2 => {
+            for n in 0..18 {
+                x := f64((n*19)%31-15); y := f64((n*23)%21-10)
+                p.line(x,y,-0.5*x,0.8*y,.Cyan)
+                p.line(0.5*x,0.0,x,y,.Magenta)
+            }
+        },
+        3 => {
+            p.rectangle(-8.0,-3.0,12.0,6.0,.Yellow); p.rectangle(4.0,2.0,-2.0,-4.0,.Red)
+            p.rectangle(cx,cy,0.0,0.0,.Cyan)
+        },
+        4 => {
+            p.filled_line(-12.0,5.0,12.0,-4.0,cy,.Green)
+            p.filled_line(-4.0,-3.0,0.0,4.0,-40.0,.Red)
+            p.filled_line(3.0,-3.0,3.0,4.0,8.0,.Yellow)
+        },
+        5 => { p.circle(0.0,0.0,4.0,.Cyan); p.circle(5.0,2.0,1.3,.Red); p.circle(cx,cy,0.0,.Magenta) },
+        6 => {
+            p.line(xs[0],ys[0],xs[1],ys[1],.Red)
+            p.layer(); p.layer()
+            p.line(xs[0],ys[1],xs[1],ys[0],.Yellow)
+            p.point(cx,cy,.Default)
+        },
+        7 => {
+            p.set_marker(.HalfBlock)
+            (w,h) := p.resolution()
+            for y in 0..h { for x in 0..w {
+                v := (x+3*y)%7
+                if v <= 1 { p.paint(x,y,.Cyan) } else if v <= 3 { p.paint(x,y,.Red) }
+            } }
+            p.set_marker(.Braille)
+            p.circle(cx,cy,3.0,.Yellow)
+            p.set_marker(.Custom(`/`))
+            p.point(xs[0],ys[1],.Magenta)
+        },
+        8 => {
+            p.label(cx,cy,rich.Line::new([rich.Span::styled("Å",tui.ink(.Green)), rich.Span::raw("界é")]).styled(tui.ink(.Red).italic()))
+            p.label(xs[1],ys[0],rich.Line::raw("end")); p.label(xs[1]+1.0,ys[1],rich.Line::raw("outside"))
+            p.line(xs[1],ys[0],xs[0],ys[1],.Cyan); p.layer()
+            p.label(xs[0],ys[1],rich.Line::raw("abc").align(.Right))
+        },
+        9 => {
+            (w,h) := p.resolution()
+            for y in 0..h { for x in 0..w {
+                if (x+3*y)%5 == 0 { p.paint(x,y,.Blue) } else if (x+y)%3 == 1 { p.paint(x,y,.Red) }
+            } }
+        },
+        10 => { p.map(.Low,.Yellow) },
+        11 => { p.map(.High,.Cyan) },
+        _ => {
+            p.map(.Low,.Green); p.set_marker(.Dot)
+            p.line(-40.0,60.0,110.0,-40.0,.Cyan); p.layer()
+            p.label(0.0,0.0,rich.Line::raw("+").styled(tui.ink(.Magenta)))
+        },
+    }
+}
+
+fn patterns() {
+    mut frame := tui.Frame::new(1,1)
+    mut view := plot.Plot::new([0.0,1.0],[0.0,1.0])
+    for k in 0..9 { for mask in 0..256 {
+        frame.clear()
+        view.marker = marker(k)
+        p := view.begin(&mut frame,frame.area())
+        (w,h) := p.resolution()
+        for y in 0..h { for x in 0..w {
+            if mask.bit_and(1.shl(y*w+x)) != 0 {
+                color: tui.Color = if (x+y)%3 == 0 { .Red } else { .Cyan }
+                p.paint(x,y,color)
+            }
+        } }
+        view.finish(&mut frame)
+        cells.snapshot(&frame)
+    } }
+}
+
+fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--coordinates" {
+        for resolution in [plot.MapResolution.Low,plot.MapResolution.High] {
+            for i in 0..resolution.len() {
+                v := resolution.point(i).unwrap()
+                print(f"{v.0.to_bits()} {v.1.to_bits()}")
+            }
+        }
+        return
+    }
+    if sys.arg_count() > 1 && sys.arg(1) == "--patterns" { patterns(); return }
+    for scene in 0..13 { for bounds in 0..4 { for k in 0..9 {
+        mut view := plot.Plot::new([-10.0,10.0],[-5.0,5.0])
+        if bounds == 1 { view.x_bounds = [-180.0,180.0]; view.y_bounds = [-90.0,90.0] }
+        if bounds == 2 { view.x_bounds = [15.0,15.0]; view.y_bounds = [3.0,3.0] }
+        if bounds == 3 { view.x_bounds = [-4.8,9.1]; view.y_bounds = [-3.7,6.3] }
+        view.marker = marker(k)
+        view.background = if k%2 == 0 { tui.Color.Black } else { tui.Color.Default }
+        for border in 0..2 {
+            view.block = if border == 0 { block.Block::new() } else { block.Block::bordered() }
+            for dims in [(0,0),(0,3),(1,1),(1,5),(6,1),(3,2),(13,5),(31,11),(72,23)] {
+                area := tui.Rect { x:1, y:1, w:dims.0, h:dims.1 }
+                mut frame := cells.seeded(dims.0,dims.1)
+                view.render(&mut frame,area,&scene,paint)
+                cells.snapshot(&frame)
+            }
+        }
+    } } }
+}

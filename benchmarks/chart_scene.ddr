@@ -1,0 +1,41 @@
+import ..src.chart
+import ..src.tui
+import ..src.text as rich
+
+pub struct Scene { view: chart.Chart }
+
+impl Scene {
+    pub fn new() -> Self {
+        mut sets: []chart.Dataset = []
+        for k in 0..3 {
+            mut data: [](f64,f64) = []
+            for i in 0..96 {
+                v := match k { 0 => ((i*3)%22-11).abs()-5, 1 => ((i+3)%14-7).abs()-2, _ => (i*7)%13-6, }
+                data.push((f64(i),f64(v)))
+            }
+            mut d := chart.Dataset::new(move data)
+            d.graph_type = match k { 0 => .Area, 1 => .Line, _ => .Scatter, }
+            d.marker = match k { 0 => .Sextant, 1 => .Braille, _ => .Dot, }
+            d.style = match k { 0 => tui.ink(.Blue), 1 => tui.ink(.Cyan), _ => tui.ink(.Yellow), }
+            d.name = .Some(rich.Line::raw(match k { 0 => "Area", 1 => "Line", _ => "Dots", }))
+            d.fill_to_y = -7.0
+            sets.push(move d)
+        }
+        mut view := chart.Chart::new(move sets)
+        view.y_axis = chart.Axis::new([-7.0,7.0])
+        view.y_axis.labels = [rich.Line::raw("-7"),rich.Line::raw("0"),rich.Line::raw("7")]
+        view.y_axis.style = tui.ink(.Green)
+        view.set_legend_constraints(.Max(14),.Length(7))
+        Self { view:move view }
+    }
+
+    pub fn draw(&mut self, frame: &mut tui.Frame, mode: string, n: i32) {
+        offset := if mode == "scroll" { n%32 } else { 8 }
+        self.view.x_axis.bounds = [f64(offset),f64(offset+60)]
+        self.view.style = if mode == "repaint" && n%2 == 1 { tui.plain().background(.Magenta) } else { tui.plain().background(.Black) }
+        mut status := frame.area()
+        area := status.take_rows(status.h-1)
+        self.view.render(&mut frame,area)
+        frame.fill(status.take_cols(1), if mode == "cell" && n%2 == 1 { `+` } else { `-` },tui.plain())
+    }
+}

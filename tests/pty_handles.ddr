@@ -1,0 +1,63 @@
+capability unsafe, process, stdio
+
+import ..tools.pty
+import .terminal_driver as driver
+import std.io as io
+import std.terminal as term
+import std.process as proc
+import sys
+
+@extern("c", "tcgetattr")
+unsafe fn attributes(fd:i32, out:ptr) -> i32
+
+fn child() -> i32 {
+    size := term.size().unwrap()
+    _mode := term.RawMode::enter().unwrap()
+    print(f"\x1b[1;1Hready {size.columns}x{size.rows}")
+    mut value: []u8 = []
+    unsafe { if io.fd_read_chunk(0,&mut value,1).unwrap() != 1 { return 1 } }
+    print(f"\x1b[2;1Hkey {value[0]}")
+    0
+}
+
+unsafe fn restored(fd:i32, previous:&[u64;16]) -> bool {
+    mut after: [u64;16] = [0;16]
+    if attributes(fd,addr(&mut after[0])) != 0 { return false }
+    for i in 0..16 {
+        mask := if target_is("macos") && i == 3 { u64(0x20000000).bit_not() } else { u64(0).bit_not() }
+        if previous[i].bit_and(mask) != after[i].bit_and(mask) { return false }
+    }
+    true
+}
+
+fn close_child(child:&mut proc.Child) { _ := child.kill(); _ := child.wait(1000) }
+
+unsafe fn exercise(exe:string) -> bool {
+    mut am := -1; mut a := -1; mut bm := -1; mut b := -1
+    if !pty.open(&mut am,&mut a,40,10) { return false }
+    defer { _ := sys.fd_close(a); _ := sys.fd_close(am) }
+    if !pty.open(&mut bm,&mut b,23,7) { return false }
+    defer { _ := sys.fd_close(b); _ := sys.fd_close(bm) }
+    mut before_a: [u64;16] = [0;16]
+    mut before_b: [u64;16] = [0;16]
+    if attributes(a,addr(&mut before_a[0])) != 0 || attributes(b,addr(&mut before_b[0])) != 0 { return false }
+    mut first := pty.launch(exe,["--child"],a,false).unwrap()
+    mut first_done := false
+    defer { if !first_done { close_child(&mut first) } }
+    mut second := pty.launch(exe,["--child"],b,false).unwrap()
+    mut second_done := false
+    defer { if !second_done { close_child(&mut second) } }
+    mut sa := driver.Screen::new(40,10); mut sb := driver.Screen::new(23,7)
+    if !driver.wait_for(am,&mut sa,0,"ready 40x10","") || !driver.wait_for(bm,&mut sb,0,"ready 23x7","") { return false }
+    if !driver.send(bm,"B") || !driver.send(am,"A") { return false }
+    if !driver.wait_for(bm,&mut sb,1,"key 66","") || !driver.wait_for(am,&mut sa,1,"key 65","") { return false }
+    ra := first.wait(2000); rb := second.wait(2000)
+    first_done = ra.exited; second_done = rb.exited
+    ra.ok && rb.ok && ra.exited && rb.exited && ra.code == 0 && rb.code == 0 && restored(a,&before_a) && restored(b,&before_b)
+}
+
+fn main() -> i32 {
+    if sys.arg_count() == 2 && sys.arg(1) == "--child" { return child() }
+    unsafe { if exercise(sys.arg(0)) { print("independent child terminals and scoped restoration OK"); return 0 } }
+    1
+}
