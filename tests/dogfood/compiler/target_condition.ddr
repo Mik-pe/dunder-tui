@@ -1,0 +1,13 @@
+capability unsafe
+
+@extern("kernel32.dll", "GetCurrentProcessId")
+unsafe fn process_id() -> u32
+
+fn platform_id(enabled: bool) -> u32 {
+    if target_is("windows") && enabled {
+        unsafe { return process_id() }
+    }
+    0
+}
+
+fn main() -> i32 { if platform_id(false) == 0 { 0 } else { 1 } }
