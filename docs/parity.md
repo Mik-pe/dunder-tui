@@ -7,7 +7,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | Område | Finns i Dunder | Återstår att leverera eller verifiera |
 | --- | --- | --- |
 | Buffer och Cell | Återanvända bildbuffertar, breda tecken, celldiff, exakt och ungefärlig sammanslagning av linjesymboler, färgutdata och avläsning av rader och cellstilar. Buffertar med förskjutet origo, rektangulär kopiering, linjär storleksändring och tillämpning av en diff på en delyta. Buffertsammanslagning, avläsning av en hel cell, fyra cellregler och strömmande besök av ändringar. | Större ytor än bibliotekets nuvarande gräns på 4 096 celler per axel och 1 048 576 celler totalt. |
-| Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. | Material- och Tailwind-paletter, beständiga dataformat och full täckning för konvertering mellan stilrepresentationer. |
+| Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. Tailwind och Material ger 500 namngivna RGB-värden. | Beständiga dataformat och full täckning för konvertering mellan stilrepresentationer. |
 | Text | Span, Line, Text, Paragraph, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. | Strängbredder för skriftspecifika ligaturer över grafemgränser, full täckning för sammansatta emoji och alla operationer på fristående texttyper. |
 | Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering och cache. 15 076 jämförda layouter, 1 200 rektangelprov och 1 100 jämförda bilder. | Utökad täckning av överbestämda system med många olika paneler och upprepade ändringar av reglerna. |
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna tecken, individuella kanter, justerade titlar, utfyllnad och skuggor. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
@@ -23,6 +23,16 @@ Stilprovet genererar en bild med 1 024 celler via Dunders publika API, tolkar te
 mkdir -p build
 dunder build --locked --offline tests/style_reference.ddr -o build/style-reference
 build/style-reference | cargo run --quiet --locked --release --manifest-path benchmarks/reference/Cargo.toml --features style-oracle --example styles
+```
+
+Palettprovet placerar 500 färger i ett rutnät på 25 × 20 celler. Varje färg används en gång som förgrund, bakgrund och understrykningsfärg. Cellerna jämförs med de namngivna konstanterna i Ratatui 0.30.2. Tailwind bidrar med 22 skalor med 11 nyanser, Material med 19 skalor med 10 nyanser och 16 skalor med fyra accenter. Båda har därutöver svart och vitt i RGB. [Dunderprov](../tests/palette_reference.ddr) · [Ratatui-prov](../benchmarks/reference/examples/palettes.rs) · [Färgkällor](../src/PALETTE-NOTICES.txt)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/palette_reference.ddr -o build/palettes
+build/palettes >build/dunder-colors
+cargo run --locked --release --manifest-path benchmarks/reference/Cargo.toml --features style-oracle --example palettes >build/ratatui-colors
+diff -u build/ratatui-colors build/dunder-colors
 ```
 
 Fler körbara prov täcker ändrade bildrader, delade SGR-återställningar, överlappande text, färgade understreck och terminalåterställning. [Bibliotekstester](../tests/suite.ddr) · [Unix-terminal](../tests/posix_terminal.ddr) · [Win32-konsol](../tests/windows_console.ddr) · [Prestandamätningar](../benchmarks/README.md)

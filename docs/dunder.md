@@ -1,5 +1,13 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Typnamn i diagnostiken för konstanter
+
+En konstant palett byggd som en post med två heltal ger E3007 i Dunder 0.11.2. I diagnostiken kallas posten `__dunder_module_0` trots att källkoden säger `Scale`. Både `check` och `build` reproducerar felet. En fast array med samma värden fungerar. Bibliotekets paletter använder sådana skrivskyddade tabeller. På macOS ARM64 rapporterade `--runtime-profile` noll allokeringar för 65 536 uppslag via `tailwind.rgb` med växlande familj och nyans. [Postprov](../tests/dogfood/compiler/record_constant.ddr) · [Arrayprov](../tests/dogfood/compiler/array_constant.ddr) · [Uppslagsmätning](../benchmarks/language/palette_lookup.ddr) · [Dunders nästa steg](https://github.com/Mik-pe/dunder/blob/8d8f882/docs/next-steps.md#visa-källkodens-typnamn-i-fel-för-konstanter)
+
+## Lokala uppslagstabeller
+
+På macOS ARM64 med Dunder 0.11.2 gav 1 048 576 anrop till en funktion med en fast lokal array 4 194 305 allokeringsanrop. En funktion som läser samma element från en modulkonstant gav ett anrop för hela processen. Kontrollsumman var 581 894 144 i båda fallen. Linjesammanslagningen och Win32-konsolens färgval läser nu sina tabeller från modulkonstanter. Alla 50 700 linjesammanslagningar matchar Ratatui. [Jämförelseprogram](../benchmarks/language/constant_tables.ddr) · [Dunders nästa steg](https://github.com/Mik-pe/dunder/blob/a930e412c358456d1e64646c302b88f4bddbace0/docs/next-steps.md#dela-oföränderliga-lokala-uppslagstabeller)
+
 ## En vy över två lånade värden
 
 En celldiff behöver läsa två bildbuffertar samtidigt. I 0.11.2 går det att lagra två delade lån i en post om de kommer från samma array. Två lokala ägare ger E4003 även när båda lever tills posten har använts. Biblioteket kan besöka skillnaderna med en funktionsparameter. En lånad iterator över två oberoende ägare skulle också kunna användas för jämförelse av dokument och sorterade sekvenser. [Två lokala ägare](../tests/dogfood/compiler/paired_views.ddr) · [Gemensam ägare](../tests/dogfood/compiler/paired_views_one_owner.ddr)
@@ -71,6 +79,11 @@ Kör kompilerings- och minnesprovet med den kompilator som ska utvärderas.
 
 ```sh
 mkdir -p build
+dunder build --locked --offline --runtime-profile benchmarks/language/constant_tables.ddr -o build/tables
+build/tables local
+build/tables shared
+dunder build --locked --offline --runtime-profile benchmarks/language/palette_lookup.ddr -o build/palette-lookup
+build/palette-lookup
 dunder build --locked --offline --runtime-profile benchmarks/language/records.ddr -o build/records
 build/records plain
 build/records flat

@@ -1,9 +1,16 @@
 import std.math as m
 import tui.canvas as c
+import tui.material as material
+import tui.tailwind as tailwind
 import .art
 
 pub fn draw(s: &mut c.Canvas, t: f64) {
-    colors: [u32; 7] = [0xff5064, 0xff884a, 0xffdb51, 0x81f49e, 0x52dce9, 0x608bff, 0xb779ff]
+    colors: [u32; 7] = [
+        material.accent_rgb(.Red, .A200), tailwind.rgb(.Orange, .C400),
+        tailwind.rgb(.Yellow, .C300), tailwind.rgb(.Green, .C300),
+        tailwind.rgb(.Cyan, .C300), material.accent_rgb(.Blue, .A200),
+        material.accent_rgb(.DeepPurple, .A100),
+    ]
     sweep := 0.035 * m.sin(t * 0.9)
     for y in 0..s.h {
         v := (f64(y) + 0.5) / f64(s.h)

@@ -210,6 +210,11 @@ pub fn restore(state: &mut State) {
 
 fn cube(n: i32) -> i32 { if n == 0 { 0 } else { n * 40 + 55 } }
 
+const CONSOLE_RGB: [i32; 16] = [
+    0, 0x000080, 0x008000, 0x008080, 0x800000, 0x800080, 0x808000, 0xc0c0c0,
+    0x808080, 0x0000ff, 0x00ff00, 0x00ffff, 0xff0000, 0xff00ff, 0xffff00, 0xffffff,
+]
+
 fn color(encoded: i32, fallback: i32) -> i32 {
     code := if encoded >= 256 && encoded < 512 { encoded - 256 } else { encoded }
     if code < 0 { return fallback }
@@ -219,13 +224,12 @@ fn color(encoded: i32, fallback: i32) -> i32 {
         n := code - 16
         rgb = cube(n / 36) * 65536 + cube(n / 6 % 6) * 256 + cube(n % 6)
     } else if code < 256 { rgb = ((code - 232) * 10 + 8) * 0x10101 }
-    colors: [i32; 16] = [0, 0x000080, 0x008000, 0x008080, 0x800000, 0x800080, 0x808000, 0xc0c0c0, 0x808080, 0x0000ff, 0x00ff00, 0x00ffff, 0xff0000, 0xff00ff, 0xffff00, 0xffffff]
     mut best := 0
     mut distance := 2147483647
     for i in 0..16 {
-        r := rgb.shr(16) - colors[i].shr(16)
-        g := rgb.shr(8).bit_and(255) - colors[i].shr(8).bit_and(255)
-        b := rgb.bit_and(255) - colors[i].bit_and(255)
+        r := rgb.shr(16) - CONSOLE_RGB[i].shr(16)
+        g := rgb.shr(8).bit_and(255) - CONSOLE_RGB[i].shr(8).bit_and(255)
+        b := rgb.bit_and(255) - CONSOLE_RGB[i].bit_and(255)
         d := r * r + g * g + b * b
         if d < distance { best = i; distance = d }
     }

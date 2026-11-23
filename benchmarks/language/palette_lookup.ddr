@@ -1,0 +1,13 @@
+import ...src.tailwind as tailwind
+import sys
+
+fn main() {
+    mut total: u64 = 0
+    phase := sys.arg_count()
+    for i in 0..65536 {
+        hue: tailwind.Family = if (i + phase) % 2 == 0 { .Violet } else { .Cyan }
+        shade: tailwind.Shade = if (i / 2) % 2 == 0 { .C400 } else { .C700 }
+        total += u64(tailwind.rgb(hue, shade))
+    }
+    print(total)
+}

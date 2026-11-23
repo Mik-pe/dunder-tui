@@ -40,6 +40,22 @@ Starta en viss scen med exempelvis `dunder run --example motion -- koi`. Lista s
 
 För en egen animation tar `tui.animate(&mut state, 30, draw, update, tick)` hand om bildklockan. `tick` får förfluten tid i millisekunder och returnerar `true` när något behöver ritas. En sen bild går direkt till aktuell tid. Tangentbordet fungerar under tiden. Med `import tui.canvas` kan du rita pixlar och linjer i RGB. `Canvas.render` visar två vertikala pixlar per teckencell. Galleriet använder 24-bitarsfärg i moderna terminaler och närmaste konsolfärg i äldre Windowskonsoler.
 
+### Färgsätt en animation
+
+Prismats sju ljusband hämtar sina RGB-värden från de inbyggda Tailwind- och Materialpaletterna. Använd `color` för en widgetstil eller `rgb` när du ritar direkt på en canvas. Material har även accentnyanser för 16 färgfamiljer. [Prismats färger](examples/motion/prism.ddr)
+
+```dunder
+import tui
+import tui.tailwind as tailwind
+import tui.material as material
+
+fn heading() -> tui.Style {
+    tui.ink(tailwind.color(.Violet, .C400))
+        .background(material.color(.BlueGray, .C900))
+        .underlined().underline_color(material.accent(.Cyan, .A200))
+}
+```
+
 ### Signal
 
 Växla mellan vågform och frekvensspektrum med Tab. Piltangenterna ändrar frekvens och amplitud. Den turkosa mätaren visar signalens effektivvärde. Varje stapel i spektrumet beräknas från samma 128 sampel som vågformen. Mellanslag fryser bilden.
@@ -68,7 +84,7 @@ Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.13.0", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.14.0", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.

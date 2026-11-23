@@ -1,0 +1,73 @@
+import ..src.material
+import ..src.tailwind
+import ..src.tui
+
+fn main() {
+    mut colors: []tui.Color = []
+    tailwind_families: []tailwind.Family = [
+        .Slate, .Gray, .Zinc, .Neutral, .Stone, .Red,
+        .Orange, .Amber, .Yellow, .Lime, .Green, .Emerald,
+        .Teal, .Cyan, .Sky, .Blue, .Indigo, .Violet,
+        .Purple, .Fuchsia, .Pink, .Rose
+    ]
+    tailwind_shades: []tailwind.Shade = [
+        .C50, .C100, .C200, .C300, .C400, .C500,
+        .C600, .C700, .C800, .C900, .C950
+    ]
+    for family in tailwind_families {
+        for shade in tailwind_shades {
+            value := tailwind.color(family, shade)
+            assert(value.code() == 0x1000000 + i32(tailwind.rgb(family, shade)))
+            colors.push(value)
+        }
+    }
+    colors.push(tailwind.black())
+    colors.push(tailwind.white())
+    material_families: []material.Family = [
+        .Red, .Pink, .Purple, .DeepPurple, .Indigo, .Blue,
+        .LightBlue, .Cyan, .Teal, .Green, .LightGreen, .Lime,
+        .Yellow, .Amber, .Orange, .DeepOrange, .Brown, .Gray,
+        .BlueGray
+    ]
+    material_shades: []material.Shade = [
+        .C50, .C100, .C200, .C300, .C400, .C500,
+        .C600, .C700, .C800, .C900
+    ]
+    for family in material_families {
+        for shade in material_shades {
+            value := material.color(family, shade)
+            assert(value.code() == 0x1000000 + i32(material.rgb(family, shade)))
+            colors.push(value)
+        }
+    }
+    material_accent_families: []material.AccentFamily = [
+        .Red, .Pink, .Purple, .DeepPurple, .Indigo, .Blue,
+        .LightBlue, .Cyan, .Teal, .Green, .LightGreen, .Lime,
+        .Yellow, .Amber, .Orange, .DeepOrange
+    ]
+    material_accent_shades: []material.AccentShade = [
+        .A100, .A200, .A400, .A700
+    ]
+    for family in material_accent_families {
+        for shade in material_accent_shades {
+            value := material.accent(family, shade)
+            assert(value.code() == 0x1000000 + i32(material.accent_rgb(family, shade)))
+            colors.push(value)
+        }
+    }
+    colors.push(material.black())
+    colors.push(material.white())
+    assert(colors.len == 500)
+    mut frame := tui.Frame::new(25, 20)
+    for i in 0..colors.len {
+        style := tui.ink(colors[i]).background(colors[(i + 37) % 500]).underlined().underline_color(colors[(i + 193) % 500])
+        _ := frame.set_cell(i % 25, i / 25, "▀", style)
+    }
+    for i in 0..colors.len {
+        c := frame.cell_at(i % 25, i / 25).unwrap()
+        fg := c.style.get_foreground().unwrap().code() - 0x1000000
+        bg := c.style.get_background().unwrap().code() - 0x1000000
+        ul := c.style.get_underline_color().unwrap().code() - 0x1000000
+        print(f"{c.symbol} {fg} {bg} {ul} {c.style.has(.Underlined)}")
+    }
+}

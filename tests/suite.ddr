@@ -18,6 +18,23 @@ import ..src.canvas
 import ..src.tui
 import ..src.input
 import ..src.width
+import ..src.material
+import ..src.tailwind
+
+@test fn named_palettes_encode_truecolor_in_terminal_output() {
+    mut frame := tui.Frame::new(1, 1)
+    style := tui.ink(tailwind.color(.Violet, .C400)).background(material.color(.BlueGray, .C900))
+        .underlined().underline_color(material.accent(.Cyan, .A200))
+    _ := frame.set_cell(0, 0, "▀", style)
+    previous := tui.Frame::new(1, 1)
+    mut output: []u8 = []
+    frame.ansi_diff(&previous, &mut output)
+    ansi := bytes.decode(&output).unwrap()
+    assert(words.contains(ansi, "38;2;167;139;250"))
+    assert(words.contains(ansi, "48;2;38;50;56"))
+    assert(words.contains(ansi, "58;2;24;255;255"))
+    assert(words.contains(ansi, "▀"))
+}
 
 @test fn layout_clamps_splits_and_padding() {
     area := tui.Rect { x: 3, y: 4, w: 6, h: 4 }
