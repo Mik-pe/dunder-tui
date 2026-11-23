@@ -1,3 +1,4 @@
+import ..src.calendar as cal
 import ..src.testing
 import ..src.layout as layout
 import ..src.table as table
@@ -788,4 +789,70 @@ fn reject_number(frame: &mut tui.Frame, n: &mut i32) -> Result<(),string> {
     mut t := tui.Terminal<testing.TestBackend>::with_viewport(testing.TestBackend::new(4,3),.Inline(3)).unwrap()
     bad_width := tui.Frame::new(3,1)
     assert(t.insert_before(&bad_width).is_err() && t.backend().scrollback().len() == 0)
+}
+@test fn calendar_dates_validate_and_cross_leap_and_era_boundaries() {
+    assert(cal.Date::new(1900,2,29).is_none() && cal.Date::new(2100,2,29).is_none())
+    assert(cal.Date::new(2000,2,29).is_some() && cal.Date::new(0,2,29).is_some())
+    assert(cal.Date::new(2024,4,31).is_none() && cal.Date::new(2024,0,1).is_none())
+    jan := cal.Date::new(2024,1,31).unwrap()
+    feb := cal.Date::new(2024,2,29).unwrap()
+    assert(jan.add_months(1) == .Some(feb) && feb.weekday() == 4)
+    assert(cal.Date::new(0,1,1).unwrap().add_days(-1) == cal.Date::new(-1,12,31))
+    for d in [cal.Date::new(-9999,1,1).unwrap(),cal.Date::new(9999,12,31).unwrap()] {
+        edge := if d.year() < 0 { -1 } else { 1 }
+        assert(d.add_days(edge).is_none() && d.add_months(edge).is_none())
+        mut month := cal.Monthly::new(d)
+        month.surrounding = .Some(tui.plain().dim())
+        mut frame := tui.Frame::at(tui.Rect {x:40,y:51,w:21,h:8})
+        frame.render_widget(&month,frame.area())
+        assert(frame.line(51).len == 21)
+    }
+}
+
+@test fn calendar_events_replace_styles_and_preserve_their_date() {
+    d := cal.Date::new(2024,2,29).unwrap()
+    mut events := cal.EventStore::new()
+    events.add(d,tui.ink(.Red).italic())
+    events.add(d,tui.plain().background(.Blue))
+    style := events.style_for(d)
+    assert(style.get_foreground().is_none() && !style.has(.Italic))
+    assert(style.get_background() == .Some(.Blue) && events.contains(d))
+    assert(events.remove(d) && !events.remove(d) && !events.contains(d))
+    current := cal.Date::today()
+    marked := cal.EventStore::today(tui.plain().inverted())
+    assert(marked.contains(current) || marked.contains(cal.Date::today()))
+}
+
+struct VisitCount { calls:i32 }
+
+impl VisitCount {
+    pub fn render_stateful(&mut self, frame: &mut tui.Frame, area:tui.Rect, visits: &mut i32) {
+        self.calls += 1
+        visits += 10
+        frame.label(area,f"{self.calls}/{visits}")
+    }
+}
+
+@test fn custom_widgets_keep_caller_state_and_render_at_absolute_coordinates() {
+    mut frame := tui.Frame::at(tui.Rect {x:15,y:70,w:9,h:2})
+    label := rich.Line::raw("Antal")
+    frame.render_widget(&label,frame.area())
+    mut meter := VisitCount {calls:0}
+    mut visits := 0
+    row := frame.area().row_at(1).unwrap()
+    frame.render_stateful_widget(&mut meter,row,&mut visits)
+    frame.render_stateful_widget(&mut meter,row,&mut visits)
+    assert(frame.line(70) == "Antal    " && frame.line(71) == "2/20     ")
+    assert(meter.calls == 2 && visits == 20)
+    mut list := lists.List::new([lists.Item::raw("A"),lists.Item::raw("B")])
+    mut selection := lists.ListState::new()
+    selection.last()
+    frame.render_stateful_widget(&list,row,&mut selection)
+    assert(selection.offset == 1 && frame.line(71)[0] == b'B')
+    bar := widgets.Scrollbar::new(.Bottom)
+    mut scroll := widgets.ScrollState::new(15)
+    scroll.last()
+    frame.render_stateful_widget(&bar,row,&mut scroll)
+    assert(scroll.position == 14)
+    assert(frame.symbol_at(row.x,row.y) == .Some("◄") && frame.symbol_at(row.right()-1,row.y) == .Some("►"))
 }

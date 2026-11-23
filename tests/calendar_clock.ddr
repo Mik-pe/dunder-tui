@@ -1,0 +1,20 @@
+import ..src.calendar as cal
+import std.parse as parse
+import sys
+
+fn main() -> i32 {
+    if sys.arg_count() == 1 {
+        d := cal.Date::today()
+        print(f"{d.year()} {d.month()} {d.day()}")
+        return 0
+    }
+    for i in 1..sys.arg_count() {
+        n := parse.integer(sys.arg(i))
+        if !n.ok { return 1 }
+        match cal.local_date(n.value) {
+            .Some(d) => { print(f"{d.year()} {d.month()} {d.day()}") },
+            .None => { return 2 },
+        }
+    }
+    0
+}

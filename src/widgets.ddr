@@ -230,6 +230,10 @@ impl Scrollbar {
             end: ScrollPart::new(if v { "▼" } else { "►" }, tui.plain()) }
     }
 
+    pub fn render_stateful(&self, frame: &mut tui.Frame, bounds: tui.Rect, state: &mut ScrollState) {
+        self.render(&mut frame,bounds,&state)
+    }
+
     pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect, state: &ScrollState) {
         area := bounds.intersection(frame.area())
         if state.length <= 0 || area.w <= 0 || area.h <= 0 { return }

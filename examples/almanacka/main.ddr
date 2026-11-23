@@ -1,0 +1,82 @@
+capability stdio
+import tui
+import tui.calendar as cal
+import tui.block as block
+import std.cmp as cmp
+import std.parse as parse
+import sys
+
+struct Almanacka { month: cal.Monthly, marks: cal.EventStore }
+
+impl cal.DateStyler for Almanacka {
+    fn style_for(&self, date: cal.Date) -> tui.Style {
+        weekend := date.weekday() == 0 || date.weekday() == 6
+        base := if weekend { tui.plain().foreground_rgb(0xe2a492) } else { tui.plain() }
+        marked := base.patch(self.marks.style_for(date))
+        if date == self.month.date { marked.foreground_rgb(0x102526).background_rgb(0x9de4cf).bold() }
+        else { marked }
+    }
+}
+
+impl Almanacka {
+    pub fn render(&self, frame: &mut tui.Frame, area: tui.Rect) {
+        frame.apply_style(area,tui.plain().foreground_rgb(0xc7d6d5).background_rgb(0x152026))
+        mut body := area
+        footer := if area.h >= 5 { 2 } else { 0 }
+        panel := body.take_rows(area.h-footer)
+        w := cmp.min<i32>(panel.w,self.month.width())
+        h := cmp.min<i32>(panel.h,self.month.height())
+        box := tui.Rect {x:panel.x+(panel.w-w)/2,y:panel.y+(panel.h-h)/2,w:w,h:h}
+        self.month.render_with(&mut frame,box,&self)
+        d := self.month.date
+        mark := if self.marks.contains(d) { "markerad" } else { "omarkerad" }
+        frame.text(body.take_rows(1),f" {d.day()}/{d.month()} {d.year()} · {mark}",tui.plain().foreground_rgb(0x9de4cf).bold())
+        frame.label(body," ← → dag   ↑ ↓ vecka   [ ] månad   m markera   Home idag   q avsluta")
+    }
+}
+
+fn draw(frame: &mut tui.Frame, app: &Almanacka) {
+    frame.render_widget(&app,frame.area())
+}
+
+fn key(app: &mut Almanacka, key: tui.Key) -> bool {
+    d := app.month.date
+    match key {
+        .Left => { app.month.date = d.add_days(-1).unwrap_or(d) },
+        .Right => { app.month.date = d.add_days(1).unwrap_or(d) },
+        .Up => { app.month.date = d.add_days(-7).unwrap_or(d) },
+        .Down => { app.month.date = d.add_days(7).unwrap_or(d) },
+        .Char(c) if c == `[` => { app.month.date = d.add_months(-1).unwrap_or(d) },
+        .Char(c) if c == `]` => { app.month.date = d.add_months(1).unwrap_or(d) },
+        .Char(c) if c == `m` => {
+            if !app.marks.remove(d) { app.marks.add(d,tui.plain().foreground_rgb(0xf3bd72).underlined()) }
+        },
+        .Home => { app.month.date = cal.Date::today() },
+        .Char(c) if c == `q` => { return false },
+        .Escape => { return false },
+        _ => {},
+    }
+    true
+}
+
+fn start_date() -> Option<cal.Date> {
+    if sys.arg_count() == 1 { return .Some(cal.Date::today()) }
+    if sys.arg_count() != 4 { return .None }
+    y := parse.integer(sys.arg(1)); m := parse.integer(sys.arg(2)); d := parse.integer(sys.arg(3))
+    if !y.ok || !m.ok || !d.ok || y.value < -9999 || y.value > 9999 || m.value < 1 || m.value > 12 || d.value < 1 || d.value > 31 { return .None }
+    cal.Date::new(i32(y.value),i32(m.value),i32(d.value))
+}
+
+fn main() -> i32 {
+    start := start_date()
+    if start.is_none() { _ := sys.eprint("Ange ett giltigt datum som år månad dag."); return 2 }
+    mut month := cal.Monthly::new(start.unwrap())
+    month.month_header = .Some(tui.plain().foreground_rgb(0xe8ede4).bold())
+    month.weekdays_header = .Some(tui.plain().foreground_rgb(0x8eb0b2))
+    month.surrounding = .Some(tui.plain().foreground_rgb(0x697b82))
+    month.block = block.Block::bordered().border_type(.Rounded)
+    month.block.padding = block.Padding::axes(1,1)
+    month.block.border_style = tui.plain().foreground_rgb(0x43626b)
+    mut app := Almanacka {month:move month,marks:cal.EventStore::new()}
+    match tui.run(&mut app,draw,key) { .Ok => 0, .Err(msg) => { _ := sys.eprint(msg); 1 }, }
+}

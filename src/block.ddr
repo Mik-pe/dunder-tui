@@ -108,12 +108,30 @@ impl Block {
         if self.title_alignment == .Inherit { .Left } else { self.title_alignment }
     }
 
-    pub fn inner(&self, area: tui.Rect) -> tui.Rect {
+    fn vertical_borders(&self) -> (bool,bool) {
         mut top := self.borders.top
         mut bottom := self.borders.bottom
         for i in 0..self.titles.len {
             if self.position(&self.titles[i]) == .Bottom { bottom = true } else { top = true }
         }
+        (top,bottom)
+    }
+
+    fn space(padding: i32, border: bool) -> i32 {
+        i32(cmp.min<i64>(2147483647,i64(cmp.max<i32>(0,padding)) + (if border { 1 } else { 0 })))
+    }
+
+    pub fn horizontal_space(&self) -> (i32,i32) {
+        (Block::space(self.padding.left,self.borders.left),Block::space(self.padding.right,self.borders.right))
+    }
+
+    pub fn vertical_space(&self) -> (i32,i32) {
+        (top,bottom) := self.vertical_borders()
+        (Block::space(self.padding.top,top),Block::space(self.padding.bottom,bottom))
+    }
+
+    pub fn inner(&self, area: tui.Rect) -> tui.Rect {
+        (top,bottom) := self.vertical_borders()
         l := i64(cmp.max<i32>(0, self.padding.left))
         t := i64(cmp.max<i32>(0, self.padding.top))
         left_border := if self.borders.left && area.w > 0 { i64(1) } else { i64(0) }

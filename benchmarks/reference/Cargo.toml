@@ -9,7 +9,10 @@ ratatui = { version = "=0.30.2", default-features = false, features = ["crosster
 
 ratatui-crossterm = { version = "=0.1.2", default-features = false, optional = true }
 
+time = { version = "=0.3.55", optional = true }
+
 [features]
+calendar-oracle = ["ratatui/widget-calendar", "dep:time"]
 allocation-counts = []
 layout-cache = ["ratatui/layout-cache"]
 terminal-oracle = ["dep:ratatui-crossterm", "ratatui-crossterm/scrolling-regions"]
@@ -43,3 +46,11 @@ required-features = ["terminal-oracle"]
 [[example]]
 name = "viewports"
 required-features = ["terminal-oracle"]
+
+[[example]]
+name = "calendar"
+required-features = ["calendar-oracle"]
+
+[[example]]
+name = "calendar_bench"
+required-features = ["calendar-oracle"]

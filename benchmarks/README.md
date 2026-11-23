@@ -112,3 +112,7 @@ build/paragraph-profile --allocations
 build/paragraph-profile --prepared --allocations
 cargo run --locked --release --manifest-path benchmarks/reference/Cargo.toml --features allocation-counts --example paragraph -- --allocations
 ```
+
+## Sex månadskalendrar
+
+För oförändrad bild, en celländring, sex rullande månader, ny bredd och full omritning finns median, p95, spridning, allokeringar, RSS och faktisk terminalutdata. [Kalendermätningen i 0.12.0](calendar.md)

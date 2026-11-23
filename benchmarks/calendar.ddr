@@ -1,0 +1,50 @@
+capability stdio
+import ..src.calendar as cal
+import ..src.tui
+import ..tests.widget_cells as cells
+import .frames
+import sys
+
+struct Scene { months: []cal.Monthly }
+
+fn draw(scene: &mut Scene, frame: &mut tui.Frame, mode: string, n: i32) {
+    area := frame.area()
+    base := if mode == "repaint" && n%2 == 1 { tui.ink(.Green).background(.Magenta) } else { tui.ink(.Green).background(.Black) }
+    frame.apply_style(area,base)
+    start := if mode == "scroll" { n%12 } else { 0 }
+    for i in 0..6 {
+        col := i%3
+        left := col*area.w/3
+        box := tui.Rect {x:left,y:(i/3)*11,w:(col+1)*area.w/3-left,h:10}
+        frame.render_widget(&scene.months[(start+i)%12],box)
+    }
+    symbol := if mode == "cell" && n%2 == 1 { `+` } else { `-` }
+    frame.styled_rune(0,23,area.w,symbol,&base)
+}
+
+fn main() {
+    mut scene := Scene {months:[]}
+    for m in 1..13 {
+        d := cal.Date::new(2024,m,1).unwrap()
+        mut month := cal.Monthly::new(d)
+        month.style = tui.ink(.Cyan)
+        month.surrounding = .Some(tui.ink(.Blue).dim())
+        month.month_header = .Some(tui.ink(.Yellow).bold())
+        month.weekdays_header = .Some(tui.ink(.Green))
+        for day in [5,12,19,26] {
+            month.events.add(cal.Date::new(2024,m,day).unwrap(),tui.ink(.Red).background(.Blue))
+        }
+        scene.months.push(move month)
+    }
+    cases: []string = ["idle","cell","scroll","resize","repaint"]
+    if sys.arg_count() == 2 && sys.arg(1) == "--verify" {
+        for mode in &cases { for n in 0..220 {
+            w := if mode == "resize" && n%2 == 0 { 80 } else { 96 }
+            mut f := tui.Frame::new(w,24)
+            draw(&mut scene,&mut f,mode,n)
+            cells.snapshot(&f)
+        } }
+        return
+    }
+    frames.run(&mut scene,&cases,draw)
+}

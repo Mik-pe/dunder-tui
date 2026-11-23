@@ -1,6 +1,7 @@
 capability unsafe, stdio
 
 import ..src.tui
+import ..src.calendar as cal
 import ..src.table
 import ..src.plot
 import ..src.chart as graphs
@@ -95,7 +96,7 @@ fn draw(frame: &mut tui.Frame, probe: &Probe) {
     d.graph_type = .Line; d.marker = .Custom(`*`); d.style = tui.ink(.Yellow)
     mut diagram := graphs.Chart::new([move d])
     diagram.x_axis = graphs.Axis::new([0.0,1.0]); diagram.y_axis = graphs.Axis::new([0.0,1.0])
-    diagram.render(&mut frame,tui.Rect {x:3,y:6,w:3,h:2})
+    frame.render_widget(&mut diagram,tui.Rect {x:3,y:6,w:3,h:2})
 
 }
 
@@ -173,11 +174,43 @@ unsafe fn unit_at(h: ptr, x: i32, y: i32) -> i32 {
     i32(unit)
 }
 
+fn month_frame(frame: &mut tui.Frame, month: &mut cal.Monthly) {
+    frame.render_widget(&month,frame.area())
+}
+
+@extern("kernel32.dll","GetLocalTime")
+unsafe fn get_local_time(output: ptr)
+
+unsafe fn system_date() -> cal.Date {
+    mut t: [u16;8] = [0;8]
+    get_local_time(addr(&mut t[0]))
+    cal.Date::new(i32(t[0]),i32(t[1]),i32(t[3])).unwrap()
+}
+
+unsafe fn calendar_screen(out: ptr, x: i32, y: i32) -> i32 {
+    before := system_date()
+    today := cal.Date::today()
+    if today != before && today != system_date() { return 57 }
+    leap := cal.Date::new(2024,2,29).unwrap()
+    mut month := cal.Monthly::new(leap)
+    month.events.add(leap,tui.ink(.Yellow).background(.Blue))
+    mut term: tui.Terminal<tui.LiveBackend> = tui.open(.Fixed(tui.Rect {x:2,y:2,w:21,h:6})).unwrap()
+    defer { term.backend_mut().close() }
+    if term.draw(&mut month,month_frame).is_err() { return 58 }
+    if unit_at(out,x+15,y+6) != 50 || unit_at(out,x+16,y+6) != 57 || unit_at(out,0,0) != 35 { return 59 }
+    mut attr: u16 = 0
+    mut n: u32 = 0
+    if read_attr(out,addr(&mut attr),1,u32(x+16).bit_or(u32(y+6).shl(16)),addr(&mut n)) == 0 || n != 1 || attr.bit_and(255) != 22 { return 60 }
+    0
+}
+
 unsafe fn embedded(out: ptr) -> i32 {
     mut bounds: [i16;11] = [0;11]
     if info(out,addr(&mut bounds[0])) == 0 { return 50 }
     x := i32(bounds[5])
     y := i32(bounds[6])
+    result := calendar_screen(out,x,y)
+    if result != 0 { return result }
     mut count := 0
     mut fixed: tui.Terminal<tui.LiveBackend> = tui.open(.Fixed(tui.Rect {x:4,y:2,w:8,h:2})).unwrap()
     if fixed.draw(&mut count,embedded_frame).is_err() || unit_at(out,x+4,y+2) != 86 || unit_at(out,0,0) != 35 { return 51 }

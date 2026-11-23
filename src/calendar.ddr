@@ -1,0 +1,215 @@
+capability unsafe
+
+import .block
+import .text as rich
+import .tui
+import std.cmp as cmp
+import std.map as map
+import std.time as time
+
+pub opaque struct Date { year: i32, month: i32, day: i32 }
+
+fn days_in(year: i32, month: i32) -> i32 {
+    match month {
+        2 => if year%4 == 0 && (year%100 != 0 || year%400 == 0) { 29 } else { 28 },
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
+}
+
+impl Date {
+    pub fn new(year: i32, month: i32, day: i32) -> Option<Date> {
+        if year < -9999 || year > 9999 || month < 1 || month > 12 || day < 1 || day > days_in(year,month) { return .None }
+        .Some(Self { year:year, month:month, day:day })
+    }
+
+    pub fn year(&self) -> i32 { self.year }
+    pub fn month(&self) -> i32 { self.month }
+    pub fn day(&self) -> i32 { self.day }
+    pub fn days_in_month(&self) -> i32 { days_in(self.year,self.month) }
+    pub fn first(&self) -> Self { Self { year:self.year, month:self.month, day:1 } }
+
+    pub fn month_name(&self) -> string {
+        match self.month {
+            1 => "January", 2 => "February", 3 => "March", 4 => "April",
+            5 => "May", 6 => "June", 7 => "July", 8 => "August",
+            9 => "September", 10 => "October", 11 => "November", _ => "December",
+        }
+    }
+
+    fn midnight(&self) -> i64 {
+        time.unix_from_utc(&time.DateTime { year:self.year, month:self.month, day:self.day, hour:0, minute:0, second:0, weekday:0 })
+    }
+
+    pub fn weekday(&self) -> i32 {
+        i32(((self.midnight()/86400+4)%7+7)%7)
+    }
+
+    pub fn add_days(&self, count: i32) -> Option<Date> {
+        d := time.utc_from_unix(self.midnight()+i64(count)*86400)
+        Date::new(d.year,d.month,d.day)
+    }
+
+    pub fn add_months(&self, count: i32) -> Option<Date> {
+        n := i64(self.year+9999)*12+i64(self.month-1)+i64(count)
+        if n < 0 || n >= 19999*12 { return .None }
+        year := i32(n/12)-9999
+        month := i32(n%12)+1
+        .Some(Self { year:year, month:month, day:cmp.min<i32>(self.day,days_in(year,month)) })
+    }
+
+    pub fn today() -> Date {
+        seconds := time.unix_now_secs()
+        match local_date(seconds) { .Some(d) => { return d }, .None => {}, }
+        d := time.utc_from_unix(seconds)
+        Self { year:d.year, month:d.month, day:d.day }
+    }
+}
+
+impl Eq for Date {
+    fn eq(&self, other: &Self) -> bool {
+        self.day == other.day && self.month == other.month && self.year == other.year
+    }
+}
+
+@c_layout
+struct LocalTime {
+    second:i32, minute:i32, hour:i32, day:i32, month:i32, year:i32, weekday:i32, yearday:i32, dst:i32,
+    offset:i64, zone:ptr,
+}
+@extern("c","localtime_r")
+unsafe fn posix_local(seconds:ptr, output:ptr) -> ptr
+@extern("kernel32.dll","SystemTimeToTzSpecificLocalTime")
+unsafe fn win_local(zone:ptr, utc:ptr, output:ptr) -> i32
+
+pub fn local_date(seconds: i64) -> Option<Date> {
+    first := Date { year:-9999,month:1,day:1 }
+    last := Date { year:9999,month:12,day:31 }
+    if seconds < first.midnight()-86400 || seconds >= last.midnight()+172800 { return .None }
+    unsafe {
+        if target_is("windows") {
+            utc := time.utc_from_unix(seconds)
+            if utc.year < 1601 { return .None }
+            mut source: [u16;8] = [u16(utc.year),u16(utc.month),u16(utc.weekday),u16(utc.day),
+                u16(utc.hour),u16(utc.minute),u16(utc.second),0]
+            mut local: [u16;8] = [0;8]
+            if win_local(ptr(0),addr(&source[0]),addr(&mut local[0])) == 0 { return .None }
+            return Date::new(i32(local[0]),i32(local[1]),i32(local[3]))
+        } else {
+            stamp := seconds
+            mut tm := LocalTime { second:0, minute:0, hour:0, day:0, month:0, year:0, weekday:0, yearday:0, dst:0, offset:0, zone:ptr(0) }
+            if posix_local(addr(&stamp),addr(&mut tm)) == ptr(0) { return .None }
+            return Date::new(tm.year+1900,tm.month+1,tm.day)
+        }
+    }
+    .None
+}
+
+pub trait DateStyler {
+    fn style_for(&self, date: Date) -> tui.Style
+}
+
+pub opaque struct EventStore { styles: map.Map<i32,tui.Style> }
+
+impl EventStore {
+    pub fn new() -> Self { Self { styles:map.Map<i32,tui.Style>::new() } }
+
+    pub fn today(style: tui.Style) -> Self {
+        mut events := Self::new()
+        events.add(Date::today(),style)
+        move events
+    }
+
+    fn key(date: Date) -> i32 { (date.year*12+date.month)*32+date.day }
+    pub fn add(&mut self, date: Date, style: tui.Style) { self.styles.put(Self::key(date),style) }
+    pub fn contains(&self, date: Date) -> bool { self.styles.contains(Self::key(date)) }
+    pub fn remove(&mut self, date: Date) -> bool { self.styles.remove(Self::key(date)) }
+}
+
+impl DateStyler for EventStore {
+    fn style_for(&self, date: Date) -> tui.Style {
+        self.styles.get_or(Self::key(date),tui.plain())
+    }
+}
+
+pub struct Monthly {
+    date: Date, events: EventStore, style: tui.Style, surrounding: Option<tui.Style>,
+    month_header: Option<tui.Style>, weekdays_header: Option<tui.Style>, block: block.Block,
+}
+
+impl Monthly {
+    pub fn new(date: Date) -> Self {
+        Self { date:date, events:EventStore::new(), style:tui.plain(), surrounding:.None,
+            month_header:.None, weekdays_header:.None, block:block.Block::new() }
+    }
+
+    pub fn width(&self) -> i32 {
+        (left,right) := self.block.horizontal_space()
+        i32(cmp.min<i64>(65535,21+i64(left)+i64(right)))
+    }
+
+    pub fn height(&self) -> i32 {
+        (top,bottom) := self.block.vertical_space()
+        weeks := (self.date.first().weekday()+self.date.days_in_month()+6)/7
+        headers := (if self.month_header.is_some() { 1 } else { 0 }) + (if self.weekdays_header.is_some() { 1 } else { 0 })
+        i32(cmp.min<i64>(65535,i64(top)+i64(bottom)+i64(weeks+headers)))
+    }
+
+    pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
+        self.render_with(&mut frame,bounds,&self.events)
+    }
+
+    pub fn render_with<S: DateStyler>(&self, frame: &mut tui.Frame, bounds: tui.Rect, events: &S) {
+        mut area := self.block.render(&mut frame,bounds)
+        if area.is_empty() { return }
+        match self.month_header {
+            .Some(style) => {
+                title := rich.Line::raw(f"{self.date.month_name()} {self.date.year}").styled(style)
+                title.render_aligned(&mut frame,area.take_rows(1),.Center)
+            }, .None => {},
+        }
+        match self.weekdays_header {
+            .Some(style) => { frame.text(area.take_rows(1)," Su Mo Tu We Th Fr Sa",style) }, .None => {},
+        }
+        if area.is_empty() { return }
+        gutter := match self.style.get_background() {
+            .Some(c) => tui.plain().background(c), .None => tui.plain(),
+        }
+        first := self.date.first()
+        offset := first.weekday()
+        length := first.days_in_month()
+        rows := cmp.min<i32>(area.h,(offset+length+6)/7)
+        previous := first.add_months(-1)
+        next := first.add_months(1)
+        for row in 0..rows {
+            y := area.y+row
+            for column in 0..7 {
+                x := area.x+3*column
+                if x >= area.right() { break }
+                gap := if column == 0 { tui.plain() } else { gutter }
+                frame.styled_rune(x,y,area.right(),` `,&gap)
+                index := 7*row+column-offset
+                mut d := first
+                mut base := self.style
+                mut visible := true
+                if index < 0 || index >= length {
+                    match self.surrounding {
+                        .Some(s) => { base = base.patch(s) }, .None => { visible = false },
+                    }
+                    if index < 0 {
+                        match previous {
+                            .Some(p) => { d = p; d.day = p.days_in_month()+index+1 }, .None => { visible = false },
+                        }
+                    } else {
+                        match next { .Some(n) => { d = n; d.day = index-length+1 }, .None => { visible = false }, }
+                    }
+                } else { d.day = index+1 }
+                style := if visible { base.patch(events.style_for(d)) } else { gutter }
+                tens := if visible && d.day >= 10 { rune(48+d.day/10) } else { ` ` }
+                ones := if visible { rune(48+d.day%10) } else { ` ` }
+                frame.styled_rune(x+1,y,area.right(),tens,&style)
+                frame.styled_rune(x+2,y,area.right(),ones,&style)
+            }
+        }
+    }
+}

@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Lokal tid i kalendern
+
+Kalendern markerar dagens datum enligt datorns tidszon. I 0.11.2 erbjuder `std.time` UTC-omvandling. Kalendern använder `localtime_r` på macOS och Linux och `SystemTimeToTzSpecificLocalTime` på Windows för att få lokalt datum. Tidsstämpeln `1711924200` gav 31 mars i UTC och 1 april i Stockholm på macOS och Linux. Språkets arbetslista innehåller även kontroll av årsskifte och övergång till sommartid. [Körbart prov](../tests/calendar_clock.ddr) · [Dunders nästa steg](https://github.com/Mik-pe/dunder/blob/5d8459bef0600eb5a87080fc0d507d1c83daf777/docs/next-steps.md#hämta-lokal-kalendertid-för-ett-givet-ögonblick)
+
 ## Tre förbättringar från vyportarna
 
 - **Plattformsvillkor före länkning.** På macOS länkar 0.11.2 in `kernel32.dll` för `if target_is("windows") && enabled`. Det hindrar programmet från att starta. Två nästlade villkor ger rätt binär. [Minimalt program](../tests/dogfood/compiler/target_condition.ddr)

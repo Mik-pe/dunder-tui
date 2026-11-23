@@ -11,8 +11,8 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | Text | Span, Line, Text, Paragraph, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. | Strängbredder för skriftspecifika ligaturer över grafemgränser, full täckning för sammansatta emoji och alla operationer på fristående texttyper. |
 | Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering och cache. 15 076 jämförda layouter, 1 200 rektangelprov och 1 100 jämförda bilder. | Utökad täckning av överbestämda system med många olika paneler och upprepade ändringar av reglerna. |
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna tecken, individuella kanter, justerade titlar, utfyllnad och skuggor. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
-| Övriga widgets | Clear och Fill på Frame, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. | Kalender med datumstilar, logotyp och maskot. |
-| Egna widgets och tester | Funktioner ritar på en Frame. Tillstånd kan uppdateras vid ritning med `run_stateful`. Egna backends kan anslutas till Terminal. TestBackend har skrollhistorik, markör, fem rensningslägen och regionskrollning. | Gemensamma widgetgränssnitt och bredare testning av specialiserade terminalbackends. |
+| Övriga widgets | Clear och Fill på Frame, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, månadskalender med händelser och egna datumstilar, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. | Logotyp och maskot. |
+| Egna widgets och tester | Frame ritar egna och inbyggda widgets med `render_widget` och `render_stateful_widget`. Tillstånd kan uppdateras vid ritning med `run_stateful`. Egna backends kan anslutas till Terminal. TestBackend har skrollhistorik, markör, fem rensningslägen och regionskrollning. | Bredare testning av specialiserade terminalbackends. |
 | Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, markörstyrning från Frame, bildräknare, ANSI och Win32. Fast och inbäddad vyport, loggrader, rensning och regionskrollning. Återställning efter skrivfel och uteblivet markörsvar har provats. | Fönstrets pixelmått, fler felprov vid delvis genomförd skrollning och täckning i nativ Windowskonsol. |
 | Stabil Rust-integration | Jämförelseprogrammen använder den låsta Rustreferensen. Dunder-appar byggs offline. | Kontrollera Dunder-motsvarigheter till bekvämlighetsmakron, serialisering, cachning och backendval där dessa påverkar appens beteende. |
 | Effektivitet och plattformar | Tid, minne, allokeringar och faktiska terminalbyte för en widgetvy på macOS och Linux. Pseudoterminalprov på macOS och Linux ARM64/x86-64. Win32-prov under Wine. | Nativ Windows x64, fler arbetslaster med komplex layout, lägre kostnad för dynamiska färgvärden och paritet på fysisk x86-64. |
@@ -179,4 +179,19 @@ cargo build --locked --release --manifest-path benchmarks/reference/Cargo.toml -
 build/viewports | build/rust/release/examples/viewports
 build/viewport-pty build/fixed build/loggbok
 build/viewport-pty build/rust/release/examples/viewports build/rust/release/examples/viewports --reference
+```
+
+
+## Månadskalender i 0.12.0
+
+Referensen använder det stabila tillvalet `widget-calendar`. 4 800 månader från 1600 till 1999 ger samma veckodag, antal dagar, veckor, bredd och höjd. Datumprovet omfattar även föregående dag och dagnumret efter byte till en kortare månad. Bildprovet kombinerar 36 datum, 16 inställningar och nio ytstorlekar. Det jämför varje tecken, förgrund, bakgrund och fyra textattribut, inklusive datum med överlappande stilar och ett eget veckoslutsregister. [Datum- och bildprov](../tests/calendar_reference.ddr) · [Ratatui-referens](../benchmarks/reference/examples/calendar.rs)
+
+Av 5 184 bilder är 2 982 identiska i hela bufferten. I 2 202 skriver referensen datum nedanför kalenderns inneryta. Dunder klipper vid nederkanten för att skydda ramen och nästa widget. Referensprovet återställer cellerna utanför innerytan till deras förväntade innehåll efter att ramen ritats och kräver därefter identiska bilder. [Kalenderns publika API](../src/calendar.ddr)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/calendar_reference.ddr -o build/calendar-states
+cargo build --locked --release --manifest-path benchmarks/reference/Cargo.toml --features calendar-oracle --example calendar --target-dir build/rust
+build/calendar-states | build/rust/release/examples/calendar
+build/calendar-states --dates | build/rust/release/examples/calendar --dates
 ```

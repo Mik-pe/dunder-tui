@@ -4,7 +4,7 @@ Bygg interaktiva terminalappar i Dunder för macOS, Linux och Windows. Skriv en 
 
 ## Prova
 
-Vill du se animationerna direkt? Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i en terminal. Samma paket innehåller kustkartan `kustlinjer`, signalvisualiseraren `signal`, boklistan `bokhylla` samt tidtabellen `avganger` och loggboken `loggbok`. [Ladda ner för macOS, Linux eller Windows](https://github.com/Mik-pe/dunder-tui/releases/latest)
+Vill du se animationerna direkt? Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i en terminal. Samma paket innehåller kustkartan `kustlinjer`, signalvisualiseraren `signal`, boklistan `bokhylla` samt tidtabellen `avganger`, loggboken `loggbok` och kalendern `almanacka`. [Ladda ner för macOS, Linux eller Windows](https://github.com/Mik-pe/dunder-tui/releases/latest)
 
 Med Dunder 0.11.1 eller senare installerat kan du starta exemplen med deras namn. [Installera Dunder](https://github.com/Mik-pe/dunder#installera-och-kör)
 
@@ -56,13 +56,19 @@ Signalen syntetiseras i appen och kräver ingen ljudenhet. [Källkod](examples/s
 
 ![En orange meridian sveper över en turkos världskarta och markerar motsvarande intervall i diagrammet](docs/kustlinjer.webp)
 
+### Almanacka
+
+Kör `dunder run --example almanacka` för att öppna aktuell månad. ← och → flyttar en dag, ↑ och ↓ en vecka och hakparenteserna byter månad. Markera ett datum med `m` och gå tillbaka till dagens lokala datum med Home. Prova skottdagen med `dunder run --example almanacka -- 2024 2 29`. [Exemplets källkod](examples/almanacka/main.ddr)
+
+`tui.calendar.Monthly` kan visa angränsande månader, rubriker och datum med egna stilar. Använd `month.events.add(date, style)` för en enstaka markering. Implementera `DateStyler.style_for` och anropa `month.render_with` för regler som helgdagar och veckoslut.
+
 ## Skriv en egen app
 
 Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `dunder.toml`.
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.11.0", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.12.0", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.
@@ -95,6 +101,8 @@ fn main() -> i32 {
 ```
 
 `draw` får en tom bild vid start, efter en tangent och när fönstret byter storlek. Returnera `false` från `update` för att lämna appen. Ctrl+C avslutar också. Om in- eller utmatningen är omdirigerad returnerar `run` ett fel.
+
+En egen widget kan ha metoden `render(&self, frame: &mut tui.Frame, area: tui.Rect)`. Rita den med `frame.render_widget(&widget, area)`. För en widget som uppdaterar sin cache kan du skicka `&mut widget`. Håller appen exempelvis listans markering separat tar `frame.render_stateful_widget(&list, area, &mut selection)` med det tillståndet till `render_stateful`. [Exempel med eget och inbyggt tillstånd](tests/suite.ddr)
 
 ## Markör och testterminal
 

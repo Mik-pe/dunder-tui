@@ -369,6 +369,14 @@ impl Frame {
 
     fn index(&self, x: i32, y: i32) -> i32 { (y-self.bounds.y)*self.bounds.w + (x-self.bounds.x) }
 
+    pub fn render_widget<W>(&mut self, widget: W, area: Rect) {
+        widget.render(&mut self,area)
+    }
+
+    pub fn render_stateful_widget<W,S>(&mut self, widget: W, area: Rect, state: &mut S) {
+        widget.render_stateful(&mut self,area,&mut state)
+    }
+
     pub fn count(&self) -> u64 { self.number }
 
     pub fn set_cursor_position(&mut self, x: i32, y: i32) {

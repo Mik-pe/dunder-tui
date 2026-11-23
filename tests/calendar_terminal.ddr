@@ -1,0 +1,26 @@
+capability unsafe, stdio, process
+import .terminal_driver as driver
+import ..tools.pty
+import sys
+
+fn exercise(master:i32, slave:i32, screen:&mut driver.Screen) -> bool {
+    unsafe {
+        if !driver.wait_for(master,&mut screen,14,"29/2 2024 · omarkerad","\x1b[?1049h") || !screen.contains(3,"February 2024") { return false }
+        if !driver.send(master,"m") || !driver.wait_for(master,&mut screen,14,"29/2 2024 · markerad","") { return false }
+        if !driver.send(master,"\x1b[C") || !driver.wait_for(master,&mut screen,14,"1/3 2024 · omarkerad","") || !screen.contains(3,"March 2024") { return false }
+        if !driver.send(master,"\x1b[D") || !driver.wait_for(master,&mut screen,14,"29/2 2024 · markerad","") { return false }
+        if !driver.send(master,"[") || !driver.wait_for(master,&mut screen,14,"29/1 2024 · omarkerad","") { return false }
+        if !pty.resize(slave,19,8) { return false }
+        screen = driver.Screen::new(19,8)
+        if !driver.wait_for(master,&mut screen,6,"29/1 2024","") { return false }
+        if !driver.send(master,"q") || !driver.wait_for(master,&mut screen,0,"","\x1b[?1049l") { return false }
+    }
+    true
+}
+
+fn main() -> i32 {
+    if sys.arg_count() == 2 {
+        unsafe { if driver.test_with_args(sys.arg(1),["2024","2","29"],55,16,exercise) { print("calendar PTY OK"); return 0 } }
+    }
+    1
+}

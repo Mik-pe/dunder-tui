@@ -1,0 +1,66 @@
+import ..src.tui
+import ..src.calendar as cal
+import ..src.block
+import .widget_cells as cells
+import sys
+
+struct Weekends { events: cal.EventStore }
+impl cal.DateStyler for Weekends {
+    fn style_for(&self, d: cal.Date) -> tui.Style {
+        base := if d.weekday() == 0 || d.weekday() == 6 { tui.ink(.Cyan).dim() } else { tui.plain() }
+        base.patch(self.events.style_for(d))
+    }
+}
+
+fn events(store: &mut cal.EventStore, date: cal.Date) {
+    for delta in [-1,0,1,14,27,30,31] {
+        d := date.first().add_days(delta).unwrap()
+        store.add(d,tui.ink(.Yellow))
+        store.add(d,tui.ink(.Red).background(.Magenta).without(.Bold))
+    }
+}
+
+fn dates() {
+    for y in 1600..2000 {
+        for m in 1..13 {
+            d := cal.Date::new(y,m,1).unwrap()
+            month := cal.Monthly::new(d)
+            before := d.add_days(-1).unwrap()
+            end := d.add_days(d.days_in_month()-1).unwrap()
+            after := end.add_months(1).unwrap()
+            print(f"{y} {m} {d.days_in_month()} {d.weekday()} {month.width()} {month.height()} {before.year()} {before.month()} {before.day()} {end.weekday()} {after.day()}")
+        }
+    }
+}
+
+fn main() {
+    if sys.arg_count() > 1 { dates(); return }
+    for index in 0..36 {
+        y := [-44,0,1899,1900,1999,2000,2015,2024,2099][index%9]
+        m := 1+(index*5+index/12)%12
+        for config in 0..16 {
+            d := cal.Date::new(y,m,13).unwrap()
+            mut month := cal.Monthly::new(d)
+            month.style = tui.ink(.Yellow).background(.Cyan).italic()
+            events(&mut month.events,d)
+            mut weekends := Weekends { events:cal.EventStore::new() }
+            events(&mut weekends.events,d)
+            if config.bit_and(1) != 0 { month.surrounding = .Some(tui.ink(.Blue).dim()) }
+            if config.bit_and(2) != 0 { month.month_header = .Some(tui.ink(.Magenta).without(.Bold)) }
+            if config.bit_and(4) != 0 { month.weekdays_header = .Some(tui.ink(.Red).inverted()) }
+            if config.bit_and(8) != 0 {
+                month.block = block.Block::bordered().title("M")
+                month.block.padding = block.Padding {left:2,right:1,top:0,bottom:1}
+                month.block.border_style = tui.ink(.Yellow)
+            }
+            for size in [(0,0),(1,1),(3,2),(8,3),(16,5),(20,7),(21,8),(25,12),(31,12)] {
+                mut frame := cells.seeded(size.0,size.1)
+                area := tui.Rect {x:1,y:1,w:size.0,h:size.1}
+                if index%2 == 0 { frame.render_widget(&month,area) }
+                else { month.render_with(&mut frame,area,&weekends) }
+                print(f"{month.width()} {month.height()}")
+                cells.snapshot(&frame)
+            }
+        }
+    }
+}
