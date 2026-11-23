@@ -162,6 +162,8 @@ fn update(probe: &mut Probe, key: tui.Key) -> bool {
 
 @extern("kernel32.dll","SetConsoleCursorPosition")
 unsafe fn position(handle: ptr, coord: u32) -> i32
+@extern("kernel32.dll","SetConsoleCursorInfo")
+unsafe fn set_cursor_info(handle: ptr, info: ptr) -> i32
 
 fn embedded_frame(frame: &mut tui.Frame, state: &mut i32) {
     frame.label(frame.area(),"VIEW")
@@ -241,7 +243,18 @@ unsafe fn embedded(out: ptr) -> i32 {
     if columns != i32(bounds[7])-x+1 || rows != i32(bounds[8])-y+1 { return 98 }
     if !fixed.window_size().is_err() || !tui.window_size().is_err() || fixed.autoresize().is_err() { return 99 }
     if fixed.draw(&mut count,embedded_frame).is_err() || unit_at(out,x+4,y+2) != 86 || unit_at(out,0,0) != 35 { return 51 }
+    mut shape: [u32;2] = [47,1]
+    if set_cursor_info(out,addr(&shape[0])) == 0 || fixed.hide_cursor().is_err() { return 100 }
+    if fixed.set_cursor_position(2,1).is_err() || fixed.cursor_position().unwrap() != (2,1) { return 101 }
+    if cursor_info(out,addr(&mut shape[0])) == 0 || shape[0] != 47 || shape[1] != 0 { return 102 }
+    if fixed.show_cursor().is_err() || cursor_info(out,addr(&mut shape[0])) == 0 || shape[0] != 47 || shape[1] == 0 { return 103 }
+    if fixed.draw(&mut count,embedded_frame).is_err() || fixed.cursor_position().unwrap() != (5,2) { return 104 }
+    if fixed.backend_mut().set_cursor_visible(false).is_err() || fixed.backend_mut().move_to(3,2).is_err() { return 105 }
+    if fixed.cursor_position().unwrap() != (3,2) || fixed.draw(&mut count,embedded_frame).is_err() { return 106 }
+    if info(out,addr(&mut bounds[0])) == 0 || i32(bounds[2]) != x+5 || i32(bounds[3]) != y+2 { return 107 }
+    if cursor_info(out,addr(&mut shape[0])) == 0 || shape[0] != 47 || shape[1] == 0 { return 108 }
     fixed.backend_mut().close()
+    if fixed.cursor_position().is_ok() || fixed.set_cursor_position(0,0).is_ok() || fixed.show_cursor().is_ok() || fixed.hide_cursor().is_ok() { return 109 }
     if position(out,u32(x).bit_or(u32(y+1).shl(16))) == 0 { return 52 }
     mut embedded: tui.Terminal<tui.LiveBackend> = tui.open(.Inline(2)).unwrap()
     if embedded.viewport_area().y != 1 || embedded.draw(&mut count,embedded_frame).is_err() { return 53 }

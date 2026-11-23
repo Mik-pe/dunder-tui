@@ -117,7 +117,83 @@ fn live() -> io::Result<()> {
     Ok(())
 }
 
+fn direct_live(fixed: bool) -> io::Result<()> {
+    use ratatui::backend::CrosstermBackend;
+    use ratatui::crossterm::{cursor, event, execute, terminal};
+    use ratatui::layout::Rect;
+    use ratatui::{TerminalOptions, Viewport};
+    terminal::enable_raw_mode()?;
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            let _ = execute!(io::stdout(), cursor::Show);
+            if self.0 {
+                let _ = execute!(io::stdout(), terminal::LeaveAlternateScreen);
+            }
+            let _ = terminal::disable_raw_mode();
+        }
+    }
+    let _restore = Restore(!fixed);
+    if !fixed {
+        execute!(io::stdout(), terminal::EnterAlternateScreen)?;
+    }
+    let viewport = if fixed {
+        Viewport::Fixed(Rect::new(0, 0, 20, 7))
+    } else {
+        Viewport::Fullscreen
+    };
+    let mut t = Terminal::with_options(
+        CrosstermBackend::new(io::stdout()),
+        TerminalOptions { viewport },
+    )?;
+    for step in 0..13 {
+        match step {
+            0 | 4 | 7 | 8 | 10 => {
+                t.draw(|f| {
+                    f.buffer_mut()[(0, 0)].set_char('D');
+                    if step < 8 {
+                        f.set_cursor_position((2, 1));
+                    }
+                })?;
+            }
+            1 => t.hide_cursor()?,
+            2 => t.set_cursor_position((5, 3))?,
+            3 | 9 | 12 => t.show_cursor()?,
+            5 => {
+                t.backend_mut().set_cursor_position((6, 2))?;
+                t.backend_mut().hide_cursor()?;
+            }
+            6 => {
+                assert!(
+                    t.try_draw(|f| -> io::Result<()> {
+                        f.buffer_mut()[(0, 0)].set_char('B');
+                        f.set_cursor_position((7, 0));
+                        Err(io::Error::other("reject"))
+                    })
+                    .is_err()
+                );
+            }
+            11 => t.set_cursor_position((8, 5))?,
+            _ => unreachable!(),
+        }
+        let expected = match step {
+            2 | 3 => (5, 3),
+            5 | 6 => (6, 2),
+            11 | 12 => (8, 5),
+            _ => (2, 1),
+        };
+        assert_eq!(t.get_cursor_position()?, expected.into());
+    }
+    assert!(matches!(event::read()?, event::Event::Key(k) if k.code == event::KeyCode::Char('k')));
+    Ok(())
+}
+
 fn main() {
+    match std::env::args().nth(1).as_deref() {
+        Some("--direct-live") => return direct_live(false).unwrap(),
+        Some("--direct-fixed") => return direct_live(true).unwrap(),
+        _ => {}
+    }
     if std::env::args().any(|arg| arg == "--live") {
         return live().unwrap();
     }

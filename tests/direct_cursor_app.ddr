@@ -1,0 +1,88 @@
+capability stdio
+import ..src.tui
+import sys
+
+fn draw(frame:&mut tui.Frame, visible:&mut bool) {
+    frame.label(frame.area(),"D")
+    if visible { frame.set_cursor_position(2,1) }
+}
+
+fn reject(frame:&mut tui.Frame, visible:&mut bool) -> Result<(),string> {
+    frame.label(frame.area(),"BAD")
+    frame.set_cursor_position(7,0)
+    .Err("reject")
+}
+
+fn exercise(view:tui.Viewport) -> Result<(),string> {
+    mut t: tui.Terminal<tui.LiveBackend> = tui.open(view)?
+    mut visible := true
+    for step in 0..13 {
+        match step {
+            0 | 4 | 7 | 8 | 10 => {
+                visible = step < 8
+                t.draw(&mut visible,draw)?
+            },
+            1 => { t.hide_cursor()? },
+            2 => { t.set_cursor_position(5,3)? },
+            3 | 9 | 12 => { t.show_cursor()? },
+            5 => {
+                t.backend_mut().move_to(6,2)?
+                t.backend_mut().set_cursor_visible(false)?
+            },
+            6 => {
+                if t.try_draw(&mut visible,reject).unwrap_err() != "reject" { return .Err("try_draw") }
+                if t.completed().cursor_position() != .Some((2,1)) { return .Err("completed cursor") }
+            },
+            11 => { t.set_cursor_position(8,5)? },
+            _ => {},
+        }
+        pos := t.cursor_position()?
+        expected := match step { 2 | 3 => (5,3), 5 | 6 => (6,2), 11 | 12 => (8,5), _ => (2,1), }
+        if pos != expected { return .Err(f"device reported {pos.0},{pos.1} on step {step}") }
+    }
+    match t.backend_mut().next(1000) { .Press(.Char(c)) if c == `k` => {}, _ => { return .Err("lost key") }, }
+    t.backend_mut().close()
+    if t.show_cursor().is_ok() || t.hide_cursor().is_ok() || t.cursor_position().is_ok() || t.set_cursor_position(0,0).is_ok() {
+        return .Err("accepted cursor command after close")
+    }
+    .Ok
+}
+
+fn read_paste(term:&mut tui.Terminal<tui.LiveBackend>, start:i32, end:i32) -> Result<(),string> {
+    for index in start..end {
+        expected := rune(97+index%26)
+        match term.backend_mut().next(500) {
+            .Press(.Char(c)) if c == expected => {},
+            _ => { return .Err(f"paste changed at byte {index}") },
+        }
+    }
+    .Ok
+}
+
+fn queued_reply(retry:bool) -> Result<(),string> {
+    mut term: tui.Terminal<tui.LiveBackend> = tui.open(.Fullscreen)?
+    mut first := 0
+    count := if retry { 65536 } else { 65530 }
+    if retry {
+        if term.cursor_position().is_ok() { return .Err("expected a missing report") }
+        first = 128
+        read_paste(&mut term,0,first)?
+    }
+    if term.cursor_position()? != (2,1) { return .Err("cursor report after paste") }
+    read_paste(&mut term,first,count)?
+    match term.backend_mut().next(500) {
+        .Press(.Char(c)) if c == `!` => {},
+        _ => { return .Err("lost key after cursor report") },
+    }
+    term.backend_mut().close()
+    .Ok
+}
+
+fn main() -> i32 {
+    if sys.arg_count() == 2 && (sys.arg(1) == "--queued-reply" || sys.arg(1) == "--queued-retry") {
+        return match queued_reply(sys.arg(1) == "--queued-retry") { .Ok => 0, .Err(message) => { _ := sys.eprint(message); 1 }, }
+    }
+    fixed := sys.arg_count() == 2 && sys.arg(1) == "--direct-fixed"
+    view := if fixed { tui.Viewport.Fixed(tui.Rect{x:0,y:0,w:20,h:7}) } else { tui.Viewport.Fullscreen }
+    match exercise(view) { .Ok => 0, .Err(message) => { _ := sys.eprint(message); 1 }, }
+}

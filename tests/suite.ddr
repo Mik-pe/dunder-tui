@@ -721,6 +721,46 @@ fn reject_number(frame: &mut tui.Frame, n: &mut i32) -> Result<(),string> {
     .Err("rejected")
 }
 
+struct CursorFailure { output: []u8 }
+impl tui.Backend for CursorFailure {
+    fn size(&mut self) -> (i32,i32) { (12,5) }
+    fn present(&mut self, frame:&tui.Frame, previous:&tui.Frame) -> Result<(),string> {
+        self.output.clear()
+        frame.ansi_diff(&previous,&mut self.output)
+        .Ok
+    }
+    fn move_to(&mut self, x:i32, y:i32) -> Result<(),string> {
+        bytes.append_utf8(&mut self.output,f"\x1b[{y+1};{x+1}H")
+        .Err("interrupted")
+    }
+}
+
+@test fn failed_cursor_write_is_repaired_without_repainting_committed_cells() {
+    mut terminal := tui.Terminal<CursorFailure>::new(CursorFailure { output:[] })
+    mut number := 1
+    assert(terminal.draw(&mut number,draw_number).is_ok() && terminal.draw(&mut number,draw_number).is_ok())
+    assert(terminal.backend().output.len == 0)
+    assert(terminal.set_cursor_position(5,3).unwrap_err() == "interrupted")
+    assert(terminal.try_draw(&mut number,reject_number).is_err())
+    assert(terminal.completed().cursor_position() == .Some((1,0)) && terminal.completed().count() == 1)
+    assert(terminal.draw(&mut number,draw_number).is_ok())
+    assert(bytes.decode(&terminal.backend().output).unwrap() == "\x1b[1;2H\x1b[?25h")
+    assert(terminal.draw(&mut number,draw_number).is_ok() && terminal.backend().output.len == 0)
+    assert(terminal.show_cursor().is_err() && terminal.hide_cursor().is_err() && terminal.cursor_position().is_err())
+}
+
+@test fn direct_cursor_moves_are_absolute_and_bounded_and_do_not_change_frame_requests() {
+    mut t := tui.Terminal<testing.TestBackend>::new(testing.TestBackend::new(12,5))
+    mut number := 1
+    assert(t.draw(&mut number,draw_number).is_ok() && t.hide_cursor().is_ok())
+    assert(t.set_cursor_position(-3,70000).is_ok() && t.cursor_position().unwrap() == (0,65535))
+    assert(!t.backend().cursor_visible() && t.completed().cursor_position() == .Some((1,0)))
+    assert(t.show_cursor().is_ok() && t.backend().cursor_visible() && t.cursor_position().unwrap() == (0,65535))
+    t.backend_mut().set_cursor_position(6,2)
+    assert(t.cursor_position().unwrap() == (6,2))
+    assert(t.draw(&mut number,draw_number).is_ok() && t.cursor_position().unwrap() == (1,0))
+}
+
 @test fn failed_render_and_partial_write_keep_the_last_committed_frame() {
     mut t := tui.Terminal<FailingTerminal>::new(FailingTerminal { device: testing.TestBackend::new(3,2), fail: false, writes: 0 })
     mut n := 0

@@ -84,6 +84,7 @@ fn live(fixed: bool) -> io::Result<()> {
 
 fn main() {
     let windows = std::env::args().nth(1).as_deref() == Some("--window");
+    let direct = std::env::args().nth(1).as_deref() == Some("--direct-cursor");
     match std::env::args().nth(1).as_deref() {
         Some("--probe-window") => {
             let mut backend = ratatui::backend::CrosstermBackend::new(io::stdout());
@@ -130,7 +131,7 @@ fn main() {
             .unwrap();
         let viewport = if seed % 3 == 0 {
             Viewport::Fixed(Rect::new(2, 1, w - 4, h - 2))
-        } else if windows && seed % 3 == 1 {
+        } else if (windows || direct) && seed % 3 == 1 {
             Viewport::Fullscreen
         } else {
             Viewport::Inline(1 + seed % (h + 3))
@@ -139,6 +140,25 @@ fn main() {
         for stage in 0..16 {
             match stage {
                 0 => {}
+                1 | 6 | 10 if direct => {
+                    let pos = ((seed + stage) % w, (2 * seed + stage) % h);
+                    t.set_cursor_position(pos).unwrap();
+                    if stage == 6 {
+                        t.hide_cursor().unwrap();
+                    } else {
+                        t.show_cursor().unwrap();
+                    }
+                    assert_eq!(t.get_cursor_position().unwrap(), pos.into());
+                }
+                2 | 11 if direct => {
+                    t.backend_mut().resize(w + stage % 3, h + stage % 2);
+                    t.autoresize().unwrap();
+                }
+                4 if direct => {
+                    t.backend_mut().set_cursor_position((2, 1)).unwrap();
+                    assert_eq!(t.get_cursor_position().unwrap(), (2, 1).into());
+                    t.hide_cursor().unwrap();
+                }
                 1 | 3 | 5 | 9 if windows => {
                     match stage {
                         1 => t.backend_mut().resize(w + 3, h + 2),
@@ -209,6 +229,10 @@ fn main() {
                     line,
                     "window {seed}/{stage}"
                 );
+            }
+            if direct && stage > 0 {
+                let p = t.get_cursor_position().unwrap();
+                assert_eq!(records.next().unwrap().unwrap(), format!("{} {}", p.x, p.y));
             }
             let a = t.get_frame().area();
             let p = t.backend_mut().get_cursor_position().unwrap();

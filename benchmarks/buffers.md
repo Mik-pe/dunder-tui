@@ -63,3 +63,21 @@ Dunder skrev 4 833 954 byte till pseudoterminalen och Ratatui skrev 8 096 420. A
 | macOS ARM64 | 559 458 | 25 822 | 10 334 347 | 129 152 500 | 2 064 | 2 960 |
 | Linux ARM64 | 559 458 | 25 818 | 10 334 347 | 129 152 301 | 428 | 2 084 |
 | Linux x86-64, översatt | 559 458 | 25 817 | 10 334 347 | 129 152 800 | 6 184 | 5 664 |
+
+## Ommätning i 0.16.0
+
+Samma 1 100 bilder jämfördes efter införandet av direkta marköranrop. Tabellen visar median och p95 i mikrosekunder per bild i en pseudoterminal. I resultatfilen finns alla fem arbetslaster i minne och terminal, inklusive spridningen mellan körningarna. [Samtliga 60 mätserier](results/terminal-0.16.0.tsv)
+
+| Plattform | Oförändrad, Dunder | Oförändrad, Ratatui | Rullning, Dunder | Rullning, Ratatui | Full omritning, Dunder | Full omritning, Ratatui |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| macOS ARM64 | 102 / 106 | 96 / 99 | 161 / 172 | 160 / 171 | 167 / 176 | 178 / 197 |
+| Linux ARM64 | 101 / 111 | 98 / 105 | 142 / 155 | 130 / 141 | 143 / 155 | 142 / 158 |
+| Linux x86-64, översatt | 932 / 984 | 186 / 203 | 1245 / 1302 | 231 / 253 | 1312 / 1376 | 257 / 280 |
+
+Dunder skrev 4 839 210 byte till pseudoterminalen och Ratatui skrev 8 096 420. I detta prov använder appen en muterbar backendreferens mellan bilder. Det tillkom 5 256 byte för att återställa markörens synlighet jämfört med 0.15.0. Allokeringsanropen inkluderar återanvändning av poolminne. RSS är medianen av tre körningars högsta residenta minne.
+
+| Plattform | Anrop Dunder | Anrop Ratatui | Begärda byte Dunder | Begärda byte Ratatui | RSS Dunder, KiB | RSS Ratatui, KiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| macOS ARM64 | 559 458 | 25 823 | 10 334 467 | 129 153 308 | 2 064 | 2 976 |
+| Linux ARM64 | 559 458 | 25 819 | 10 334 467 | 129 153 109 | 428 | 2 024 |
+| Linux x86-64, översatt | 559 458 | 25 817 | 10 334 467 | 129 152 800 | 6 128 | 5 728 |

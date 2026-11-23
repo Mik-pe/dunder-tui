@@ -18,9 +18,9 @@ unsafe fn mac_ioctl(fd: i32, request: usize, buf: ptr) -> i32
 @extern("c", "open")
 unsafe fn mac_open(path: ptr, flags: i32) -> i32
 
-pub struct State { saved: [u64; 16], pending: []u8 }
+pub struct State { saved: [u64; 16], pending: []u8, head: i32 }
 
-pub fn state() -> State { State { saved: [0; 16], pending: [] } }
+pub fn state() -> State { State { saved: [0; 16], pending: [], head: 0 } }
 
 fn read_size(fd: i32, winsize: &mut [u16; 4]) -> bool {
     unsafe {
@@ -105,45 +105,68 @@ pub fn write_bytes(data: &[]u8) -> bool {
     true
 }
 
-fn cursor_reply(pending: &mut []u8) -> Option<(i32,i32)> {
-    for start in 0..pending.len {
-        if pending[start] != 27 || start+2 >= pending.len || pending[start+1] != b'[' { continue }
-        mut i := start+2
-        mut row := 0
-        while i < pending.len && pending[i] >= 48 && pending[i] <= 57 && row <= 65535 {
-            row = row*10+i32(pending[i])-48
-            i += 1
+fn compact(state: &mut State) {
+    if state.head > 0 {
+        bytes.consume_prefix(&mut state.pending,state.head)
+        state.head = 0
+    }
+}
+
+struct CursorReport {
+    offset: i32, start: i32, phase: i32, row: i32, column: i32,
+}
+
+fn cursor_reply(pending: &mut []u8, report: &mut CursorReport) -> Option<(i32,i32)> {
+    while report.offset < pending.len {
+        b := pending[report.offset]
+        report.offset += 1
+        if b == 27 {
+            report.start = report.offset-1
+            report.phase = 1
+            continue
         }
-        if row < 1 || row > 65536 || i >= pending.len || pending[i] != b';' { continue }
-        i += 1
-        mut col := 0
-        while i < pending.len && pending[i] >= 48 && pending[i] <= 57 && col <= 65535 {
-            col = col*10+i32(pending[i])-48
-            i += 1
+        phase := report.phase
+        match phase {
+            1 if b == b'[' => { report.row = 0; report.phase = 2 },
+            2 if b >= b'0' && b <= b'9' => {
+                report.row = report.row*10+i32(b)-48
+                if report.row > 65536 { report.phase = 0 }
+            },
+            2 if b == b';' && report.row > 0 => { report.column = 0; report.phase = 3 },
+            3 if b >= b'0' && b <= b'9' => {
+                report.column = report.column*10+i32(b)-48
+                if report.column > 65536 { report.phase = 0 }
+            },
+            3 if b == b'R' && report.column > 0 => {
+                removed := report.offset-report.start
+                for i in report.offset..pending.len { pending[i-removed] = pending[i] }
+                pending.truncate(pending.len-removed)
+                return .Some((report.column-1,report.row-1))
+            },
+            _ => { report.phase = 0 },
         }
-        if col < 1 || col > 65536 || i >= pending.len || pending[i] != b'R' { continue }
-        removed := i+1-start
-        for j in (i+1)..pending.len { pending[j-removed] = pending[j] }
-        pending.truncate(pending.len-removed)
-        return .Some((col-1,row-1))
     }
     .None
 }
 
 pub fn read_cursor(state: &mut State) -> Result<(i32,i32),string> {
     if !write("\x1b[6n") { return .Err("Could not request cursor position.") }
+    compact(&mut state)
     deadline := clock.monotonic_ns()+1000000000
     mut fd: []u8 = [0,0,0,0,1,0,0,0]
-    while state.pending.len < 65536 {
-        match cursor_reply(&mut state.pending) { .Some(pos) => { return .Ok(pos) }, .None => {}, }
+    mut report := CursorReport { offset:0, start:0, phase:0, row:0, column:0 }
+    while true {
+        match cursor_reply(&mut state.pending,&mut report) { .Some(pos) => { return .Ok(pos) }, .None => {}, }
         left := deadline-clock.monotonic_ns()
-        if left <= 0 { break }
+        space := 65536-state.pending.len
+        if left <= 0 || space <= 0 { break }
+        count := if space < 128 { space } else { 128 }
         unsafe {
             ready := sys.fd_poll(&mut fd,1,(left+999999)/1000000)
             if ready == -4 { continue }
             if ready <= 0 { break }
-            state.pending.reserve(state.pending.len+128)
-            n := sys.fd_read(0,&mut state.pending,128)
+            state.pending.reserve(state.pending.len+count)
+            n := sys.fd_read(0,&mut state.pending,i64(count))
             if n == -4 { continue }
             if n <= 0 { break }
         }
@@ -154,11 +177,13 @@ pub fn read_cursor(state: &mut State) -> Result<(i32,i32),string> {
 pub fn next(state: &mut State, wait_ms: i32) -> input.Event {
     mut expired := false
     while true {
-        decoded := input.decode(&state.pending, expired)
+        decoded := input.decode(&state.pending[state.head..state.pending.len], expired)
         if decoded.consumed > 0 {
-            bytes.consume_prefix(&mut state.pending, decoded.consumed)
+            state.head += decoded.consumed
+            if state.head == state.pending.len { state.pending.clear(); state.head = 0 }
             return decoded.event
         }
+        compact(&mut state)
         timeout := if state.pending.len == 0 { wait_ms } else if state.pending[0] == 27 { 40 } else { 500 }
         mut pollfd: []u8 = [0, 0, 0, 0, 1, 0, 0, 0]
         unsafe {

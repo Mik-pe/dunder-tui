@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Stegvis läsning ur en bytekö
+
+Med Dunder 0.11.2 tog det 105 ms i median att tömma 16 KiB en byte i taget med `std.bytes.consume_prefix` på macOS ARM64. Med en lånad vy och en läsposition tog det 53 µs. Terminalen använder nu en läsposition och packar ihop återstående byte när den behöver läsa mer. Skillnaden märks när stora inklistringar kommer samtidigt som ett markörsvar. [Körbart mätprov](../benchmarks/language/byte_queue.ddr) · [Förslag till standardbiblioteket](https://github.com/Mik-pe/dunder/blob/94e98cc01e8b112aa20d3b8095a0391a65664c90/docs/next-steps.md#läs-stegvis-ur-en-bytekö)
+
 ## Terminalstorlek i pixlar
 
 `std.terminal.size()` i Dunder 0.11.2 hämtar ett Unix-svar med fyra 16-bitarsfält men exponerar bara kolumner och rader. I en pseudoterminal kunde pixelmåtten ändras från 0 × 0 till 813 × 719 medan teckenmåtten förblev 45 × 8. Om standardbiblioteket exponerar de två pixelmåtten från samma systemanrop kan appar använda dem även när bara en axel är känd. [Terminalprovet](../tests/window_terminal.ddr) · [Standardbiblioteket i 0.11.2](https://github.com/Mik-pe/dunder/blob/v0.11.2/stdlib/terminal.ddr) · [Nästa steg för terminalhandtag](https://github.com/Mik-pe/dunder/blob/main/docs/next-steps.md#styr-en-separat-terminal-via-dess-handtag)

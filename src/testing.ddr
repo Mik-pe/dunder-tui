@@ -150,6 +150,7 @@ impl tui.Backend for TestBackend {
         .Ok(tui.WindowSize { columns:area.w, rows:area.h, pixel_width:640, pixel_height:480 })
     }
     fn read_cursor(&mut self) -> Result<(i32,i32),string> { .Ok(self.cursor_position()) }
+    fn set_cursor_visible(&mut self, visible: bool) -> Result<(),string> { self.visible = visible; .Ok }
     fn move_to(&mut self, x: i32, y: i32) -> Result<(),string> { self.set_cursor_position(x,y); .Ok }
     fn extend_lines(&mut self, rows: i32) -> Result<(),string> { self.append_lines(rows); .Ok }
     fn shift_rows(&mut self, top: i32, bottom: i32, delta: i32) -> Result<(),string> {

@@ -353,7 +353,7 @@ const ALWAYS_UPDATE: i32 = -2
 const FRAME_SIDE_LIMIT: i32 = 4096
 const FRAME_CELL_LIMIT: i32 = 1048576
 
-pub opaque struct Frame { bounds: Rect, cursor_x: i32, cursor_y: i32, number: u64, glyphs: []i32, styles: []i64, decorations: []i64, clusters: []string, cluster_cells: []i32, options: []i32, row_flags: []u8, has_options: bool, overlaps: bool }
+pub opaque struct Frame { bounds: Rect, cursor_x: i32, cursor_y: i32, cursor_changed: bool, number: u64, glyphs: []i32, styles: []i64, decorations: []i64, clusters: []string, cluster_cells: []i32, options: []i32, row_flags: []u8, has_options: bool, overlaps: bool }
 
 struct DiffScan {
     at: i32, start: i32, end: i32, cached: i32, trailing: i32, limit: i32, force: bool,
@@ -459,7 +459,7 @@ impl Frame {
         glyphs.reserve(n)
         styles.reserve(n)
         for _ in 0..n { glyphs.push(0); styles.push(0) }
-        Self { bounds: Rect { x:x, y:y, w:cols, h:rows }, cursor_x: -1, cursor_y: 0, number: 0, glyphs: glyphs, styles: styles, decorations: [], clusters: [], cluster_cells: [], options: [], row_flags:[], has_options:false, overlaps:false }
+        Self { bounds: Rect { x:x, y:y, w:cols, h:rows }, cursor_x: -1, cursor_y: 0, cursor_changed:false, number: 0, glyphs: glyphs, styles: styles, decorations: [], clusters: [], cluster_cells: [], options: [], row_flags:[], has_options:false, overlaps:false }
     }
 
     pub fn area(&self) -> Rect { self.bounds }
@@ -1261,15 +1261,18 @@ impl Frame {
         if current != 0 { bytes.append_utf8(&mut out, "\x1b[0m") }
     }
 
+    fn displayed_cursor_x(&self) -> i32 { if self.cursor_changed { -2 } else { self.cursor_x } }
+
     pub fn ansi_diff(&self, previous: &Frame, out: &mut []u8) {
         start_len := out.len
         self.ansi_cells(&previous,&mut out)
+        previous_x := previous.displayed_cursor_x()
         if self.cursor_x >= 0 {
-            if out.len != start_len || self.cursor_x != previous.cursor_x || self.cursor_y != previous.cursor_y {
+            if out.len != start_len || self.cursor_x != previous_x || self.cursor_y != previous.cursor_y {
                 paint.cursor(&mut out,self.cursor_x,self.cursor_y)
             }
-            if previous.cursor_x < 0 { bytes.append_utf8(&mut out,"\x1b[?25h") }
-        } else if previous.cursor_x != -1 { bytes.append_utf8(&mut out,"\x1b[?25l") }
+            if previous_x < 0 { bytes.append_utf8(&mut out,"\x1b[?25h") }
+        } else if previous_x != -1 { bytes.append_utf8(&mut out,"\x1b[?25l") }
     }
 
     fn paint_windows(&self, previous: &Frame, term: &terminal.Session) -> bool {
@@ -1300,7 +1303,7 @@ impl Frame {
             if !term.win.vt {
                 if !self.paint_windows(&previous,&term) { return false }
                 return windows.cursor(&term.win,cmp.min<i32>(self.cursor_x,self.bounds.x+self.bounds.w-1),
-                    cmp.min<i32>(self.cursor_y,self.bounds.y+self.bounds.h-1),previous.cursor_x)
+                    cmp.min<i32>(self.cursor_y,self.bounds.y+self.bounds.h-1),previous.displayed_cursor_x())
             }
         }
         output.clear()
@@ -1456,6 +1459,7 @@ pub trait Backend {
     }
     fn scrollback_needs_full_screen(&self) -> bool { false }
     fn read_cursor(&mut self) -> Result<(i32,i32),string> { .Err("Backend cannot read the cursor.") }
+    fn set_cursor_visible(&mut self, visible: bool) -> Result<(),string> { .Err("Backend cannot change cursor visibility.") }
     fn move_to(&mut self, x: i32, y: i32) -> Result<(),string> { .Err("Backend cannot move the cursor.") }
     fn extend_lines(&mut self, rows: i32) -> Result<(),string> { .Err("Backend cannot append lines.") }
     fn shift_rows(&mut self, top: i32, bottom: i32, delta: i32) -> Result<(),string> { .Err("Backend cannot scroll a region.") }
@@ -1512,6 +1516,26 @@ impl Terminal<B> {
     }
 
     pub fn viewport_area(&self) -> Rect { self.area }
+
+    pub fn cursor_position(&mut self) -> Result<(i32,i32),string> { self.device.read_cursor() }
+
+    pub fn set_cursor_position(&mut self, x:i32, y:i32) -> Result<(),string> {
+        row := clamp(y,65535)
+        self.buffers[self.front].cursor_changed = true
+        self.device.move_to(clamp(x,65535),row)?
+        self.last_y = row
+        .Ok
+    }
+
+    pub fn show_cursor(&mut self) -> Result<(),string> {
+        self.buffers[self.front].cursor_changed = true
+        self.device.set_cursor_visible(true)
+    }
+
+    pub fn hide_cursor(&mut self) -> Result<(),string> {
+        self.buffers[self.front].cursor_changed = true
+        self.device.set_cursor_visible(false)
+    }
 
     pub fn size(&mut self) -> (i32,i32) { self.device.size() }
 
@@ -1629,7 +1653,10 @@ impl Terminal<B> {
     }
 
     pub fn backend(&self) -> &B from self { &self.device }
-    pub fn backend_mut(&mut self) -> &mut B from self { &mut self.device }
+    pub fn backend_mut(&mut self) -> &mut B from self {
+        self.buffers[self.front].cursor_changed = true
+        &mut self.device
+    }
     pub fn completed(&self) -> &Frame from self { &self.buffers[self.front] }
     pub fn invalidate(&mut self) { self.invalid = true }
 
@@ -1653,6 +1680,7 @@ impl Terminal<B> {
         back := 1-self.front
         self.buffers[back].reset_area(self.area)
         self.buffers[back].hide_cursor()
+        self.buffers[back].cursor_changed = false
         self.buffers[back].number = self.number
         .Ok
     }
@@ -1785,11 +1813,13 @@ impl Backend for LiveBackend {
     }
 
     fn read_cursor(&mut self) -> Result<(i32,i32),string> {
+        if !self.active { return .Err("The terminal is closed.") }
         if target_is("windows") { return windows.read_position(&self.session.win) }
         else { return posix.read_cursor(&mut self.session.unix) }
     }
 
     fn move_to(&mut self, x: i32, y: i32) -> Result<(),string> {
+        if !self.active { return .Err("The terminal is closed.") }
         if target_is("windows") {
             if !self.session.win.vt {
                 if windows.move_to(&self.session.win,x,y) { return .Ok }
@@ -1797,6 +1827,17 @@ impl Backend for LiveBackend {
             }
         }
         self.control(f"\x1b[{y+1};{x+1}H")
+    }
+
+    fn set_cursor_visible(&mut self, visible: bool) -> Result<(),string> {
+        if !self.active { return .Err("The terminal is closed.") }
+        if target_is("windows") {
+            if !self.session.win.vt {
+                if windows.set_cursor_visible(&self.session.win,visible) { return .Ok }
+                return .Err("Could not change console cursor visibility.")
+            }
+        }
+        self.control(if visible { "\x1b[?25h" } else { "\x1b[?25l" })
     }
 
     fn extend_lines(&mut self, rows: i32) -> Result<(),string> {
@@ -1853,7 +1894,7 @@ impl Backend for LiveBackend {
                 before = Frame::at(visible)
                 before.copy_region(&previous,visible,visible.x,visible.y)
             }
-            before.cursor_x = previous.cursor_x
+            before.cursor_x = previous.displayed_cursor_x()
             before.cursor_y = previous.cursor_y
             if self.draw_region(&cropped,&before,true) { return .Ok }
         }

@@ -42,6 +42,7 @@ fn snapshot(t: &tui.Terminal<test.TestBackend>, seed: i32, step: i32) {
 
 fn main() {
     windows := sys.arg_count() == 2 && sys.arg(1) == "--window"
+    direct := sys.arg_count() == 2 && sys.arg(1) == "--direct-cursor"
     for seed in 0..90 {
         w := 9+seed%3
         h := 5+seed%4
@@ -51,13 +52,28 @@ fn main() {
         assert(device.write_region(&backing).is_ok())
         device.set_cursor_position(seed%w,(seed/2)%h)
         mode := if seed%3 == 0 { tui.Viewport.Fixed(tui.Rect {x:2,y:1,w:w-4,h:h-2}) }
-            else if windows && seed%3 == 1 { tui.Viewport.Fullscreen }
+            else if (windows || direct) && seed%3 == 1 { tui.Viewport.Fullscreen }
             else { tui.Viewport.Inline(1+seed%(h+3)) }
         mut t := tui.Terminal<test.TestBackend>::with_viewport(move device,mode).unwrap()
         snapshot(&t,seed,0)
         for stage in 1..16 {
             mut step := stage
             match stage {
+                1 | 6 | 10 if direct => {
+                    x := (seed+stage)%w; y := (2*seed+stage)%h
+                    assert(t.set_cursor_position(x,y).is_ok())
+                    if stage == 6 { assert(t.hide_cursor().is_ok()) } else { assert(t.show_cursor().is_ok()) }
+                    assert(t.cursor_position().unwrap() == (x,y))
+                },
+                2 | 11 if direct => {
+                    t.backend_mut().resize(w+stage%3,h+stage%2)
+                    assert(t.autoresize().is_ok())
+                },
+                4 if direct => {
+                    t.backend_mut().set_cursor_position(2,1)
+                    assert(t.cursor_position().unwrap() == (2,1))
+                    assert(t.hide_cursor().is_ok())
+                },
                 1 | 3 | 5 | 9 if windows => {
                     if stage == 1 { t.backend_mut().resize(w+3,h+2) }
                     if stage == 5 { t.backend_mut().resize(w-1,h-1) }
@@ -89,6 +105,10 @@ fn main() {
                 m := t.window_size().unwrap()
                 (width,height) := t.size()
                 print(f"{width} {height} {m.columns} {m.rows} {m.pixel_width} {m.pixel_height}")
+            }
+            if direct {
+                p := t.cursor_position().unwrap()
+                print(f"{p.0} {p.1}")
             }
             snapshot(&t,seed,stage)
         }

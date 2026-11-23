@@ -13,7 +13,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna tecken, individuella kanter, justerade titlar, utfyllnad och skuggor. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
 | Övriga widgets | Clear och Fill på Frame, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, månadskalender med händelser och egna datumstilar, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. | Logotyp och maskot. |
 | Egna widgets och tester | Frame ritar egna och inbyggda widgets med `render_widget` och `render_stateful_widget`. Tillstånd kan uppdateras vid ritning med `run_stateful`. Egna backends kan anslutas till Terminal. TestBackend har skrollhistorik, markör, fem rensningslägen och regionskrollning. | Bredare testning av specialiserade terminalbackends. |
-| Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, markörstyrning från Frame, bildräknare, ANSI och Win32. Fast och inbäddad vyport, explicit storleksanpassning, terminalens tecken- och pixelmått, loggrader, rensning och regionskrollning. Återställning efter skrivfel och uteblivet markörsvar har provats. | Fler felprov vid delvis genomförd skrollning och täckning i nativ Windowskonsol. |
+| Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, markörstyrning från Frame och Terminal, bildräknare, ANSI och Win32. Fast och inbäddad vyport, explicit storleksanpassning, terminalens tecken- och pixelmått, loggrader, rensning och regionskrollning. Återställning efter skrivfel och uteblivet markörsvar har provats. | Separat spolning och byte av terminalbuffertar, marköråterställning för egna backends när terminalen släpps, fel mitt i skrollning och nativ Windowskonsol. |
 | Stabil Rust-integration | Jämförelseprogrammen använder den låsta Rustreferensen. Dunder-appar byggs offline. | Kontrollera Dunder-motsvarigheter till bekvämlighetsmakron, serialisering, cachning och backendval där dessa påverkar appens beteende. |
 | Effektivitet och plattformar | Tid, minne, allokeringar och faktiska terminalbyte för en widgetvy på macOS och Linux. Pseudoterminalprov på macOS och Linux ARM64/x86-64. Win32-prov under Wine. | Nativ Windows x64, fler arbetslaster med komplex layout, lägre kostnad för dynamiska färgvärden och paritet på fysisk x86-64. |
 
@@ -242,3 +242,23 @@ build/window-terminal build/rust/release/examples/viewports
 ```
 
 Den optimerade terminalen jämfördes även för oförändrad bild, en ändrad cell, rullning, storleksändring och full omritning. [Bildtid, terminalutdata, allokeringar och minne i 0.15.0](../benchmarks/buffers.md#ommätning-i-0150)
+
+## Markören mellan bilder i 0.16.0
+
+Testet jämför 1 440 förlopp mot Ratatui 0.30.2. Det läser celler, stilar, skrollhistorik, markör och vyport efter direkta marköranrop, storleksändringar och infogade rader. Ett separat terminalprov följer 13 steg i helskärm och i en fast vy som går utanför skärmens kant. En misslyckad ritfunktion lämnar den senaste lyckade bilden åtkomlig. Vid nästa lyckade ritning återställs markören även om alla celler är oförändrade. Efter ett muterbart backendlån skickar ritningen bildens önskade markörläge på nytt. I ANSI-läget kan det kosta ett extra synlighetskommando på sex byte. [Markörprovet](../tests/direct_cursor_terminal.ddr) · [Ratatuis terminal](https://github.com/ratatui/ratatui/blob/ratatui-v0.30.2/ratatui-core/src/terminal/cursor.rs)
+
+På macOS och Linux använder ett terminalprov ett svar som slutar på exakt den 65 536:e byten efter markörfrågan. Alla 65 530 inklistrade tecken framför svaret och tangenten efter svaret går att läsa i ordning. Om kön fylls av enbart tangentdata får appen ett fel. Efter att appen läst 128 tecken lyckas nästa markörfråga och återstoden av inklistringen finns kvar. På Win32 kontrolleras markörposition, storlek och synlighet mot konsolens egna uppgifter. Windowsprovet kördes under Wine. [Win32-prov](../tests/windows_console.ddr) · [Läsning av en bytekö](../benchmarks/language/byte_queue.ddr)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/direct_cursor_app.ddr -o build/direct
+dunder build --locked --offline tests/direct_cursor_terminal.ddr -o build/probe
+dunder build --locked --offline tests/viewport_reference.ddr -o build/views
+cargo build --release --locked --manifest-path benchmarks/reference/Cargo.toml --features terminal-oracle --example viewports --example terminal --target-dir build/rust
+build/views --direct-cursor | build/rust/release/examples/viewports --direct-cursor
+build/probe ./build/direct
+build/probe ./build/direct --queued-reply
+build/probe ./build/rust/release/examples/terminal
+```
+
+För samma 1 100 bilder finns median, p95, spridning, allokeringar och terminalbyte för de fem arbetslasterna. [Terminalmätning i 0.16.0](../benchmarks/buffers.md#ommätning-i-0160)

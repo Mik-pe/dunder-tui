@@ -184,10 +184,16 @@ pub fn append_rows(state: &mut State, rows: i32) -> bool {
 
 pub fn cursor(state: &State, x: i32, y: i32, previous_x: i32) -> bool {
     visible := x >= 0
+    if visible && !move_to(&state,x,y) { return false }
+    if previous_x != -2 && visible == (previous_x >= 0) { return true }
+    set_cursor_visible(&state,visible)
+}
+
+pub fn set_cursor_visible(state: &State, visible: bool) -> bool {
     unsafe {
-        if visible && !move_to(&state,x,y) { return false }
-        if previous_x != -2 && visible == (previous_x >= 0) { return true }
-        mut info: [u32;2] = [25,if visible { u32(1) } else { u32(0) }]
+        mut info: [u32;2] = [0;2]
+        if get_cursor(state.screen,addr(&mut info[0])) == 0 { return false }
+        info[1] = if visible { u32(1) } else { u32(0) }
         return cursor_info(state.screen,addr(&info[0])) != 0
     }
     false

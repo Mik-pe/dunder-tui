@@ -84,7 +84,7 @@ Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.15.0", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.16.0", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.
@@ -158,6 +158,19 @@ fn main() {
 ```
 
 Implementera `tui.Backend` med `size` och `present` för att ansluta en egen utmatning. `present` får aktuell och föregående bild. `frame.ansi_diff(&previous,&mut output)` skriver ändrade celler och markörkommandon till en bytebuffert. Med `try_draw` kan ritfunktionen returnera ett fel före utmatningen. Om backenden rapporterar ett skrivfel får den en hel bild nästa gång. `completed()` ger den senast lyckade bilden. Anropa `invalidate()` för att tvinga fram en hel omritning efter externa ändringar. [Backend med felprov](tests/suite.ddr) · [Testterminalens skrollhistorik](src/testing.ddr)
+
+### Styr markören mellan bilder
+
+Med en öppen `Terminal` kan du läsa och flytta den verkliga markören även utanför ritfunktionen. Koordinaterna börjar på noll och gäller hela terminalen. Förflyttning behåller markörens synlighet.
+
+```dunder
+(x,y) := terminal.cursor_position()?
+terminal.hide_cursor()?
+terminal.set_cursor_position(x,y+1)?
+terminal.show_cursor()?
+```
+
+Vid nästa lyckade ritning bestämmer bildens markör åter position och synlighet. En misslyckad ritfunktion behåller `completed()`. Egna backends kan implementera `read_cursor`, `move_to` och `set_cursor_visible`. Metoderna returnerar ett fel om backenden saknar stödet. [Körbart exempel](tests/direct_cursor_app.ddr)
 
 ## Rita i en del av terminalen
 
