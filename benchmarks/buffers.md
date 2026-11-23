@@ -45,3 +45,21 @@ dunder build --locked --offline --runtime-profile benchmarks/terminal.ddr -o bui
 build/terminal-profile --allocations
 cargo run --locked --release --manifest-path benchmarks/reference/Cargo.toml --features layout-cache,allocation-counts --example terminal_bench -- --allocations
 ```
+
+## Ommätning i 0.15.0
+
+Samma 1 100 bilder jämfördes efter ändringen av terminalens storleksanpassning. Tabellen visar median och p95 i mikrosekunder per bild i en pseudoterminal. I resultatfilen finns alla fem arbetslaster i minne och terminal, inklusive spridningen mellan körningarna. [Samtliga 60 mätserier](results/terminal-0.15.0.tsv)
+
+| Plattform | Oförändrad, Dunder | Oförändrad, Ratatui | Rullning, Dunder | Rullning, Ratatui | Full omritning, Dunder | Full omritning, Ratatui |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| macOS ARM64 | 99 / 107 | 94 / 101 | 164 / 178 | 169 / 180 | 172 / 182 | 188 / 202 |
+| Linux ARM64 | 100 / 108 | 98 / 105 | 140 / 152 | 131 / 141 | 141 / 151 | 142 / 154 |
+| Linux x86-64, översatt | 931 / 970 | 178 / 192 | 1243 / 1296 | 231 / 253 | 1307 / 1366 | 258 / 277 |
+
+Dunder skrev 4 833 954 byte till pseudoterminalen och Ratatui skrev 8 096 420. Allokeringsanropen inkluderar återanvändning av poolminne. RSS är medianen av tre körningars högsta residenta minne.
+
+| Plattform | Anrop Dunder | Anrop Ratatui | Begärda byte Dunder | Begärda byte Ratatui | RSS Dunder, KiB | RSS Ratatui, KiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| macOS ARM64 | 559 458 | 25 822 | 10 334 347 | 129 152 500 | 2 064 | 2 960 |
+| Linux ARM64 | 559 458 | 25 818 | 10 334 347 | 129 152 301 | 428 | 2 084 |
+| Linux x86-64, översatt | 559 458 | 25 817 | 10 334 347 | 129 152 800 | 6 184 | 5 664 |

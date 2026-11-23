@@ -1520,7 +1520,9 @@ impl Terminal<B> {
     pub fn autoresize(&mut self) -> Result<(),string> {
         match self.viewport { .Fixed(_) => { return .Ok }, _ => {}, }
         (w,h) := self.device.size()
-        self.fit(w,h)
+        screen := Rect { x:0,y:0,w:w,h:h }
+        if screen == self.screen { return .Ok }
+        self.fit(screen)
     }
 
     pub fn clear(&mut self) -> Result<(),string> {
@@ -1646,7 +1648,8 @@ impl Terminal<B> {
     }
 
     fn prepare(&mut self, w: i32, h: i32) -> Result<(),string> {
-        self.fit(w,h)?
+        screen := Rect { x:0,y:0,w:w,h:h }
+        if screen != self.screen { self.fit(screen)? }
         back := 1-self.front
         self.buffers[back].reset_area(self.area)
         self.buffers[back].hide_cursor()
@@ -1654,17 +1657,13 @@ impl Terminal<B> {
         .Ok
     }
 
-    fn fit(&mut self, w: i32, h: i32) -> Result<(),string> {
-        screen := Rect { x:0,y:0,w:w,h:h }
+    fn fit(&mut self, screen: Rect) -> Result<(),string> {
         if !valid_area(screen) { return .Err("Invalid terminal viewport size.") }
         viewport := self.viewport
         match viewport {
-            .Fullscreen if screen != self.screen => {
-                if self.screen.x < 0 { self.area = screen; self.screen = screen }
-                else { self.resize(screen)? }
-            },
-            .Inline(_) if screen != self.screen => { self.resize(screen)? },
-            _ => {},
+            .Fullscreen if self.screen.x < 0 => { self.area = screen; self.screen = screen },
+            .Fixed(_) => { self.screen = screen },
+            _ => { return self.resize(screen) },
         }
         .Ok
     }

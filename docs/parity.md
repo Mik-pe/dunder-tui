@@ -240,3 +240,5 @@ build/views --window | build/rust/release/examples/viewports --window
 build/window-terminal build/window-probe
 build/window-terminal build/rust/release/examples/viewports
 ```
+
+Den optimerade terminalen jämfördes även för oförändrad bild, en ändrad cell, rullning, storleksändring och full omritning. [Bildtid, terminalutdata, allokeringar och minne i 0.15.0](../benchmarks/buffers.md#ommätning-i-0150)
