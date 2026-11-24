@@ -75,29 +75,50 @@ fn cold() {
 
 fn main() {
     let modes = ["idle", "cell", "scroll", "resize", "repaint"];
-    let grid = bands();
-    match std::env::args().nth(1).as_deref() {
-        Some("--cold") => return cold(),
-        Some("--check") => {
-            for mode in modes {
-                for n in 0..220 {
-                    let mut buf = Buffer::empty(Rect::new(
-                        0,
-                        0,
-                        if mode == "resize" && n % 2 == 0 {
-                            80
-                        } else {
-                            96
-                        },
-                        24,
-                    ));
-                    draw(&grid, &mut buf, mode, n);
-                    println!("{}", widget_cells::snapshot(&buf));
-                }
+    if std::env::args().nth(1).as_deref() == Some("--cold") {
+        return cold();
+    }
+    let grid = if std::env::args().any(|a| a == "--weighted") {
+        use Constraint::{Fill, Length, Max, Min, Percentage, Ratio};
+        Layout::init_cache(NonZeroUsize::MIN);
+        Layout::horizontal([
+            Length(6),
+            Min(19),
+            Fill(2),
+            Min(10),
+            Max(8),
+            Min(7),
+            Fill(3),
+            Min(3),
+            Length(4),
+            Percentage(8),
+            Ratio(1, 12),
+            Length(2),
+        ])
+        .spacing(1)
+        .horizontal_margin(2)
+        .vertical_margin(1)
+    } else {
+        bands()
+    };
+    if std::env::args().any(|a| a == "--check") {
+        for mode in modes {
+            for n in 0..220 {
+                let mut buf = Buffer::empty(Rect::new(
+                    0,
+                    0,
+                    if mode == "resize" && n % 2 == 0 {
+                        80
+                    } else {
+                        96
+                    },
+                    24,
+                ));
+                draw(&grid, &mut buf, mode, n);
+                println!("{}", widget_cells::snapshot(&buf));
             }
-            return;
         }
-        _ => {}
+        return;
     }
     frames::run(&modes, |buf, mode, n| draw(&grid, buf, mode, n));
     #[cfg(feature = "allocation-counts")]

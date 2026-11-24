@@ -277,6 +277,32 @@ fn growth_cost(rule: &Constraint) -> i32 {
     match rule { .Min(_) => 1, .Ratio(_, _) => 2, .Percentage(_) => 3, .Length(_) => 4, .Max(_) => 5, .Fill(_) => 0, }
 }
 
+fn balance_neighbors(variables: &[]i32, room: f64, count: i32, sizes: &mut []f64) {
+    mut model := lp.Model::new(count)
+    mut total := lp.Row::new(-room)
+    for i in 0..variables.len {
+        here := variables[i]
+        if here >= 0 {
+            total.term(here, 1.0)
+            mut upper := lp.Row::new(sizes[i])
+            upper.term(here, -1.0)
+            model.add(move upper, .AtLeast, 0.0)
+        }
+        if i == 0 { continue }
+        previous := variables[i-1]
+        if previous < 0 && here < 0 { continue }
+        mut difference := lp.Row::new(0.0)
+        if here < 0 { difference.shift(sizes[i]) } else { difference.term(here, 1.0) }
+        if previous < 0 { difference.shift(-sizes[i-1]) } else { difference.term(previous, -1.0) }
+        model.add(move difference, .Equal, NEIGHBOR_SIZE)
+    }
+    model.add(move total, .Equal, 0.0)
+    widths := model.solve()
+    for i in 0..variables.len {
+        if variables[i] >= 0 { sizes[i] = widths[variables[i]] }
+    }
+}
+
 impl Layout {
     fn compressed(&self, extent: i32, gap: f64, lead: f64, available: f64, edges: &mut []i32) -> bool {
         n := self.rules.len
@@ -315,35 +341,77 @@ impl Layout {
         true
     }
 
-    fn level_minimums(&self, available: f64, extra: f64, flexible: i32, sizes: &mut []f64) -> bool {
+    fn fit_targets(&self, budget: f64, sizes: &mut []f64) {
+        mut room := budget
+        mut partial := 1
+        while partial < 5 {
+            mut target := 0.0
+            for i in 0..self.rules.len {
+                rule := &self.rules[i]
+                if weight(&rule, self.flex_mode) == 0.0 && shrink_rank(&rule) == partial { target += sizes[i] }
+            }
+            if target > room { break }
+            room -= target
+            partial += 1
+        }
+        mut variables: []i32 = []
+        variables.reserve(self.rules.len)
+        mut count := 0
+        mut last := 0
+        for i in 0..self.rules.len {
+            mut variable := -1
+            match &self.rules[i] {
+                .Min(n) => { sizes[i] = minimum_bound(n) },
+                .Fill(_) => { sizes[i] = 0.0 },
+                rule => {
+                    rank := shrink_rank(&rule)
+                    if rank > partial || (rank == partial && room == 0.0) { sizes[i] = 0.0 }
+                    else if rank == partial && sizes[i] > 0.0 { variable = count; last = i; count += 1 }
+                },
+            }
+            variables.push(variable)
+        }
+        if count == 0 { return }
+        if count == 1 { sizes[last] = room; return }
+        balance_neighbors(&variables, room, count, &mut sizes)
+    }
+
+    fn level_minimums(&self, available: f64, extra: f64, weights: f64, sizes: &mut []f64) {
         mut minimums := 0.0
+        mut min_count := 0
         for rule in &self.rules {
-            match rule { .Min(n) => { minimums += minimum_bound(n) }, _ => {}, }
+            match rule { .Min(n) => { minimums += minimum_bound(n); min_count += 1 }, _ => {}, }
         }
         crowded := minimums >= available
-        if !crowded && minimums > extra { return false }
+        if !crowded && minimums > extra {
+            self.fit_targets(available - minimums, &mut sizes)
+            return
+        }
         budget := if crowded { available } else { extra }
-        mut free := flexible
-        mut level := budget / f64(free)
+        pool := if crowded { f64(min_count) } else { weights }
+        mut free := pool
+        mut level := budget / free
         while free > 0 {
             mut pinned := 0
             mut reserved := 0.0
             for rule in &self.rules {
-                bound := match rule { .Min(n) => minimum_bound(n), .Fill(_) => 0.0, _ => { continue }, }
+                bound := match rule { .Min(n) => minimum_bound(n), _ => { continue }, }
                 if (crowded && bound < level) || (!crowded && bound > level) { pinned += 1; reserved += bound }
             }
-            if free == flexible - pinned { break }
-            free = flexible - pinned
-            level = if free == 0 { 0.0 } else { (budget - reserved) / f64(free) }
+            if free == pool - f64(pinned) { break }
+            free = pool - f64(pinned)
+            level = if free == 0.0 { 0.0 } else { (budget - reserved) / free }
         }
         for i in 0..self.rules.len {
-            bound := match &self.rules[i] {
-                .Min(n) => minimum_bound(n), .Fill(_) => 0.0,
-                _ => { if crowded { sizes[i] = 0.0 }; continue },
+            match &self.rules[i] {
+                .Min(n) => {
+                    bound := minimum_bound(n)
+                    sizes[i] = if crowded { math.min(level, bound) } else { math.max(level, bound) }
+                },
+                .Fill(w) => { sizes[i] = if crowded { 0.0 } else { level * f64(w) } },
+                _ => { if crowded { sizes[i] = 0.0 } },
             }
-            sizes[i] = if crowded { math.min(level, bound) } else { math.max(level, bound) }
         }
-        true
     }
 
     fn distribute_fills(&self, available: f64, extra: f64, flexible: i32, weights: f64, all_zero: bool,
@@ -355,9 +423,9 @@ impl Layout {
             portion := extra * (if all_zero { 1.0 } else { scale }) / weights
             match &self.rules[i] {
                 .Min(n) if portion < minimum_bound(n) => {
-                    if fixed_gaps && weights == f64(flexible) &&
-                            FILL_GROW + FILL_RATIO * (weights - 1.0) + 4.0 * NEIGHBOR_SIZE < LIMIT_SIZE {
-                        return self.level_minimums(available, extra, flexible, &mut sizes)
+                    if fixed_gaps && FILL_GROW + FILL_RATIO * (weights - 1.0) + 4.0 * NEIGHBOR_SIZE < LIMIT_SIZE {
+                        self.level_minimums(available, extra, weights, &mut sizes)
+                        return true
                     }
                     if flexible != 2 || weights > 3.0 || pinned >= 0 || extra < minimum_bound(n) { return false }
                     pinned = i

@@ -10,7 +10,7 @@ fn main() {
     let mode = args.next().unwrap();
     assert!(matches!(
         mode.as_str(),
-        "minimums" | "crowded" | "overlap" | "weighted" | "cached"
+        "minimums" | "crowded" | "overlap" | "weighted" | "sweep" | "cached"
     ));
     let setup = args.next().is_some_and(|arg| {
         assert_eq!(arg, "setup");
@@ -29,7 +29,7 @@ fn main() {
         .collect();
     rules[16] = Constraint::Min(19);
     rules[31] = Constraint::Min(12);
-    if mode == "weighted" {
+    if mode == "weighted" || mode == "sweep" {
         rules[10] = Constraint::Fill(3);
     }
     Layout::init_cache(NonZeroUsize::MIN);
@@ -37,12 +37,17 @@ fn main() {
         .spacing(if mode == "overlap" { -1 } else { 1 })
         .horizontal_margin(2)
         .vertical_margin(1);
-    let mut samples = Vec::with_capacity(25);
+    let measured = if mode == "sweep" { 191 } else { 25 };
+    let mut samples = Vec::with_capacity(measured);
     let mut sum = 0_u64;
     if !setup {
-        for i in 0..30 {
-            let w = (if mode == "crowded" { 79 } else { 160 })
-                + (if mode == "cached" { 0 } else { i % 3 });
+        for i in 0..measured + 5 {
+            let w = match mode.as_str() {
+                "sweep" => 35 + (i + 186) % 191,
+                "crowded" => 79 + i % 3,
+                "cached" => 160,
+                _ => 160 + i % 3,
+            } as u16;
             let start = Instant::now();
             let (areas, spacers) = grid.split_with_spacers(Rect::new(7, 11, w, 11));
             for r in areas.iter().chain(spacers.iter()) {
@@ -54,7 +59,11 @@ fn main() {
             }
         }
         samples.sort_unstable();
-        println!("{mode} {} {} {sum}", samples[12], samples[23]);
+        println!(
+            "{mode} {} {} {sum}",
+            samples[measured / 2],
+            samples[(measured * 95).div_ceil(100) - 1]
+        );
     }
     #[cfg(feature = "allocation-counts")]
     allocation::report();

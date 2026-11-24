@@ -14,6 +14,12 @@ fn bands() -> layout.Layout {
     layout.Layout::horizontal(width.repeat(12)).flex(.SpaceAround).spacing(2)
 }
 
+pub fn weighted_bands() -> layout.Layout {
+    layout.Layout::horizontal([.Length(6),.Min(19),.Fill(2),.Min(10),.Max(8),.Min(7),
+                               .Fill(3),.Min(3),.Length(4),.Percentage(8),.Ratio(1,12),.Length(2)])
+        .spacing(1).margin(2,1).cache_capacity(1)
+}
+
 fn draw(mixer: &mut Mixer, frame: &mut tui.Frame, mode: string, n: i32) {
     view := frame.area()
     regions := mixer.bands.arrange(view).regions()
@@ -56,9 +62,16 @@ fn cold() {
 
 fn main() {
     if sys.arg_count() == 2 && sys.arg(1) == "--cold" { cold(); return }
-    mut mixer := Mixer { bands: bands(), colors: [.Cyan,.Green,.Yellow,.Magenta] }
+    mut weighted := false
+    mut check := false
+    for i in 1..sys.arg_count() {
+        if sys.arg(i) == "--weighted" { weighted = true }
+        if sys.arg(i) == "--check" { check = true }
+    }
+    grid := if weighted { weighted_bands() } else { bands() }
+    mut mixer := Mixer { bands: move grid, colors: [.Cyan,.Green,.Yellow,.Magenta] }
     modes: []string = ["idle","cell","scroll","resize","repaint"]
-    if sys.arg_count() == 2 && sys.arg(1) == "--check" {
+    if check {
         for mode in &modes { for n in 0..220 {
             mut frame := tui.Frame::new(if mode == "resize" && n % 2 == 0 { 80 } else { 96 }, 24)
             draw(&mut mixer, &mut frame, mode, n)

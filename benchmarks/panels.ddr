@@ -22,18 +22,20 @@ pub fn rules(n: i32) -> []lay.Constraint {
 fn main() -> i32 {
     if sys.arg_count() < 2 || sys.arg_count() > 3 { return 2 }
     mode := sys.arg(1)
-    if mode != "minimums" && mode != "crowded" && mode != "overlap" && mode != "weighted" && mode != "cached" { return 2 }
+    if mode != "minimums" && mode != "crowded" && mode != "overlap" && mode != "weighted" && mode != "sweep" && mode != "cached" { return 2 }
     mut spec := rules(32)
-    if mode == "weighted" { spec[10] = .Fill(3) }
+    if mode == "weighted" || mode == "sweep" { spec[10] = .Fill(3) }
     mut grid := lay.Layout::horizontal(move spec).spacing(if mode == "overlap" { -1 } else { 1 }).margin(2,1).cache_capacity(1)
     mut samples: []i64 = []
-    samples.reserve(25)
+    measured := if mode == "sweep" { 191 } else { 25 }
+    samples.reserve(measured)
     mut sum: i64 = 0
     if sys.arg_count() == 3 && sys.arg(2) != "setup" { return 2 }
-    count := if sys.arg_count() == 3 { 0 } else { 30 }
+    count := if sys.arg_count() == 3 { 0 } else { measured + 5 }
     clock := time.MonotonicClock.Raw
     for i in 0..count {
-        w := (if mode == "crowded" { 79 } else { 160 }) + (if mode == "cached" { 0 } else { i % 3 })
+        w := if mode == "sweep" { 35 + (i+186)%191 }
+             else { (if mode == "crowded" { 79 } else { 160 }) + (if mode == "cached" { 0 } else { i % 3 }) }
         start := clock.now_ns()
         out := grid.arrange(tui.Rect::new(7,11,w,11)).regions()
         for r in &out.areas { sum += i64(r.x + 3*r.w) }
@@ -43,7 +45,7 @@ fn main() -> i32 {
     }
     if count > 0 {
         array.sort<i64>(&mut samples)
-        print(f"{mode} {samples[12]} {samples[23]} {sum}")
+        print(f"{mode} {samples[measured/2]} {samples[(measured*95+99)/100-1]} {sum}")
     }
     0
 }

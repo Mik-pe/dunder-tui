@@ -2,7 +2,7 @@
 
 ## Dela upp ett fönster i 32 paneler
 
-Fem arbetslaster jämför ny bredd, trängda paneler, överlapp, olika fyllnadsvikter och återanvändning av samma bredd. [Layouttid, allokeringar, minne och körinstruktioner](panels.md)
+Proven omfattar ny bredd, trängda paneler, överlapp, olika fyllnadsvikter och återanvändning av samma bredd. För den viktade layouten jämförs även alla 191 bredder från 35 till 225 kolumner och fem arbetslaster i en pseudoterminal. [Layouttid, allokeringar, minne och körinstruktioner](panels.md)
 
 ## Skicka färdiga bildbuffertar till terminalen
 

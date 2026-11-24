@@ -2,6 +2,10 @@
 
 Bygg interaktiva terminalappar i Dunder för macOS, Linux och Windows. Skriv en funktion som ritar appens tillstånd och en som tar emot tangenter. Biblioteket sköter inmatning, storleksändringar och återställning av terminalen. Vid omritning skickas bara ändrade celler.
 
+## Kärnmilstolpen
+
+En fristående app ska bygga offline med den släppta Dunder-kompilatorn och fungera i en riktig terminal på macOS och Linux ARM64. Milstolpen omfattar buffert och celldiff, layout, färg och Unicode-text, listor och tabeller, tangentbord, storleksändring, återställning och galleriets tio animationer. Den viktade mixern ska ge samma celler och stilar som Ratatui 0.30.2 och ha p95 under 16,7 ms i fem terminalarbetslaster vid 96 × 24 och 80 × 24. Kontrollerna körs lokalt. Linux x86-64 redovisas med körsätt. [Mätresultat](benchmarks/panels.md#den-viktade-mixern-i-terminalen) · [Verifiering och kvarvarande skillnader](docs/parity.md#verifiering-av-kärnmilstolpen) · [Språkfynd](docs/dunder.md)
+
 ## Prova
 
 Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i en terminal för att öppna animationsgalleriet. Paketet innehåller även `kustlinjer`, `signal`, `bokhylla`, `avganger`, `loggbok`, `almanacka`, `maskot` och `korlista`. [Ladda ner för macOS, Linux eller Windows](https://github.com/Mik-pe/dunder-tui/releases/latest)

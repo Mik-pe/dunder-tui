@@ -274,6 +274,15 @@ fn mismatch(
     {
         (true, true) => b'~',
         (false, true)
+            if rules.contains(&Constraint::Fill(0))
+                && rules
+                    .iter()
+                    .any(|r| matches!(r, Constraint::Fill(w) if *w > 0))
+                && rules.iter().any(|r| matches!(r, Constraint::Min(_))) =>
+        {
+            b'Z'
+        }
+        (false, true)
             if flex == Flex::SpaceEvenly
                 && rules.first().is_some_and(|first| {
                     matches!(first, Constraint::Length(_)) && rules.iter().all(|r| r == first)
@@ -296,6 +305,18 @@ fn mismatch(
         }
         _ => b'!',
     }
+}
+
+#[test]
+fn mixed_zero_weight_reference_can_miss_a_better_split() {
+    let mut records = include_str!("../fixtures/zero-fill-0.30.2.tsv").lines();
+    let dunder = LayoutCase::parse(records.next().unwrap());
+    let observed = LayoutCase::parse(records.next().unwrap());
+    assert!(records.next().is_none());
+    assert!(dunder.optimal());
+    assert!(!observed.optimal());
+    assert_eq!(dunder.compare(&observed.actual), b'Z');
+    assert_eq!(observed.compare(&dunder.actual), b'!');
 }
 
 #[test]
@@ -494,6 +515,7 @@ fn checked_batches(lines: &[String], batch_size: usize, isolated_attempts: usize
         let interruption = match output.stdout.last() {
             Some(b'U') => Some("ObjectiveUnbounded"),
             Some(b'N') => Some("nonoptimal equal-length split"),
+            Some(b'Z') => Some("nonoptimal mixed zero-weight split"),
             _ => None,
         };
         if interruption.is_some() {
@@ -560,7 +582,7 @@ fn main() {
                 let verdict = compare(&line);
                 out.write_all(&[verdict]).unwrap();
                 out.flush().unwrap();
-                if matches!(verdict, b'U' | b'N') {
+                if matches!(verdict, b'U' | b'N' | b'Z') {
                     break;
                 }
             }
@@ -580,13 +602,17 @@ fn main() {
         Some("--minimums") => 6048,
         Some("--many-panels") => 1284,
         Some("--mixed-panels" | "--recorded-panels") => 84,
+        Some("--weighted-resize") => 382,
+        Some("--weighted-limits") => 2880,
         Some("--benchmark-panels") => 15,
         Some("--minimum-levels") => 2880,
         _ => 14_096,
     };
     assert_eq!(lines.len(), expected);
     let results = match mode.as_deref() {
-        Some("--minimums") | Some("--minimum-levels") => checked_batches(&lines, 64, 1),
+        Some("--minimums" | "--minimum-levels") => checked_batches(&lines, 64, 1),
+        Some("--weighted-resize") => checked_batches(&lines, 8, 4),
+        Some("--weighted-limits") => checked_batches(&lines, 64, 4),
         Some("--many-panels") => checked_batches(&lines, 8, 4),
         Some("--recorded-panels") => {
             let records = include_str!("../fixtures/mixed-panels-0.30.2.tsv");

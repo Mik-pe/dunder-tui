@@ -1,0 +1,274 @@
+platform	path	workload	implementation	p50_ns	p95_ns	checksum	bytes_per_frame	terminal_bytes	allocations	requested_bytes	peak_rss_kib	trial
+arm64-macos	layout	sweep	after	1167	19333	931854			11700	749113	1600	1
+arm64-macos	layout	sweep	ref	3722875	5865834	928392			706464	605604343	5904	1
+arm64-macos	layout	sweep	before	10609375	28805042	931530			954346	216746173	2368	1
+arm64-macos	pty	idle	ref	22000	22750		19	3330672	252123	81259454	3152	1
+arm64-macos	pty	cell	ref	21958	22667		26	3330672	252123	81259454	3152	1
+arm64-macos	pty	scroll	ref	59916	67125		4453	3330672	252123	81259454	3152	1
+arm64-macos	pty	resize	ref	366208	431750		4570	3330672	252123	81259454	3152	1
+arm64-macos	pty	repaint	ref	68125	95667		6022	3330672	252123	81259454	3152	1
+arm64-macos	pty	idle	before	4000	4000		0	2331370	318275	42357002	1968	1
+arm64-macos	pty	cell	before	6000	7000		7	2331370	318275	42357002	1968	1
+arm64-macos	pty	scroll	before	39000	56000		3410	2331370	318275	42357002	1968	1
+arm64-macos	pty	resize	before	512000	605000		3411	2331370	318275	42357002	1968	1
+arm64-macos	pty	repaint	before	38000	42000		3732	2331370	318275	42357002	1968	1
+arm64-macos	pty	idle	after	4000	5000		0	2331370	1791	434738	1808	1
+arm64-macos	pty	cell	after	6000	7000		7	2331370	1791	434738	1808	1
+arm64-macos	pty	scroll	after	38000	43000		3410	2331370	1791	434738	1808	1
+arm64-macos	pty	resize	after	30000	35000		3411	2331370	1791	434738	1808	1
+arm64-macos	pty	repaint	after	38000	44000		3732	2331370	1791	434738	1808	1
+arm64-macos	layout	weighted	before	12109959	12202291	172040			144768	32544845	2384	1
+arm64-macos	layout	weighted	after	1208	1250	172040			348	28885	1584	1
+arm64-macos	layout	weighted	ref	4018625	4251958	172040			109342	103029343	5360	1
+arm64-macos	pty	idle	ref	22417	23125		19	3330672				2
+arm64-macos	pty	cell	ref	21958	22500		26	3330672				2
+arm64-macos	pty	scroll	ref	59167	65292		4453	3330672				2
+arm64-macos	pty	resize	ref	331542	389417		4570	3330672				2
+arm64-macos	pty	repaint	ref	70792	77250		6022	3330672				2
+arm64-macos	pty	idle	before	4000	4000		0	2331370				2
+arm64-macos	pty	cell	before	6000	7000		7	2331370				2
+arm64-macos	pty	scroll	before	35000	39000		3410	2331370				2
+arm64-macos	pty	resize	before	409000	558000		3411	2331370				2
+arm64-macos	pty	repaint	before	38000	43000		3732	2331370				2
+arm64-macos	pty	idle	after	4000	4000		0	2331370				2
+arm64-macos	pty	cell	after	6000	7000		7	2331370				2
+arm64-macos	pty	scroll	after	39000	44000		3410	2331370				2
+arm64-macos	pty	resize	after	31000	35000		3411	2331370				2
+arm64-macos	pty	repaint	after	38000	43000		3732	2331370				2
+arm64-macos	layout	weighted	before	12121375	12277875	172040						2
+arm64-macos	layout	weighted	after	1208	1250	172040						2
+arm64-macos	layout	weighted	ref	3970959	4439291	172040						2
+arm64-macos	layout	sweep	after	1167	18916	931854						2
+arm64-macos	layout	sweep	ref	3680041	5623458	928408						2
+arm64-macos	layout	sweep	before	10667208	28568667	931530						2
+arm64-macos	layout	weighted	before	12119125	12194708	172040						3
+arm64-macos	layout	weighted	after	1209	1250	172040						3
+arm64-macos	layout	weighted	ref	3887208	4231542	172040						3
+arm64-macos	layout	sweep	after	1208	18959	931854						3
+arm64-macos	layout	sweep	ref	3347542	5223875	928390						3
+arm64-macos	layout	sweep	before	10639000	29014000	931530						3
+arm64-macos	pty	idle	ref	21542	22416		19	3330672				3
+arm64-macos	pty	cell	ref	21333	22042		26	3330672				3
+arm64-macos	pty	scroll	ref	60542	66000		4453	3330672				3
+arm64-macos	pty	resize	ref	330958	392750		4570	3330672				3
+arm64-macos	pty	repaint	ref	75167	81875		6022	3330672				3
+arm64-macos	pty	idle	before	4000	4000		0	2331370				3
+arm64-macos	pty	cell	before	6000	7000		7	2331370				3
+arm64-macos	pty	scroll	before	38000	45000		3410	2331370				3
+arm64-macos	pty	resize	before	432000	591000		3411	2331370				3
+arm64-macos	pty	repaint	before	37000	43000		3732	2331370				3
+arm64-macos	pty	idle	after	4000	5000		0	2331370				3
+arm64-macos	pty	cell	after	6000	7000		7	2331370				3
+arm64-macos	pty	scroll	after	39000	44000		3410	2331370				3
+arm64-macos	pty	resize	after	31000	38000		3411	2331370				3
+arm64-macos	pty	repaint	after	38000	44000		3732	2331370				3
+arm64-macos	layout	sweep	after	1167	18958	931854						4
+arm64-macos	layout	sweep	ref	3631833	5297959	928426						4
+arm64-macos	layout	sweep	before	10677958	28660250	931530						4
+arm64-macos	pty	idle	ref	22375	23042		19	3330672				4
+arm64-macos	pty	cell	ref	21833	22292		26	3330672				4
+arm64-macos	pty	scroll	ref	60000	67542		4453	3330672				4
+arm64-macos	pty	resize	ref	331542	394291		4570	3330672				4
+arm64-macos	pty	repaint	ref	75500	82000		6022	3330672				4
+arm64-macos	pty	idle	before	4000	4000		0	2331370				4
+arm64-macos	pty	cell	before	6000	7000		7	2331370				4
+arm64-macos	pty	scroll	before	38000	43000		3410	2331370				4
+arm64-macos	pty	resize	before	435000	557000		3411	2331370				4
+arm64-macos	pty	repaint	before	38000	42000		3732	2331370				4
+arm64-macos	pty	idle	after	4000	4000		0	2331370				4
+arm64-macos	pty	cell	after	6000	7000		7	2331370				4
+arm64-macos	pty	scroll	after	39000	44000		3410	2331370				4
+arm64-macos	pty	resize	after	30000	34000		3411	2331370				4
+arm64-macos	pty	repaint	after	38000	42000		3732	2331370				4
+arm64-macos	layout	weighted	before	12130916	12206916	172040						4
+arm64-macos	layout	weighted	after	1209	1250	172040						4
+arm64-macos	layout	weighted	ref	3900000	4208125	172040						4
+arm64-macos	pty	idle	ref	21000	21584		19	3330672				5
+arm64-macos	pty	cell	ref	20916	21625		26	3330672				5
+arm64-macos	pty	scroll	ref	60083	66666		4453	3330672				5
+arm64-macos	pty	resize	ref	333375	396208		4570	3330672				5
+arm64-macos	pty	repaint	ref	74375	82375		6022	3330672				5
+arm64-macos	pty	idle	before	4000	4000		0	2331370				5
+arm64-macos	pty	cell	before	6000	7000		7	2331370				5
+arm64-macos	pty	scroll	before	41000	46000		3410	2331370				5
+arm64-macos	pty	resize	before	443000	556000		3411	2331370				5
+arm64-macos	pty	repaint	before	38000	43000		3732	2331370				5
+arm64-macos	pty	idle	after	4000	4000		0	2331370				5
+arm64-macos	pty	cell	after	6000	7000		7	2331370				5
+arm64-macos	pty	scroll	after	39000	45000		3410	2331370				5
+arm64-macos	pty	resize	after	30000	35000		3411	2331370				5
+arm64-macos	pty	repaint	after	38000	44000		3732	2331370				5
+arm64-macos	layout	weighted	before	12099125	12165833	172040						5
+arm64-macos	layout	weighted	after	1209	1250	172040						5
+arm64-macos	layout	weighted	ref	3587416	3984042	172040						5
+arm64-macos	layout	sweep	after	1208	19125	931854						5
+arm64-macos	layout	sweep	ref	3172458	4972292	928330						5
+arm64-macos	layout	sweep	before	10623625	28983292	931530						5
+arm64-linux	layout	sweep	after	1208	20500	931854			11700	749113	748	1
+arm64-linux	layout	sweep	ref	3555292	5672542	928426			705988	604059439	3520	1
+arm64-linux	layout	sweep	before	11290916	30709542	931530			954346	216746173	1452	1
+arm64-linux	pty	idle	ref	24750	26708		19	3330672	252085	81216879	2096	1
+arm64-linux	pty	cell	ref	24750	26708		26	3330672	252085	81216879	2096	1
+arm64-linux	pty	scroll	ref	43500	46125		4453	3330672	252085	81216879	2096	1
+arm64-linux	pty	resize	ref	349375	409750		4570	3330672	252085	81216879	2096	1
+arm64-linux	pty	repaint	ref	58000	61334		6022	3330672	252085	81216879	2096	1
+arm64-linux	pty	idle	before	3833	3917		0	2331370	318275	42357002	444	1
+arm64-linux	pty	cell	before	8000	11917		7	2331370	318275	42357002	444	1
+arm64-linux	pty	scroll	before	26625	27666		3410	2331370	318275	42357002	444	1
+arm64-linux	pty	resize	before	453667	567042		3411	2331370	318275	42357002	444	1
+arm64-linux	pty	repaint	before	26333	27125		3732	2331370	318275	42357002	444	1
+arm64-linux	pty	idle	after	3792	3834		0	2331370	1791	434738	128	1
+arm64-linux	pty	cell	after	8000	13125		7	2331370	1791	434738	128	1
+arm64-linux	pty	scroll	after	26625	27959		3410	2331370	1791	434738	128	1
+arm64-linux	pty	resize	after	18166	20375		3411	2331370	1791	434738	128	1
+arm64-linux	pty	repaint	after	26458	27292		3732	2331370	1791	434738	128	1
+arm64-linux	layout	weighted	before	12781875	12869167	172040			144768	32544845	1452	1
+arm64-linux	layout	weighted	after	1250	1625	172040			348	28885	812	1
+arm64-linux	layout	weighted	ref	5387208	6039375	172040			109336	102986831	3476	1
+arm64-linux	pty	idle	ref	24167	26417		19	3330672				2
+arm64-linux	pty	cell	ref	24250	26500		26	3330672				2
+arm64-linux	pty	scroll	ref	45167	47333		4453	3330672				2
+arm64-linux	pty	resize	ref	333250	388750		4570	3330672				2
+arm64-linux	pty	repaint	ref	59250	62250		6022	3330672				2
+arm64-linux	pty	idle	before	3833	4750		0	2331370				2
+arm64-linux	pty	cell	before	8041	9875		7	2331370				2
+arm64-linux	pty	scroll	before	26459	27375		3410	2331370				2
+arm64-linux	pty	resize	before	459292	565542		3411	2331370				2
+arm64-linux	pty	repaint	before	26458	27750		3732	2331370				2
+arm64-linux	pty	idle	after	3833	3875		0	2331370				2
+arm64-linux	pty	cell	after	7958	10000		7	2331370				2
+arm64-linux	pty	scroll	after	26250	27291		3410	2331370				2
+arm64-linux	pty	resize	after	18292	20458		3411	2331370				2
+arm64-linux	pty	repaint	after	26417	27334		3732	2331370				2
+arm64-linux	layout	weighted	before	12859708	12988916	172040						2
+arm64-linux	layout	weighted	after	1500	1583	172040						2
+arm64-linux	layout	weighted	ref	4545791	5012791	172040						2
+arm64-linux	layout	sweep	after	1208	19292	931854						2
+arm64-linux	layout	sweep	ref	3675042	5401458	928272						2
+arm64-linux	layout	sweep	before	11354625	30411500	931530						2
+arm64-linux	layout	weighted	before	12745125	12956542	172040						3
+arm64-linux	layout	weighted	after	1208	1250	172040						3
+arm64-linux	layout	weighted	ref	3979250	4444042	172040						3
+arm64-linux	layout	sweep	after	1167	19042	931854						3
+arm64-linux	layout	sweep	ref	5047000	7088667	928352						3
+arm64-linux	layout	sweep	before	11213667	31391625	931530						3
+arm64-linux	pty	idle	ref	25750	27166		19	3330672				3
+arm64-linux	pty	cell	ref	24791	25709		26	3330672				3
+arm64-linux	pty	scroll	ref	42833	46292		4453	3330672				3
+arm64-linux	pty	resize	ref	347917	415833		4570	3330672				3
+arm64-linux	pty	repaint	ref	57417	58708		6022	3330672				3
+arm64-linux	pty	idle	before	3833	3959		0	2331370				3
+arm64-linux	pty	cell	before	8042	12292		7	2331370				3
+arm64-linux	pty	scroll	before	26625	27583		3410	2331370				3
+arm64-linux	pty	resize	before	475500	568583		3411	2331370				3
+arm64-linux	pty	repaint	before	26416	27250		3732	2331370				3
+arm64-linux	pty	idle	after	3833	4792		0	2331370				3
+arm64-linux	pty	cell	after	8042	10209		7	2331370				3
+arm64-linux	pty	scroll	after	26417	27292		3410	2331370				3
+arm64-linux	pty	resize	after	18167	20958		3411	2331370				3
+arm64-linux	pty	repaint	after	26375	27250		3732	2331370				3
+arm64-linux	layout	sweep	after	1250	20334	931854						4
+arm64-linux	layout	sweep	ref	3780750	5671875	928340						4
+arm64-linux	layout	sweep	before	11516167	30553167	931530						4
+arm64-linux	pty	idle	ref	25667	26791		19	3330672				4
+arm64-linux	pty	cell	ref	25792	27375		26	3330672				4
+arm64-linux	pty	scroll	ref	46417	49916		4453	3330672				4
+arm64-linux	pty	resize	ref	351417	416125		4570	3330672				4
+arm64-linux	pty	repaint	ref	60916	63583		6022	3330672				4
+arm64-linux	pty	idle	before	3833	3958		0	2331370				4
+arm64-linux	pty	cell	before	8083	14042		7	2331370				4
+arm64-linux	pty	scroll	before	26583	27708		3410	2331370				4
+arm64-linux	pty	resize	before	456750	572666		3411	2331370				4
+arm64-linux	pty	repaint	before	26417	29708		3732	2331370				4
+arm64-linux	pty	idle	after	3833	4791		0	2331370				4
+arm64-linux	pty	cell	after	8125	13584		7	2331370				4
+arm64-linux	pty	scroll	after	26625	27625		3410	2331370				4
+arm64-linux	pty	resize	after	18292	20834		3411	2331370				4
+arm64-linux	pty	repaint	after	26584	27417		3732	2331370				4
+arm64-linux	layout	weighted	before	12886875	13176875	172040						4
+arm64-linux	layout	weighted	after	1209	1375	172040						4
+arm64-linux	layout	weighted	ref	4295542	4594166	172040						4
+arm64-linux	pty	idle	ref	25166	29208		19	3330672				5
+arm64-linux	pty	cell	ref	24750	28916		26	3330672				5
+arm64-linux	pty	scroll	ref	45209	50333		4453	3330672				5
+arm64-linux	pty	resize	ref	346792	405042		4570	3330672				5
+arm64-linux	pty	repaint	ref	59458	63708		6022	3330672				5
+arm64-linux	pty	idle	before	3833	3958		0	2331370				5
+arm64-linux	pty	cell	before	8084	13708		7	2331370				5
+arm64-linux	pty	scroll	before	26583	27625		3410	2331370				5
+arm64-linux	pty	resize	before	506625	583083		3411	2331370				5
+arm64-linux	pty	repaint	before	26500	29958		3732	2331370				5
+arm64-linux	pty	idle	after	3833	4833		0	2331370				5
+arm64-linux	pty	cell	after	8083	10125		7	2331370				5
+arm64-linux	pty	scroll	after	26459	27542		3410	2331370				5
+arm64-linux	pty	resize	after	18000	20875		3411	2331370				5
+arm64-linux	pty	repaint	after	26333	27541		3732	2331370				5
+arm64-linux	layout	weighted	before	12757750	13790292	172040						5
+arm64-linux	layout	weighted	after	1250	1250	172040						5
+arm64-linux	layout	weighted	ref	5017167	5440250	172040						5
+arm64-linux	layout	sweep	after	1167	19292	931854						5
+arm64-linux	layout	sweep	ref	4040542	6213875	928498						5
+arm64-linux	layout	sweep	before	11242458	30248500	931530						5
+x86_64-linux	layout	sweep	after	12709	170084	931854			11700	749123	4284	1
+x86_64-linux	layout	sweep	ref	5126083	7866250	928338			700610	574123919	7064	1
+x86_64-linux	layout	sweep	before	80516083	214864000	931530			954346	216746177	5036	1
+x86_64-linux	pty	idle	ref	36667	41375		19	3330672	251780	81795919	5544	1
+x86_64-linux	pty	cell	ref	36625	40542		26	3330672	251780	81795919	5544	1
+x86_64-linux	pty	scroll	ref	76666	83125		4453	3330672	251780	81795919	5544	1
+x86_64-linux	pty	resize	ref	472166	545375		4570	3330672	251780	81795919	5544	1
+x86_64-linux	pty	repaint	ref	100166	118667		6022	3330672	251780	81795919	5544	1
+x86_64-linux	pty	idle	before	33750	36709		0	2331370	318275	42357002	5848	1
+x86_64-linux	pty	cell	before	36334	41625		7	2331370	318275	42357002	5848	1
+x86_64-linux	pty	scroll	before	139292	145542		3410	2331370	318275	42357002	5848	1
+x86_64-linux	pty	resize	before	3239000	4414083		3411	2331370	318275	42357002	5848	1
+x86_64-linux	pty	repaint	before	153042	163458		3732	2331370	318275	42357002	5848	1
+x86_64-linux	pty	idle	after	29166	33375		0	2331370	1791	434738	5736	1
+x86_64-linux	pty	cell	after	36041	40875		7	2331370	1791	434738	5736	1
+x86_64-linux	pty	scroll	after	138375	145833		3410	2331370	1791	434738	5736	1
+x86_64-linux	pty	resize	after	129208	143333		3411	2331370	1791	434738	5736	1
+x86_64-linux	pty	repaint	after	153167	171792		3732	2331370	1791	434738	5736	1
+x86_64-linux	layout	weighted	before	91347625	92651875	172040			144768	32544845	5040	1
+x86_64-linux	layout	weighted	after	13166	18834	172040			348	28895	4136	1
+x86_64-linux	layout	weighted	ref	5027333	5607708	172040			109350	103616943	6936	1
+x86_64-linux	pty	idle	ref	36375	39292		19	3330672				2
+x86_64-linux	pty	cell	ref	35916	40417		26	3330672				2
+x86_64-linux	pty	scroll	ref	72375	81917		4453	3330672				2
+x86_64-linux	pty	resize	ref	432500	508750		4570	3330672				2
+x86_64-linux	pty	repaint	ref	97916	120459		6022	3330672				2
+x86_64-linux	pty	idle	before	29083	29958		0	2331370				2
+x86_64-linux	pty	cell	before	35833	40125		7	2331370				2
+x86_64-linux	pty	scroll	before	139542	146292		3410	2331370				2
+x86_64-linux	pty	resize	before	3191542	4414875		3411	2331370				2
+x86_64-linux	pty	repaint	before	152833	159583		3732	2331370				2
+x86_64-linux	pty	idle	after	29125	32084		0	2331370				2
+x86_64-linux	pty	cell	after	35917	40625		7	2331370				2
+x86_64-linux	pty	scroll	after	137750	144750		3410	2331370				2
+x86_64-linux	pty	resize	after	130000	141667		3411	2331370				2
+x86_64-linux	pty	repaint	after	153584	162792		3732	2331370				2
+x86_64-linux	layout	weighted	before	91434875	92851708	172040						2
+x86_64-linux	layout	weighted	after	13083	13167	172040						2
+x86_64-linux	layout	weighted	ref	5883334	6774750	172040						2
+x86_64-linux	layout	sweep	after	12792	172917	931854						2
+x86_64-linux	layout	sweep	ref	4445791	6686708	928438						2
+x86_64-linux	layout	sweep	before	79428208	213918709	931530						2
+x86_64-linux	layout	weighted	before	91508833	93056709	172040						3
+x86_64-linux	layout	weighted	after	13500	15917	172040						3
+x86_64-linux	layout	weighted	ref	5271417	5768625	172040						3
+x86_64-linux	layout	sweep	after	12792	176917	931854						3
+x86_64-linux	layout	sweep	ref	4322958	6290125	928438						3
+x86_64-linux	layout	sweep	before	79602791	220138458	931530						3
+x86_64-linux	pty	idle	ref	37209	40542		19	3330672				3
+x86_64-linux	pty	cell	ref	37750	40084		26	3330672				3
+x86_64-linux	pty	scroll	ref	71417	83375		4453	3330672				3
+x86_64-linux	pty	resize	ref	423958	494584		4570	3330672				3
+x86_64-linux	pty	repaint	ref	97292	117583		6022	3330672				3
+x86_64-linux	pty	idle	before	29083	30250		0	2331370				3
+x86_64-linux	pty	cell	before	36000	37417		7	2331370				3
+x86_64-linux	pty	scroll	before	140000	146625		3410	2331370				3
+x86_64-linux	pty	resize	before	3457959	4742167		3411	2331370				3
+x86_64-linux	pty	repaint	before	152209	159416		3732	2331370				3
+x86_64-linux	pty	idle	after	29125	30708		0	2331370				3
+x86_64-linux	pty	cell	after	35958	39542		7	2331370				3
+x86_64-linux	pty	scroll	after	138625	143958		3410	2331370				3
+x86_64-linux	pty	resize	after	135416	153834		3411	2331370				3
+x86_64-linux	pty	repaint	after	153375	167916		3732	2331370				3
