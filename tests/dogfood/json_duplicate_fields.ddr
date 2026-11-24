@@ -1,0 +1,15 @@
+capability stdio
+import std.json
+
+@derive(Decode)
+struct Record { width: u16 }
+
+fn main() {
+    for value in ["{\"width\":4}","{\"width\":4,\"width\":9}",
+                  "{\"width\":4,\"w\\u0069dth\":9}","{\"width\":4,\"future\":1}"] {
+        match json.from_str<Record>(value) {
+            .Ok(record) => { print(record.width) },
+            .Err(_) => { print("error") },
+        }
+    }
+}

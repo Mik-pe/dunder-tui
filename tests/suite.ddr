@@ -1575,3 +1575,66 @@ impl tui.Backend for BufferedOutput {
     bad.encode_json(&mut invalid)
     assert(invalid.finish_bytes().unwrap_err().message == message)
 }
+
+@test fn saved_cells_keep_empty_symbols_and_independent_wide_neighbors() {
+    mut frame := tui.Frame::at(tui.Rect::new(4,7,5,1))
+    frame.text(frame.area(),"界 ",tui.ink(.Green))
+    assert(frame.raw_cell_at(4,7).unwrap().symbol == .Some("界"))
+    assert(frame.raw_cell_at(5,7).unwrap().symbol.is_none())
+    assert(frame.raw_cell_at(6,7).unwrap().symbol == .Some(" "))
+    mut cell := tui.RawCell::empty()
+    cell.symbol = .Some("")
+    cell.modifier = tui.Modifiers { bits:0x8001 }
+    assert(frame.set_raw_cell(5,7,&cell))
+    cell.symbol = .Some("Z")
+    cell.skip = true
+    cell.diff_option = .AlwaysUpdate
+    assert(frame.set_raw_cell(7,7,&cell))
+    assert(!frame.set_raw_cell(9,7,&cell))
+    saved := json.to_string(&frame).unwrap()
+    mut loaded := json.from_str<tui.Frame>(saved).unwrap()
+    assert(loaded.raw_cell_at(4,7).unwrap().symbol == .Some("界"))
+    tail := loaded.raw_cell_at(5,7).unwrap()
+    assert(tail.symbol == .Some("") && tail.modifier.contains(.Bold) && tail.modifier.bits == 0x8001)
+    assert(loaded.diff_positions(&frame).unwrap().len == 1)
+    assert(loaded.set_diff_option(7,7,.None))
+    assert(loaded.raw_cell_at(7,7).unwrap().skip && loaded.diff_positions(&frame).unwrap().len == 0)
+    assert(loaded.set_diff_option(7,7,.ForcedWidth(2)))
+    assert(loaded.raw_cell_at(7,7).unwrap().skip && loaded.diff_positions(&frame).unwrap().len == 1)
+    before := json.to_string(&loaded).unwrap()
+    mut bad := tui.RawCell::empty()
+    bad.diff_option = .ForcedWidth(0)
+    assert(!loaded.set_raw_cell(7,7,&bad) && json.to_string(&bad).is_err())
+    assert(json.to_string(&loaded).unwrap() == before)
+}
+
+@test fn serialized_buffer_validates_shape_before_allocating_a_frame() {
+    invalid := "{\"area\":[0,0,65535,65535],\"content\":[]}"
+    raw := json.from_str<tui.Buffer>(invalid).unwrap()
+    assert(raw.area.cell_count() == 4294836225 && raw.content.len == 0)
+    assert(raw.to_frame().is_err() && json.from_str<tui.Frame>(invalid).is_err())
+    assert(json.from_str<tui.Frame>("{\"area\":[65535,65535,0,0],\"content\":[]}").is_ok())
+}
+
+@test fn imported_symbols_compare_equal_across_cell_writers() {
+    for symbol in ["\u{301}","\u{301}\u{302}","\u{200b}"," ","","界","e\u{301}","x","abc"] {
+        for mode in 0..4 {
+            mut frame := tui.Frame::new(5,1)
+            if mode == 0 { if !frame.set_cell(0,0,symbol,tui.plain()) { continue } }
+            else if mode == 1 { frame.paint_cells(tui.Rect::new(0,0,1,1),symbol,tui.plain()) }
+            else if mode == 2 { assert(frame.set_cell_with_width(0,0,symbol,1,tui.plain())) }
+            else { frame.text(frame.area(),symbol,tui.plain()) }
+            loaded := json.from_str<tui.Frame>(json.to_string(&frame).unwrap()).unwrap()
+            assert(loaded.diff_positions(&frame).unwrap().len == 0)
+            assert(frame.diff_positions(&loaded).unwrap().len == 0)
+            if mode == 0 {
+                previous := tui.Frame::new(0,0)
+                mut before: []u8 = []
+                mut after: []u8 = []
+                frame.ansi_diff(&previous,&mut before)
+                loaded.ansi_diff(&previous,&mut after)
+                assert(bytes.decode(&before).unwrap() == bytes.decode(&after).unwrap())
+            }
+        }
+    }
+}

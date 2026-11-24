@@ -88,3 +88,9 @@ På Mac gav profilerna 18 777 allokeringsanrop och 1 105 036 begärda byte för 
 I diagramvyn på macOS ARM64 tog full omritning till en pseudoterminal 100 / 112 µs med Dunder och 149 / 167 µs med Ratatui (p50 / p95). På Linux ARM64 blev tiderna 71 / 77 respektive 125 / 136 µs. På översatt Linux x86-64 tog samma bild 690 / 723 µs med Dunder och 208 / 241 µs med Ratatui. Varje redovisad tid är medianen från sju körningar efter två uppvärmningar. [Samtliga fem arbetslaster, byte och spridning](results/themes-dunder-0.12.0-local.tsv)
 
 På varje plattform skrev diagramvyn 4 113 141 terminalbyte med Dunder och 7 939 285 med Ratatui under 1 100 bilder. Mac-profilerna gav 18 777 allokeringsanrop och 1 105 036 begärda byte för Dunder, respektive 31 122 och 1 748 330 för Ratatui. Medianen för högsta RSS över fem körningar var 2 144 och 2 704 KiB. Bildtiden gäller ritning från redan förberedda stilar.
+
+## Efter stöd för sparade bildbuffertar
+
+För en celländring i pseudoterminalen på macOS ARM64 blev bildtiden 71 / 88 µs i Dunder och 51 / 95 µs i Ratatui (p50 / p95). Spridningen i de sju körningarnas medianer var 33–73 respektive 45–80 µs. På Linux ARM64 tog samma ändring 37 / 91 respektive 46 / 96 µs. På översatt Linux x86-64 var skillnaden större, 290 / 604 respektive 76 / 185 µs. Båda Linuxgästerna kördes lokalt på Macen. [Alla fem arbetslaster och körningarnas spridning](results/buffer-json-dunder-0.12.0-local.tsv)
+
+De 1 100 bilderna gav 4 113 141 byte till terminalen med Dunder och 7 939 285 med Ratatui på varje värd. På Macen gjorde Dunder 18 777 allokeringsanrop och begärde 1 105 036 byte. Ratatui gjorde 31 122 anrop och begärde 1 748 370 byte. Medianen för högsta RSS i fem processer var 2 144 respektive 2 880 KiB. Tidtagningen omfattar ritning av en förberedd diagramvy. JSON-inläsning sker utanför den ritloopen.

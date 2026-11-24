@@ -130,6 +130,18 @@ En egen widget kan ha metoden `render(&self, frame: &mut tui.Frame, area: tui.Re
 
 En skugga kan dämpa bakgrundsfärgen eller rita ett eget tecken i varje skuggcell. Med `import tui.block as box` kan du lägga `panel.shadow = .Some(box.Shadow::symbol("░"))` på ett block. För att tona ned en valfri yta direkt kan du använda `frame.dim_cells(area, tui.plain())`. [Skuggor med färg, förskjutning och egna effekter](tests/shadow_cells.ddr)
 
+## Spara och återställ en bild
+
+På `main` kan du spara en ritad bild med Dunders standardbibliotek. Inkludera `import std.json` i appen.
+
+```dunder
+sparad := json.to_string(&frame).unwrap()
+mut bild := json.from_str<tui.Frame>(sparad).unwrap()
+bild.text(bild.area(), "Ansluten", tui.ink(.Green))
+```
+
+Bilden innehåller ytans origo, storlek, symboler, färger och diffregler. Markör och bildnummer hör till terminalen. Med `raw_cell_at(x,y)` kan du läsa ett enskilt sparat cellvärde, även bakom ett brett tecken. [Dataformat och körbara prov](docs/parity.md#sparade-celler-och-bildbuffertar)
+
 ## Dela terminalyta med en annan ritare
 
 Sätt en cellregel efter att du ritat innehållet. Med `.Skip` kan exempelvis en bildvisare behålla sina pixlar i terminalen. `.AlwaysUpdate` ritar tillbaka appens tecken även när föregående bild innehöll samma tecken. När en cell återgår till `.None` skriver biblioteket åter dess aktuella innehåll.

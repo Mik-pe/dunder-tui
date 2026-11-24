@@ -42,3 +42,10 @@ pub fn pair<T: json.Decode + Storable>(doc: &json.Doc, node: i32, names: &[]stri
     b := json.decode<T>(&doc, f[1])?
     .Ok((move a, move b))
 }
+
+pub fn reject(out: &mut json.Writer, reason: string) {
+    if !out.failed {
+        out.error = reason.clone()
+        out.failed = true
+    }
+}

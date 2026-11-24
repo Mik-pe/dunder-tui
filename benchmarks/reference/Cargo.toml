@@ -25,6 +25,10 @@ name = "themes"
 required-features = ["theme-oracle"]
 
 [[example]]
+name = "buffer_json"
+required-features = ["theme-oracle"]
+
+[[example]]
 name = "layout_json"
 required-features = ["theme-oracle"]
 

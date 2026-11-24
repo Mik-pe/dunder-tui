@@ -50,8 +50,8 @@ pub fn read_flags(doc: &json.Doc, node: i32) -> Result<i32, json.JsonError> {
     .Ok(mask)
 }
 
-pub fn write_flags(out: &mut json.Writer, field: string, mask: i32) {
-    if mask == 0 { return }
+pub fn flag_names(mask: i32) -> string {
+    if mask == 0 { return "" }
     mut value: []u8 = []
     for i in 0..9 {
         if mask.bit_and(i32(1).shl(i)) == 0 { continue }
@@ -68,6 +68,11 @@ pub fn write_flags(out: &mut json.Writer, field: string, mask: i32) {
             if extra.shr(shift) != 0 { value.push(digits[extra.shr(shift).bit_and(15)]) }
         }
     }
+    bytes.decode(&value).unwrap()
+}
+
+pub fn write_flags(out: &mut json.Writer, field: string, mask: i32) {
+    if mask == 0 { return }
     out.key(field)
-    out.string(bytes.decode(&value).unwrap())
+    out.string(flag_names(mask))
 }

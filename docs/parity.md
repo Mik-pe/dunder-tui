@@ -26,7 +26,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | `layout-cache` | `Layout.cache_capacity` styr antal sparade uppdelningar. Layoutproven återanvänder tidigare storlekar efter regelbyten. |
 | `scrolling-regions` | Backendens regionskrollning och reservvägen med radmatning jämförs genom skrollhistorik och terminalutdata. |
 | `macros` | Konstruktorer för spann, rader, text och layout finns. Jämförelse per dokumenterad makroform återstår. |
-| `serde` | Färger, stilar, layout med alla dess fem fält, rektanglar, positioner, storlekar och förskjutningar läses och skrivs med `std.json`. Bland annat text, celler, widgettillstånd och justering återstår. |
+| `serde` | Färger, stilar, attribut, celler, diffregler, buffertar, layouter och geometri läses och skrivs med `std.json`. Bland annat widgettillstånd, testbackend, paletter och justering återstår. Referensens `Span`, `Line` och `Text` saknar Serde-format. |
 | `crossterm`, `crossterm_0_28`, `crossterm_0_29`, `termina`, `termion`, `termwiz` | Dunder använder POSIX och Win32 direkt. Den låsta Crossterm-referensen och de faktiska terminalproven täcker bland annat ritning, markör och återställning. Skillnader mellan referensens övriga backendval är öppna. |
 | `std`, `portable-atomic`, `default` | Dunder bygger offline med sitt standardbibliotek. `portable-atomic` gäller referensens mål utan atomära typer. `default` väljer kalender, Crossterm, layoutcache, makron och understrykningsfärg. |
 
@@ -69,6 +69,27 @@ ref=build/rust/release/examples/themes
 build/themes build/theme-input >build/actual
 diff -u build/expected build/actual
 dunder run --locked --offline tests/theme_terminal.ddr
+```
+
+### Sparade celler och bildbuffertar
+
+Med Ratatuis `serde` och `underline-color` jämförs 4 520 fall. Provet läser 536 enskilda celler, 517 attributuppsättningar, 16 diffregler och 744 buffertar. Ytterligare 2 700 bildpar jämför ordningen på de ändrade cellerna. I sju prov ritar båda biblioteken färgad text, sparar bilden, läser tillbaka den och skriver på nästa rad. Båda bilderna jämförs byte för byte i JSON. [Dunderprov](../tests/buffer_json.ddr) · [Ratatui och indata](../benchmarks/reference/examples/buffer_json.rs)
+
+En orörd cell, ett explicit mellanslag och en tom sträng behåller var sitt JSON-värde. Orörda celler och mellanslag med samma stil och diffregel är lika vid omritning. Proven täcker också 16-bitars attributmasker, färgade understreck, celler bakom breda symboler, `ForcedWidth` och det äldre fältet `skip`. `tui.Buffer` kan läsa en rå bild med avvikande cellantal. För att bli en ritbar `Frame` måste antalet stämma med ytan och koordinaterna rymmas i terminalen. Formatet utan understrykningsfält återstår att jämföra.
+
+Samtliga 4 520 fall gav samma svar på macOS ARM64, Linux ARM64, översatt Linux x86-64 och Win64 under Wine. I terminalprovet byter en sparad rad från `SAVED 01` till `SAVED 02`. Den nya bildens fjärde cell innehåller ett utropstecken med `skip`, så det tidigare E:et står kvar på skärmen. [Unix-terminal](../tests/buffer_json_terminal.ddr) · [Win32-konsol](../tests/windows_console.ddr)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/buffer_json.ddr -o build/cells
+cargo build --locked --offline --release --manifest-path benchmarks/reference/Cargo.toml \
+  --features theme-oracle --example buffer_json --target-dir build/rust
+ref=build/rust/release/examples/buffer_json
+"$ref" --cases >build/cell-input
+"$ref" <build/cell-input >build/expected-cells
+build/cells build/cell-input >build/actual-cells
+cmp build/expected-cells build/actual-cells
+dunder run --locked --offline tests/buffer_json_terminal.ddr
 ```
 
 ### Sparade layouter och geometri

@@ -1,0 +1,36 @@
+capability unsafe, stdio, process
+
+import sys
+import ..src.tui
+import .saved_buffer
+import .terminal_driver as driver
+
+fn child() -> i32 {
+    mut terminal := tui.open(.Fullscreen).unwrap()
+    mut frames := saved_buffer.snapshots()
+    for i in 0..frames.len {
+        if terminal.draw(&mut frames[i],saved_buffer.paint).is_err() { return 1 }
+        match terminal.backend_mut().next(3000) { .Press(_) => {}, _ => { return 1 }, }
+    }
+    0
+}
+
+fn exercise(master: i32, slave: i32, screen: &mut driver.Screen) -> bool {
+    unsafe {
+        if !driver.wait_for(master,&mut screen,1," SAVED 01","") { return false }
+        if !driver.send(master,"n") || !driver.wait_for(master,&mut screen,1," SAVED 02","") { return false }
+        return driver.send(master,"q") && driver.wait_for(master,&mut screen,0,"","\x1b[?1049l")
+    }
+    false
+}
+
+fn main() -> i32 {
+    if sys.arg_count() == 2 { return child() }
+    unsafe {
+        if driver.test_with_args(sys.arg(0),["draw"],12,4,exercise) {
+            print("Restored buffer, skipped cell and terminal restoration OK")
+            return 0
+        }
+    }
+    1
+}

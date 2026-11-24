@@ -1,0 +1,18 @@
+import std.json
+import ..src.tui
+
+pub fn snapshots() -> []tui.Frame {
+    mut original := tui.Frame::at(tui.Rect::new(3,4,8,1))
+    original.text(original.area(),"SAVED 01",tui.ink(.Green))
+    mut updated := json.from_str<tui.Frame>(json.to_string(&original).unwrap()).unwrap()
+    updated.text(updated.area(),"SAV!D 02",tui.ink(.Magenta))
+    mut masked := updated.raw_cell_at(6,4).unwrap()
+    masked.skip = true
+    assert(updated.set_raw_cell(6,4,&masked))
+    [move original, json.from_str<tui.Frame>(json.to_string(&updated).unwrap()).unwrap()]
+}
+
+pub fn paint(frame: &mut tui.Frame, saved: &mut tui.Frame) {
+    area := frame.area()
+    frame.copy_region(&saved,saved.area(),area.x+1,area.y+1)
+}
