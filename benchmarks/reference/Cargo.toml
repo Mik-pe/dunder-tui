@@ -166,3 +166,7 @@ required-features = ["theme-oracle"]
 [[example]]
 name = "line_input"
 required-features = ["theme-oracle"]
+
+[[example]]
+name = "shape_cells"
+required-features = ["theme-oracle"]

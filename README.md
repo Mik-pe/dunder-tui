@@ -388,6 +388,26 @@ p.circle(0.0,0.0,3.0,.Yellow)
 view.finish(&mut frame)
 ```
 
+En form kan sparas och ritas flera gånger. Implementera `plot.Shape` om din app behöver en egen form. Till exempel kan en markör för en mätpunkt bestå av en cirkel och ett lodrätt streck.
+
+```dunder
+struct Matpunkt { x:f64, y:f64 }
+
+impl plot.Shape for Matpunkt {
+    fn draw(&self, p:&mut plot.Painter) {
+        p.draw(&plot.Circle::new(self.x,self.y,1.0,.Yellow))
+        p.draw(&plot.Line::new(self.x,0.0,self.x,self.y,.Cyan))
+    }
+}
+
+fn visa(view:&mut plot.Plot, frame:&mut tui.Frame, area:tui.Rect) {
+    mark := Matpunkt { x:2.0, y:3.0 }
+    view.paint(&mut frame,area,fn[mark](p:&mut plot.Painter) { p.draw(&mark) })
+}
+```
+
+`Points::new(&coords,color)` lånar koordinaterna. Samma punktmängd kan skickas till `p.draw(&points)` i flera bildrutor. Det finns också färdiga former för fyllda linjer, rektanglar och kartor. [Interaktivt kartexempel](examples/kustlinjer/main.ddr)
+
 För en kurva kan du skicka hela följden av koordinatpar till `p.polyline(&points,.Cyan)`. Använd `p.filled_polyline(&points,0.0,.Blue)` för att fylla ned till y = 0. En ensam punkt syns också. Om du vill lägga en widget mellan två grupper av former kan du skriva den första gruppen med `p.finish(&mut frame)`, rita widgeten och sedan fortsätta med samma koordinatsystem.
 
 Med `tui.chart` delar flera dataserier samma axlar. Varje serie kan ritas som punkter, linje, staplar eller fylld yta. För en interaktiv app kan du spara diagrammet i tillståndet och ändra `graph.datasets[0].data` eller axelgränserna före nästa ritning.

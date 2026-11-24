@@ -1,0 +1,67 @@
+capability stdio
+import ..src.tui
+import ..src.plot
+import ..src.text as rich
+import std.json
+
+struct Beacon { longitude: f64 }
+impl plot.Shape for Beacon {
+    fn draw(&self, p: &mut plot.Painter) {
+        p.draw(&plot.Line::new(self.longitude,0.0,self.longitude,2.0,.Indexed(49)))
+        p.point(6.0,2.0,.Red)
+    }
+}
+
+fn seed(a: tui.Rect, flags: bool) -> tui.Frame {
+    mut tile := tui.RawCell::from_char(`.`)
+    _ := tile.set_style(tui.ink(.Green).background(.Blue).underline_rgb(0x040506).bold())
+    mut buffer := tui.Buffer::filled(a,&tile)
+    for y in a.y..a.bottom() {
+        buffer.set_string(a.x+1,y,"界",tui.ink(.Red))
+        buffer.set_string(a.x+4,y,"🦀",tui.plain().italic())
+        if flags {
+            _ := buffer.get_mut(a.x+2,y).set_skip(true)
+            _ := buffer.get_mut(a.x+3,y).set_diff_option(.Skip)
+            _ := buffer.get_mut(a.x+4,y).set_diff_option(.AlwaysUpdate)
+            _ := buffer.get_mut(a.x+6,y).set_diff_option(.ForcedWidth(2))
+        }
+    }
+    buffer.to_frame().unwrap()
+}
+
+fn main() {
+    coords: [](f64,f64) = [(6.0,0.0),(3.0,1.0),(2.0,2.0),(1.0,2.0),(0.0,0.0)]
+    a := tui.Rect::new(3,2,7,3)
+    for flags in [false,true] {
+        for area in [a,tui.Rect::new(5,2,4,3),tui.Rect::new(9,4,1,1),tui.Rect::new(5,3,0,1)] {
+            markers: []plot.Marker = [.Dot,.Block,.Bar,.Braille,.HalfBlock,.Quadrant,.Sextant,.Octant,
+                    .Custom(`*`),.Custom(`界`),.Custom(` `),.Custom(`\u{301}`),.Custom(`\t`),.Custom(`\0`)]
+            for marker in &markers {
+                mut frame := seed(a,flags)
+                mut view := plot.Plot::new([0.0,6.0],[0.0,2.0])
+                view.marker = marker
+                mut calls := 0
+                for phase in 0..4 {
+                    view.background = if phase%2 == 0 { .Default } else { tui.rgb(0x172349) }
+                    draw := fn[phase,&coords,&mut calls](p:&mut plot.Painter) {
+                        calls += 1
+                        if phase == 0 { return }
+                        p.draw(&plot.Points::new(&coords,.Cyan))
+                        if phase >= 2 {
+                            p.layer()
+                            p.draw(&Beacon { longitude:2.0 })
+                        }
+                        if phase == 3 {
+                            p.set_marker(.Block)
+                            p.point(3.0,1.0,.Blue)
+                            p.label(0.0,0.0,rich.Line::raw("界Z").styled(tui.ink(.Yellow)))
+                        }
+                    }
+                    view.paint(&mut frame,area,&mut draw)
+                    assert(calls == (if area.is_empty() { 0 } else { phase+1 }))
+                    print(json.to_string(&frame.to_buffer()).unwrap())
+                }
+            }
+        }
+    }
+}

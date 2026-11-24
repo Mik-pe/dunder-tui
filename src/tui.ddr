@@ -2133,6 +2133,20 @@ impl Frame {
         }
     }
 
+    pub fn paint_cell_rune(&mut self, x: i32, y: i32, symbol: rune, style: &Style) {
+        if !self.bounds.contains(x,y) { return }
+        if width.columns(i32(symbol)) != 1 {
+            self.paint_cells(Rect { x:x,y:y,w:1,h:1 },symbol.str(),style)
+            return
+        }
+        i := self.index(x,y)
+        if self.glyphs[i] < 0 { self.split_wide_cell(x,y) }
+        else if self.glyphs[i] >= WIDE { self.split_wide_cell(x+1,y) }
+        brush := self.composite(self.styles[i],&style)
+        self.styles[i] = brush
+        self.glyphs[i] = if symbol == ` ` { WRITTEN_SPACE } else { i32(symbol)-32 }
+    }
+
     pub fn paint_rune(&mut self, bounds: Rect, value: rune, style: Style) {
         if width.columns(i32(value)) != 1 { self.paint_cells(bounds,value.str(),style); return }
         area := bounds.intersection(self.bounds)

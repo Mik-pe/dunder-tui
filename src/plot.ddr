@@ -5,11 +5,64 @@ import .plot_symbols as symbols
 import .coastline_data as coasts
 import std.math as math
 import std.cmp as cmp
-import std.array as array
-import .width
 
 pub enum Marker { Dot, Block, Bar, Braille, HalfBlock, Quadrant, Sextant, Octant, Custom(rune) }
 pub enum MapResolution { Low, High }
+
+pub trait Shape { fn draw(&self, painter: &mut Painter) }
+
+pub struct Points { coords: &[](f64,f64), color: tui.Color }
+impl Points {
+    pub fn new(coords: &[](f64,f64), color: tui.Color) -> Self from coords {
+        Self { coords:&coords, color:color }
+    }
+}
+impl Shape for Points {
+    fn draw(&self, painter: &mut Painter) { painter.points(&self.coords,self.color) }
+}
+
+pub struct Line { x1: f64, y1: f64, x2: f64, y2: f64, color: tui.Color }
+impl Line {
+    pub fn new(x1: f64, y1: f64, x2: f64, y2: f64, color: tui.Color) -> Self {
+        Self { x1:x1, y1:y1, x2:x2, y2:y2, color:color }
+    }
+}
+impl Shape for Line {
+    fn draw(&self, painter: &mut Painter) { painter.line(self.x1,self.y1,self.x2,self.y2,self.color) }
+}
+
+pub struct FilledLine { x1: f64, y1: f64, x2: f64, y2: f64, fill_to_y: f64, color: tui.Color }
+impl FilledLine {
+    pub fn new(x1: f64, y1: f64, x2: f64, y2: f64, fill_to_y: f64, color: tui.Color) -> Self {
+        Self { x1:x1, y1:y1, x2:x2, y2:y2, fill_to_y:fill_to_y, color:color }
+    }
+}
+impl Shape for FilledLine {
+    fn draw(&self, painter: &mut Painter) { painter.filled_line(self.x1,self.y1,self.x2,self.y2,self.fill_to_y,self.color) }
+}
+
+pub struct Rectangle { x: f64, y: f64, width: f64, height: f64, color: tui.Color }
+impl Rectangle {
+    pub fn new(x: f64, y: f64, width: f64, height: f64, color: tui.Color) -> Self {
+        Self { x:x, y:y, width:width, height:height, color:color }
+    }
+}
+impl Shape for Rectangle {
+    fn draw(&self, painter: &mut Painter) { painter.rectangle(self.x,self.y,self.width,self.height,self.color) }
+}
+
+pub struct Circle { x: f64, y: f64, radius: f64, color: tui.Color }
+impl Circle {
+    pub fn new(x: f64, y: f64, radius: f64, color: tui.Color) -> Self { Self { x:x, y:y, radius:radius, color:color } }
+}
+impl Shape for Circle {
+    fn draw(&self, painter: &mut Painter) { painter.circle(self.x,self.y,self.radius,self.color) }
+}
+
+pub struct Map { resolution: MapResolution, color: tui.Color }
+impl Shape for Map {
+    fn draw(&self, painter: &mut Painter) { painter.map(self.resolution,self.color) }
+}
 
 impl MapResolution {
     fn data(self) -> string { match self { .Low => coasts.low(), .High => coasts.high(), } }
@@ -48,12 +101,18 @@ impl Plot {
 
     pub fn begin(&mut self, frame: &mut tui.Frame, bounds: tui.Rect) -> &mut Painter from self {
         area := self.block.render(&mut frame, bounds.intersection(frame.area()))
-        frame.apply_style(area, tui.plain().background(self.background))
+        frame.apply_cell_style(area, tui.plain().background(self.background))
         self.painter.reset(area, self.x_bounds, self.y_bounds, self.marker)
         &mut self.painter
     }
 
     pub fn finish(&mut self, frame: &mut tui.Frame) { self.painter.finish(&mut frame) }
+
+    pub fn paint(&mut self, frame: &mut tui.Frame, bounds: tui.Rect, draw: &mut FnMut(&mut Painter)) {
+        painter := self.begin(&mut frame, bounds)
+        if !painter.area.is_empty() { draw(&mut painter) }
+        self.finish(&mut frame)
+    }
 
     pub fn render<S>(&mut self, frame: &mut tui.Frame, bounds: tui.Rect, state: &S, draw: fn(&mut Painter,&S)) {
         painter := self.begin(&mut frame, bounds)
@@ -63,6 +122,8 @@ impl Plot {
 }
 
 impl Painter {
+    pub fn draw<S: Shape>(&mut self, shape: &S) { shape.draw(&mut self) }
+
     fn new() -> Self {
         Self { area: tui.Rect {x:0,y:0,w:0,h:0}, xs: [0.0,0.0], ys: [0.0,0.0],
             marker: .Braille, dx: 2, dy: 4, mask: [], upper: [], lower: [],
@@ -346,12 +407,7 @@ impl Painter {
         self.touched.clear()
     }
 
-    fn order_layer(&mut self) {
-        match self.marker { .Custom(c) if width.columns(i32(c)) > 1 => { array.sort<i32>(&mut self.touched) }, _ => {}, }
-    }
-
     pub fn layer(&mut self) {
-        self.order_layer()
         for j in 0..self.touched.len {
             i := self.touched[j]
             mut fg := 0; mut bg := -1
@@ -361,26 +417,24 @@ impl Painter {
         self.clear_layer()
     }
 
-    fn write_cell(&self, frame: &mut tui.Frame, i: i32, symbol:rune, fg:i32, bg:i32, right:i32) {
+    fn write_cell(&self, frame: &mut tui.Frame, i: i32, symbol:rune, fg:i32, bg:i32) {
         x := self.area.x+i%self.area.w
         y := self.area.y+i/self.area.w
-        if bg < 0 { frame.styled_rune(x,y,right,symbol,&self.inks[fg]) }
+        if bg < 0 { frame.paint_cell_rune(x,y,symbol,&self.inks[fg]) }
         else {
             both := self.inks[fg].background(self.palette[bg])
-            frame.styled_rune(x,y,right,symbol,&both)
+            frame.paint_cell_rune(x,y,symbol,&both)
         }
     }
 
     pub fn finish(&mut self, frame: &mut tui.Frame) {
-        right := self.area.right()
         for j in 0..self.drawn.len {
-            self.write_cell(&mut frame,self.drawn[j],self.symbols[j],self.foreground[j],self.background[j],right)
+            self.write_cell(&mut frame,self.drawn[j],self.symbols[j],self.foreground[j],self.background[j])
         }
-        self.order_layer()
         for i in &self.touched {
             mut fg := 0; mut bg := -1
             symbol := self.symbol(i,&mut fg,&mut bg)
-            self.write_cell(&mut frame,i,symbol,fg,bg,right)
+            self.write_cell(&mut frame,i,symbol,fg,bg)
         }
         if !self.area.is_empty() {
             for label in &self.labels {

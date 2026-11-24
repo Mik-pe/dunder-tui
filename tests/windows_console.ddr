@@ -111,7 +111,10 @@ fn draw(frame: &mut tui.Frame, probe: &Probe) {
     mut coast := plot.Plot::new([0.0,1.0],[0.0,1.0])
     coast.marker = .HalfBlock
     p := coast.begin(&mut frame,tui.Rect {x:0,y:6,w:3,h:1})
-    p.paint(0,0,.LightCyan); p.paint(0,1,.Blue)
+    upper: [](f64,f64) = [(0.0,1.0)]
+    lower: [](f64,f64) = [(0.0,0.0)]
+    p.draw(&plot.Points::new(&upper,.LightCyan))
+    p.draw(&plot.Points::new(&lower,.Blue))
     coast.finish(&mut frame)
     mut d := graphs.Dataset::new([(0.0,0.0),(1.0,1.0)])
     d.graph_type = .Line; d.marker = .Custom(`*`); d.style = tui.ink(.Yellow)

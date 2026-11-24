@@ -1,0 +1,11 @@
+struct Samples { values: &[]i32 }
+
+fn first(samples: &Samples) -> i32 { samples.values[0] }
+fn visit(read: &Fn() -> i32) -> i32 { read() }
+
+fn main() {
+    values: []i32 = [17,23]
+    samples := Samples { values:&values }
+    assert(first(&samples) == 17)
+    assert(visit(fn[&samples]() -> i32 { first(&samples) }) == 17)
+}

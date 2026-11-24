@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Låna en vy i en synkron callback
+
+En form som lånar en koordinatlista fungerar som argument till `draw(&shape)`. I Dunder 0.12.1 får en synkron closure med `fn[&shape]` E4003 om formen innehåller samma lån. Det räcker med en post med ett lånat arrayfält för att återskapa felet. Ritscenen kan i dag fånga koordinatlistan och konstruera formen inne i callbacken. [Minimiprov](../tests/dogfood/compiler/capture_borrowed_shape.ddr) · [Körbar ritscen](../tests/shape_cells.ddr)
+
 ## Gå igenom koordinatpar i en ritloop
 
 I Dunder 0.12.1 gav både `for (x,y) in pairs` och en explicit `match pairs.next()` 506 881 allokeringsanrop över 253 440 koordinater. Med `advance()` och läsning av två heltalsfält blev det ett anrop för hela processen. Alla tre gav summan 14 952 960. Provet kördes på macOS ARM64, Linux ARM64, översatt Linux x64 och Windows x64 under Wine. [Fristående prov](../benchmarks/language/iterate_pairs.ddr) · [Mätning i råbufferten](../benchmarks/rect-paint.md)

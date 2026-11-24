@@ -62,11 +62,12 @@ fn draw(frame: &mut tui.Frame, app: &mut Atlas) {
     mut chart_area := body
     map_area := chart_area.take_rows(if body.h >= 11 { body.h-body.h/3 } else { body.h })
     lon := -177.5+5.0*f64(app.bin)
-    p := app.map.begin(&mut frame,map_area)
-    p.map(app.detail,tui.rgb(0x64cbbe))
-    p.set_marker(.Braille)
-    p.line(lon,-85.0,lon,85.0,tui.rgb(0xf6a268))
-    app.map.finish(&mut frame)
+    coast := plot.Map { resolution:app.detail, color:tui.rgb(0x64cbbe) }
+    cursor := plot.Line::new(lon,-85.0,lon,85.0,tui.rgb(0xf6a268))
+    app.map.paint(&mut frame,map_area,fn[coast,cursor](p:&mut plot.Painter) {
+        p.draw(&coast)
+        p.draw(&cursor)
+    })
     if chart_area.h > 0 {
         app.profile.datasets[1].data[0] = (lon,f64(app.counts[app.bin]))
         app.profile.render(&mut frame,chart_area)

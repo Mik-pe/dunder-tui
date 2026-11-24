@@ -469,6 +469,15 @@ dunder run --locked --offline tests/table_terminal.ddr -- build/avganger
 
 Ritprovet ger 8 424 identiska bilder mot Ratatui 0.30.2. Det täcker koordinatomvandling, klippning, linjer med och utan fyllning, rektanglar, cirklar, kartor, markeringsbyte, upprepade lager och stiliserade etiketter. Alla 2 304 prov med subpixelmönster matchar i både tecken och färger. Separat jämförs de exakta flyttalsbitarna för kartornas 1 166 respektive 5 125 koordinatpar. [Dunderprov](../tests/plot_reference.ddr) · [Ratatui-prov](../benchmarks/reference/examples/plot.rs) · [Ratatuis ritgränssnitt](https://docs.rs/ratatui/0.30.2/ratatui/widgets/canvas/)
 
+I Dunder kan en app implementera `plot.Shape`, kombinera former och återanvända en lånad punktserie. Ett separat prov jämför 448 hela buffertar (9 408 celler) byte för byte efter serialisering. Det täcker 14 markörer, fyra successiva ritningar, överlappande lager, etiketter och ritytor med förskjutet origo eller noll bredd. En bred markör vid högerkanten, ett kombinerande tecken och en tabb skrivs i exakt en buffertcell. Granncellens innehåll, understrykningsfärg och diffregler ingår i jämförelsen. [Dunderprov](../tests/shape_cells.ddr) · [Ratatui-prov](../benchmarks/reference/examples/shape_cells.rs)
+
+```sh
+mkdir -p build
+dunder run --locked --offline tests/shape_cells.ddr >build/shape-cells.actual
+cargo run --release --locked --offline --no-default-features --features theme-oracle --manifest-path benchmarks/reference/Cargo.toml --example shape_cells >build/shape-cells.expected
+cmp build/shape-cells.expected build/shape-cells.actual
+```
+
 Diagramprovet omfattar 4 320 bilder med fyra graftyper, båda axlarna, rubriker, justering, tomma dataserier och samtliga åtta legendpositioner. I 4 104 bilder matchar hela bufferten direkt. I 216 bilder börjar Ratatuis första högerjusterade x-etikett utanför diagrammet. Där verifieras att referensen faktiskt ändrade en kontrollcell. Därefter ritas samma diagram med Ratatui i en buffert med diagrammets gränser och hela bilden jämförs på nytt. Dunder håller även en centrerad, fullhög teckenförklaring inom diagrammet när dess vänsterkant har förskjutits. Alla 1 100 bilder i prestandaprovet matchar cell för cell. [Diagramprov](../tests/chart_reference.ddr) · [Ratatui-prov](../benchmarks/reference/examples/charts.rs) · [Mätningar](../benchmarks/charts.md)
 
 Proven använder Dunders publika API. Win32-provet läser tillbaka halvblockets båda färger och en ritad diagramlinje. Unixprovet startar den färdigbyggda kartappen, byter longitud och detaljgrad, pausar och återupptar svepet, ändrar terminalstorlek och kontrollerar återställning. [Terminalprov](../tests/coast_terminal.ddr) · [Konsolprov](../tests/windows_console.ddr)
