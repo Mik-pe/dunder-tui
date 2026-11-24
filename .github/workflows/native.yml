@@ -219,6 +219,12 @@ jobs:
           build/dunder build --offline --locked "$base/benchmarks/terminal.ddr" -o build/before
           build/before --verify | build/rust/release/examples/terminal_bench --verify
           build/measure build/before build/benchmark build/pty --labels before after
+      - name: Measure integer row fills
+        if: inputs.profile
+        run: |
+          cd "$SOURCE_ROOT"
+          build/dunder$EXT build --offline --locked benchmarks/language/fill_rows.ddr -o "build/row-fill$EXT"
+          build/row-fill$EXT
       - name: Profile native x64 instructions for an idle frame
         if: runner.os == 'Linux' && inputs.profile
         run: |

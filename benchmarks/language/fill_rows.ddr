@@ -1,0 +1,66 @@
+capability stdio
+import std.time as clock
+
+struct Row { glyphs: []i32, styles: []i64 }
+
+impl Row {
+    fn new(width: i32, mixed: bool) -> Self {
+        mut glyphs: []i32 = []
+        mut styles: []i64 = []
+        for i in 0..width+6 {
+            glyphs.push(47)
+            styles.push(if mixed && i%2 == 0 { i64(4).shl(26) } else { i64(7).shl(26) })
+        }
+        Self { glyphs: move glyphs, styles: move styles }
+    }
+
+    fn by_style(&mut self, end: i32, glyph: i32, ink: i64) {
+        mut last := i64(0)
+        mut combined := ink
+        for i in 3..end {
+            old := self.styles[i]
+            if old != last { last = old; combined = old.bit_and(i64(0x3ffffff).bit_not()).bit_or(ink) }
+            self.glyphs[i] = glyph
+            self.styles[i] = combined
+        }
+    }
+}
+
+fn by_mask(glyphs: &mut []i32, styles: &mut []i64, end: i32, glyph: i32, keep: i64, ink: i64) {
+    for i in 3..end {
+        glyphs[i] = glyph
+        styles[i] = styles[i].bit_and(keep).bit_or(ink)
+    }
+}
+
+fn sample(width: i32, mixed: bool, mask: bool) -> i64 {
+    mut row := Row::new(width, mixed)
+    start := clock.monotonic_ns()
+    for step in 0..8192 {
+        ink := i64(step%2 + 1)
+        if mask { by_mask(&mut row.glyphs,&mut row.styles,3+width,step%8,i64(0x3ffffff).bit_not(),ink) }
+        else { row.by_style(3+width,step%8,ink) }
+    }
+    elapsed := clock.monotonic_ns() - start
+    for i in 0..row.glyphs.len {
+        written := i >= 3 && i < 3+width
+        base := if mixed && i%2 == 0 { i64(4).shl(26) } else { i64(7).shl(26) }
+        assert(row.glyphs[i] == (if written { 7 } else { 47 }))
+        assert(row.styles[i] == (if written { base.bit_or(2) } else { base }))
+    }
+    elapsed
+}
+
+fn main() {
+    for width in [16,96,257] {
+        for mixed in [false,true] {
+            for run in 0..9 {
+                for pos in 0..2 {
+                    mask := (run+pos)%2 == 1
+                    elapsed := sample(width,mixed,mask)
+                    print(f"{width} {mixed} {run} {mask} {elapsed}")
+                }
+            }
+        }
+    }
+}

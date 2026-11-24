@@ -21,6 +21,33 @@ import ..src.width
 import ..src.material
 import ..src.tailwind
 
+@test fn row_fill_preserves_backgrounds_attributes_and_underlines() {
+    for decorated in [false,true] {
+        mut frame := tui.Frame::at(tui.Rect{x:4,y:11,w:97,h:3})
+        for x in 4..101 {
+            base := if x%2 == 0 { tui.ink(.Green).bold().background_rgb(0x147aa9) } else { tui.ink(.Yellow).inverted().background_index(222) }
+            s := if decorated && x%3 == 0 { base.underline_color(.Cyan) } else { base }
+            _ := frame.set_cell(x,12,"x",s)
+        }
+        area := tui.Rect{x:5,y:12,w:93,h:1}
+        overlay := tui.ink(.Red).italic().without(.Bold)
+        frame.fill(area,`·`,overlay)
+        for x in 4..101 {
+            s := frame.style_at(x,12).unwrap()
+            inside := x >= 5 && x < 98
+            assert(frame.symbol_at(x,12).unwrap() == (if inside { "·" } else { "x" }))
+            assert(s.get_background() == (if x%2 == 0 { tui.plain().background_rgb(0x147aa9).get_background() } else { tui.plain().background_index(222).get_background() }))
+            assert(s.has(.Reversed) == (x%2 == 1) && s.has(.Italic) == inside && s.has(.Bold) == (!inside && x%2 == 0))
+            assert(s.get_foreground() == .Some(if inside { tui.Color.Red } else if x%2 == 0 { tui.Color.Green } else { tui.Color.Yellow }))
+            assert(s.get_underline_color() == .Some(if decorated && x%3 == 0 { tui.Color.Cyan } else { tui.Color.Default }))
+        }
+        frame.fill(area,`.`,tui.Style::reset())
+        clear := frame.style_at(6,12).unwrap()
+        assert(!clear.has(.Italic) && clear.get_background() == .Some(tui.Color.Default) && clear.get_underline_color() == .Some(tui.Color.Default))
+        assert(frame.symbol_at(6,11).unwrap() == " " && frame.symbol_at(6,13).unwrap() == " ")
+    }
+}
+
 @test fn nested_text_edits_update_width_and_preserve_source() {
     mut doc := rich.Text::raw("longest\r\n界\n").align(.Right)
     assert(doc.get_alignment() == .Right && doc.width() == 7)
