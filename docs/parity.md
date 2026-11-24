@@ -54,6 +54,8 @@ Fler körbara prov täcker ändrade bildrader, delade SGR-återställningar, öv
 
 ### Bygg text, tabellrader och layout
 
+Spann, rader och dokument bevarar ärvd färg, återställd färg, RGB, färgindex och överlappande 16-bitars attributmasker när en stil läses, kopieras eller ändras. Provet ändrar alla tre nivåerna och läser sedan den sparade kopian. [Stiltest](../tests/suite.ddr) · [Minnesåtgång för text](../benchmarks/text-storage.md)
+
 | Ratatui | Dunder |
 | --- | --- |
 | `span!` | `Span::default`, `raw`, `styled` och Dunders formatsträngar |

@@ -1,0 +1,13 @@
+host	widget	implementation	pty_bytes	allocation_requests	requested_bytes	median_peak_rss_kib
+macos-arm64	lists	dunder	1441240	307851	12661164	18512
+macos-arm64	lists	ratatui	1595009	135881	8693277	8672
+macos-arm64	tables	dunder	1499730	231379	10106159	16528
+macos-arm64	tables	ratatui	1848065	170518	10403696	10112
+linux-arm64	lists	dunder	1441240	307851	12661164	16792
+linux-arm64	lists	ratatui	1595009	135877	8693084	8980
+linux-arm64	tables	dunder	1499730	231379	10106159	16500
+linux-arm64	tables	ratatui	1848065	170526	10409199	9880
+linux-x86_64-translated	lists	dunder	1441240	307851	12661164	22368
+linux-x86_64-translated	lists	ratatui	1595009	135877	8693084	12528
+linux-x86_64-translated	tables	dunder	1499730	231379	10106159	22132
+linux-x86_64-translated	tables	ratatui	1848065	170510	10400791	13300

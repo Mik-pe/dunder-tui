@@ -2242,3 +2242,31 @@ impl tui.Backend for BufferedOutput {
         }
     }
 }
+
+@test fn text_nodes_preserve_every_style_field_through_edits_and_clones() {
+    flags := json.from_str<tui.Style>("{\"add_modifier\":\"0xffff\",\"sub_modifier\":\"0xa55a\"}").unwrap()
+    for style in [tui.plain(),tui.Style::reset(),tui.ink(.Default).underline_index(0),
+        flags.foreground_rgb(0xffffff).background_rgb(0).underline_rgb(0xffffff),
+        flags.foreground_index(255).background(.LightMagenta).underline_color(.Default)] {
+        span := rich.Span::styled("秋",style)
+        line := rich.Line::new([move span]).styled(style)
+        mut doc := rich.Text::new([move line]).styled(style)
+        saved := doc.clone()
+        assert(doc.get_style() == style && doc.lines()[0].get_style() == style)
+        assert(doc.lines()[0].spans()[0].get_style() == style)
+        overlay := tui.plain().without(.Bold).bold().background_index(7)
+        doc.patch_style(overlay)
+        doc.line_mut(0).patch_style(overlay)
+        doc.line_mut(0).span_mut(0).patch_style(overlay)
+        patched := style.patch(overlay)
+        assert(doc.get_style() == patched && doc.lines()[0].get_style() == patched)
+        assert(doc.lines()[0].spans()[0].get_style() == patched)
+        doc.reset_style()
+        doc.line_mut(0).reset_style()
+        doc.line_mut(0).span_mut(0).reset_style()
+        assert(doc.get_style() == tui.Style::reset() && doc.lines()[0].get_style() == tui.Style::reset())
+        assert(doc.lines()[0].spans()[0].get_style() == tui.Style::reset())
+        assert(saved.get_style() == style && saved.lines()[0].get_style() == style)
+        assert(saved.lines()[0].spans()[0].get_style() == style)
+    }
+}

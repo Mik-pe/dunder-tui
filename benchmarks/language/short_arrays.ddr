@@ -1,0 +1,20 @@
+capability stdio
+
+struct Row { values: []i32 }
+
+fn main() {
+    mut rows: []Row = []
+    rows.reserve(16384)
+    for i in 0..16384 { rows.push(Row { values:[i] }) }
+    mut used := 0
+    mut capacity := 0
+    for row in &rows {
+        used += row.values.len
+        capacity += row.values.cap()
+    }
+    mut saved := rows[0].values.clone()
+    for i in 1..1025 { saved.push(i) }
+    assert(saved.len == 1025 && saved[1024] == 1024)
+    assert(rows[0].values.len == 1 && rows[16383].values[0] == 16383)
+    print(f"{used} {capacity} {capacity - used}")
+}

@@ -1,0 +1,42 @@
+capability stdio
+import std.time as clock
+import sys
+import ..src.text as rich
+import ..src.tui
+import .list_scene
+import .table_scene
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 2 }
+    kind := sys.arg(1)
+    count := 16384
+    start := clock.monotonic_ns()
+    mut elapsed: i64 = 0
+    mut checksum := 0
+    if kind == "list" {
+        scene := list_scene.Scene::new(4096)
+        elapsed = clock.monotonic_ns() - start
+        checksum = scene.view.len()
+    } else if kind == "table" {
+        scene := table_scene.Scene::new(4096)
+        elapsed = clock.monotonic_ns() - start
+        checksum = scene.view.len()
+    } else if kind == "plain" || kind == "styled" {
+        mut docs: []rich.Text = []
+        docs.reserve(count)
+        for _ in 0..count {
+            if kind == "plain" { docs.push(rich.Text::raw("OPEN")) }
+            else {
+                span := rich.Span::styled("OPEN",tui.ink(.Cyan))
+                line := rich.Line::new([move span]).styled(tui.plain().bold())
+                docs.push(rich.Text::new([move line]).styled(tui.plain().background(.Blue)))
+            }
+        }
+        elapsed = clock.monotonic_ns() - start
+        for doc in &docs { checksum += doc.width() }
+    } else { return 2 }
+    expected := if kind == "list" || kind == "table" { 4096 } else { count * 4 }
+    assert(checksum == expected)
+    print(f"{kind} {checksum} {elapsed}")
+    0
+}

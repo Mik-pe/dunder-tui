@@ -2,6 +2,7 @@ import .tui
 import .block as box
 import .repetition
 import std.text as strings
+import std.text.view as views
 import std.bytes as bytes
 import std.array as array
 import std.cmp as cmp
@@ -49,7 +50,12 @@ pub fn masked(value: string, mask: rune) -> string {
     bytes.decode(&out).unwrap()
 }
 
-pub opaque struct Span { glyphs: tui.GlyphRun, style: tui.Style }
+fn store_style<T>(node: &mut T, style: &tui.Style) {
+    node.colors = style.packed_colors()
+    node.attributes = style.packed_attributes()
+}
+
+pub opaque struct Span { glyphs: tui.GlyphRun, colors: i64, attributes: i64 }
 
 pub opaque struct StyledGrapheme { source: &string, start: i32, end: i32, style: tui.Style }
 
@@ -99,22 +105,22 @@ impl Default for Span { fn default() -> Self { Span::raw("") } }
 impl tui.BufferText for Span {
     fn buffer_width(&self) -> i32 { self.width() }
     fn write_buffer(&self, buffer: &mut tui.Buffer, x: i32, y: i32, limit: i32) -> (i32,i32) {
-        self.glyphs.write_buffer(&mut buffer, x, y, limit, self.style)
+        self.glyphs.write_buffer(&mut buffer, x, y, limit, self.get_style())
     }
 }
 
 impl Span {
-    pub fn raw(move value: string) -> Self { Span::styled(move value, tui.plain()) }
-    pub fn styled(move value: string, style: tui.Style) -> Self { Self { glyphs: tui.GlyphRun::new(move value), style: style } }
+    pub fn raw(move value: string) -> Self { Self { glyphs: tui.GlyphRun::new(move value), colors:0, attributes:0 } }
+    pub fn styled(move value: string, style: tui.Style) -> Self { Self { glyphs: tui.GlyphRun::new(move value), colors: style.packed_colors(), attributes: style.packed_attributes() } }
     pub fn width(&self) -> i32 { self.glyphs.text_width() }
     pub fn content(&self) -> &str from self { self.glyphs.content() }
     pub fn set_content(&mut self, move value: string) { self.glyphs = tui.GlyphRun::new(move value) }
-    pub fn get_style(&self) -> tui.Style { self.style }
+    pub fn get_style(&self) -> tui.Style { tui.Style::from_packed(self.colors,self.attributes) }
     pub fn styled_graphemes(&self, base: tui.Style) -> SpanGraphemes from self {
-        SpanGraphemes { span: &self, index: 0, offset: 0, style: base.patch(self.style) }
+        SpanGraphemes { span: &self, index: 0, offset: 0, style: base.patch(self.get_style()) }
     }
     pub fn visit_graphemes<S>(&self, base: tui.Style, state: &mut S, visit: fn(&mut S,&str,&tui.Style) -> bool) -> bool {
-        style := base.patch(self.style)
+        style := base.patch(self.get_style())
         source := self.content()
         count := self.count()
         if count == source.len {
@@ -129,9 +135,9 @@ impl Span {
         }
         true
     }
-    pub fn set_style(&mut self, style: tui.Style) { self.style = style }
-    pub fn patch_style(&mut self, style: tui.Style) { self.style = self.style.patch(style) }
-    pub fn reset_style(&mut self) { self.style = tui.Style::reset() }
+    pub fn set_style(&mut self, style: tui.Style) { store_style(&mut self,&style) }
+    pub fn patch_style(&mut self, style: tui.Style) { self.set_style(self.get_style().patch(style)) }
+    pub fn reset_style(&mut self) { self.set_style(tui.Style::reset()) }
     fn append_content(&self, out: &mut []u8) {
         mut rows := strings.lines(self.content())
         while rows.advance() { bytes.extend(&mut out, rows.current().as_bytes()) }
@@ -146,16 +152,17 @@ impl Span {
 
 struct Token { span: i32, start: i32, end: i32, cells: i32, space: bool }
 
-pub opaque struct Line { spans: []Span, columns: i32, style: tui.Style, alignment: Alignment }
+pub opaque struct Line { spans: []Span, columns: i32, colors: i64, attributes: i64, alignment: Alignment }
 
 impl tui.BufferText for Line {
     fn buffer_width(&self) -> i32 { self.width() }
     fn write_buffer(&self, buffer: &mut tui.Buffer, x: i32, y: i32, limit: i32) -> (i32,i32) {
         mut col := x
+        base := self.get_style()
         for span in &self.spans {
             left := limit - (col - x)
             if left <= 0 { break }
-            (end, _) := span.glyphs.write_buffer(&mut buffer, col, y, left, self.style.patch(span.style))
+            (end, _) := span.glyphs.write_buffer(&mut buffer, col, y, left, base.patch(span.get_style()))
             col = end
         }
         (col, y)
@@ -174,7 +181,7 @@ impl Iterator for LineGraphemes {
     fn next(&mut self) -> Option<StyledGrapheme> from self {
         while self.index < self.spans.len {
             if self.glyph < self.spans[self.index].count() {
-                if self.glyph == 0 { self.style = self.base.patch(self.spans[self.index].style) }
+                if self.glyph == 0 { self.style = self.base.patch(self.spans[self.index].get_style()) }
                 start := width.next_visible_byte(self.spans[self.index].content(),self.offset)
                 self.offset = start + self.spans[self.index].glyphs.symbol_bytes_at(self.glyph)
                 self.glyph += 1
@@ -203,22 +210,18 @@ impl Line {
     }
 
     pub fn raw(move value: string) -> Self {
-        {
-            mut rows := strings.lines(value.as_str())
-            if !rows.advance() { return Line::new([]) }
-            if rows.current().len < value.len {
-                mut spans: []Span = [Span::raw(rows.current().to_string())]
-                while rows.advance() { spans.push(Span::raw(rows.current().to_string())) }
-                return Line::new(move spans)
-            }
-        }
-        Line::new([Span::raw(move value)])
+        if value.len == 0 { return Line::new([]) }
+        if !views.contains(value.as_str(),"\n") { return Line::new([Span::raw(move value)]) }
+        mut spans: []Span = []
+        mut rows := strings.lines(value.as_str())
+        while rows.advance() { spans.push(Span::raw(rows.current().to_string())) }
+        Line::new(move spans)
     }
     pub fn new(move spans: []Span) -> Self {
         columns := spans_width(&spans)
-        Self { spans: move spans, columns: columns, style: tui.plain(), alignment: .Inherit }
+        Self { spans: move spans, columns: columns, colors:0, attributes:0, alignment: .Inherit }
     }
-    pub fn styled(move self, style: tui.Style) -> Self { mut line := move self; line.style = style; move line }
+    pub fn styled(move self, style: tui.Style) -> Self { mut line := move self; line.set_style(style); move line }
     pub fn align(move self, alignment: Alignment) -> Self { mut line := move self; line.alignment = alignment; move line }
     pub fn width(&self) -> i32 {
         if self.columns >= 0 { return self.columns }
@@ -236,10 +239,10 @@ impl Line {
     }
     pub fn set_alignment(&mut self, alignment: Alignment) { self.alignment = alignment }
     pub fn styled_graphemes(&self, base: tui.Style) -> LineGraphemes from self {
-        LineGraphemes { spans: &self.spans, index: 0, glyph: 0, offset: 0, base: base.patch(self.style), style: tui.plain() }
+        LineGraphemes { spans: &self.spans, index: 0, glyph: 0, offset: 0, base: base.patch(self.get_style()), style: tui.plain() }
     }
     pub fn visit_graphemes<S>(&self, base: tui.Style, state: &mut S, visit: fn(&mut S,&str,&tui.Style) -> bool) -> bool {
-        style := base.patch(self.style)
+        style := base.patch(self.get_style())
         for span in &self.spans {
             if !span.visit_graphemes(style,&mut state,visit) { return false }
         }
@@ -253,10 +256,10 @@ impl Line {
         if self.columns >= 0 { self.columns += span.width() }
         self.spans.push(move span)
     }
-    pub fn get_style(&self) -> tui.Style { self.style }
-    pub fn set_style(&mut self, style: tui.Style) { self.style = style }
-    pub fn patch_style(&mut self, style: tui.Style) { self.style = self.style.patch(style) }
-    pub fn reset_style(&mut self) { self.style = tui.Style::reset() }
+    pub fn get_style(&self) -> tui.Style { tui.Style::from_packed(self.colors,self.attributes) }
+    pub fn set_style(&mut self, style: tui.Style) { store_style(&mut self,&style) }
+    pub fn patch_style(&mut self, style: tui.Style) { self.set_style(self.get_style().patch(style)) }
+    pub fn reset_style(&mut self) { self.set_style(tui.Style::reset()) }
     fn append_content(&self, out: &mut []u8) {
         for span in &self.spans { span.append_content(&mut out) }
     }
@@ -316,7 +319,7 @@ impl ParagraphLine {
     }
 }
 
-pub opaque struct Text { lines: []Line, columns: i32, style: tui.Style, alignment: Alignment }
+pub opaque struct Text { lines: []Line, columns: i32, colors: i64, attributes: i64, alignment: Alignment }
 
 pub trait IntoText { fn into_text(move self) -> Text }
 
@@ -348,28 +351,23 @@ impl Text {
 
     pub fn new(move lines: []Line) -> Self {
         columns := lines_width(&lines)
-        Self { lines: move lines, columns: columns, style: tui.plain(), alignment: .Inherit }
+        Self { lines: move lines, columns: columns, colors:0, attributes:0, alignment: .Inherit }
     }
 
     pub fn raw(move value: string) -> Self {
-        {
-            mut rows := strings.lines(value.as_str())
-            if !rows.advance() { return Text::new([Line::new([])]) }
-            if rows.current().len < value.len {
-                mut lines: []Line = []
-                while true {
-                    row := rows.current()
-                    if row.len == 0 { lines.push(Line::new([])) }
-                    else { lines.push(Line::new([Span::raw(row.to_string())])) }
-                    if !rows.advance() { break }
-                }
-                return Text::new(move lines)
-            }
+        if value.len == 0 { return Text::new([Line::new([])]) }
+        if !views.contains(value.as_str(),"\n") { return Text::new([Line::new([Span::raw(move value)])]) }
+        mut lines: []Line = []
+        mut rows := strings.lines(value.as_str())
+        while rows.advance() {
+            row := rows.current()
+            if row.len == 0 { lines.push(Line::new([])) }
+            else { lines.push(Line::new([Span::raw(row.to_string())])) }
         }
-        Text::new([Line::new([Span::raw(move value)])])
+        Text::new(move lines)
     }
 
-    pub fn styled(move self, style: tui.Style) -> Self { mut doc := move self; doc.style = style; move doc }
+    pub fn styled(move self, style: tui.Style) -> Self { mut doc := move self; doc.set_style(style); move doc }
     pub fn align(move self, alignment: Alignment) -> Self { mut doc := move self; doc.alignment = alignment; move doc }
     pub fn width(&self) -> i32 {
         if self.columns >= 0 { return self.columns }
@@ -412,10 +410,10 @@ impl Text {
         if self.columns >= 0 { self.columns = cmp.max<i32>(self.columns, self.lines[last].width()) }
     }
     pub fn get_alignment(&self) -> Alignment { self.alignment }
-    pub fn get_style(&self) -> tui.Style { self.style }
-    pub fn set_style(&mut self, style: tui.Style) { self.style = style }
-    pub fn patch_style(&mut self, style: tui.Style) { self.style = self.style.patch(style) }
-    pub fn reset_style(&mut self) { self.style = tui.Style::reset() }
+    pub fn get_style(&self) -> tui.Style { tui.Style::from_packed(self.colors,self.attributes) }
+    pub fn set_style(&mut self, style: tui.Style) { store_style(&mut self,&style) }
+    pub fn patch_style(&mut self, style: tui.Style) { self.set_style(self.get_style().patch(style)) }
+    pub fn reset_style(&mut self) { self.set_style(tui.Style::reset()) }
     pub fn to_string(&self) -> string {
         mut out: []u8 = []
         for i in 0..self.lines.len {
@@ -435,7 +433,7 @@ impl Paragraph {
 
     pub fn new(move text: Text) -> Self {
         alignment := text.alignment
-        text_style := text.style
+        text_style := text.get_style()
         mut lines: []ParagraphLine = []
         lines.reserve(text.lines.len)
         for line in move text.lines { lines.push(ParagraphLine::new(move line)) }
@@ -664,7 +662,7 @@ impl Paragraph {
         for y in 0..count {
             row := y + top
             line := &self.lines[rows.lines[row]]
-            base := self.text_style.patch(line.content.style)
+            base := self.text_style.patch(line.content.get_style())
             mut x := rows.offsets[row]
             mut at := rows.starts[row]
             end := if row + 1 < rows.starts.len { rows.starts[row + 1] } else { rows.runs.len }
@@ -674,7 +672,7 @@ impl Paragraph {
                 finish := rows.runs[at + 2]
                 cells := rows.runs[at + 3]
                 target := tui.Rect { x: area.x + x, y: area.y + y, w: cells, h: 1 }
-                span.glyphs.render_cells(&mut frame, target, start, finish, base.patch(span.style))
+                span.glyphs.render_cells(&mut frame, target, start, finish, base.patch(span.get_style()))
                 at += 4
                 x += cells
             }
@@ -755,8 +753,9 @@ impl Span {
             first = index
             x = offset
         }
+        style := self.get_style()
         if !self.glyphs.has_zero_width() {
-            return x + self.glyphs.write_cells(&mut frame, tui.Rect { x: area.x + x, y: area.y, w: area.w - x, h: 1 }, first, self.count(), self.style)
+            return x + self.glyphs.write_cells(&mut frame, tui.Rect { x: area.x + x, y: area.y, w: area.w - x, h: 1 }, first, self.count(), style)
         }
         mut previous := -1
         mut prefix := ""
@@ -767,15 +766,15 @@ impl Span {
             if cells == 0 {
                 if previous < 0 {
                     prefix = prefix + value
-                    if x < area.w { _ := frame.set_cell(area.x + x, area.y, prefix, self.style) }
+                    if x < area.w { _ := frame.set_cell(area.x + x, area.y, prefix, style) }
                 } else {
                     old := frame.symbol_at(area.x + previous, area.y).unwrap_or("")
                     if old == "" { frame.split_wide_cell(area.x + previous, area.y) }
-                    _ := frame.set_cell(area.x + previous, area.y, old + value, self.style)
+                    _ := frame.set_cell(area.x + previous, area.y, old + value, style)
                 }
             } else {
-                if prefix == "" { _ := frame.set_cell(area.x + x, area.y, value, self.style) }
-                else { _ := frame.set_cell(area.x + x, area.y, prefix + value, self.style); prefix = "" }
+                if prefix == "" { _ := frame.set_cell(area.x + x, area.y, value, style) }
+                else { _ := frame.set_cell(area.x + x, area.y, prefix + value, style); prefix = "" }
                 x += cells
                 previous = x - 1
             }
@@ -784,7 +783,7 @@ impl Span {
     }
 
     pub fn write(&self, frame: &mut tui.Frame, bounds: tui.Rect) -> i32 {
-        self.glyphs.write_cells(&mut frame, bounds.intersection(frame.area()), 0, self.count(), self.style)
+        self.glyphs.write_cells(&mut frame, bounds.intersection(frame.area()), 0, self.count(), self.get_style())
     }
 
     pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
@@ -799,9 +798,10 @@ impl Line {
     pub fn write(&self, frame: &mut tui.Frame, bounds: tui.Rect) -> i32 {
         mut area := bounds.intersection(frame.area())
         mut used := 0
+        base := self.get_style()
         for span in &self.spans {
             if area.w <= 0 { break }
-            n := span.glyphs.write_cells(&mut frame, area, 0, span.count(), self.style.patch(span.style))
+            n := span.glyphs.write_cells(&mut frame, area, 0, span.count(), base.patch(span.get_style()))
             used += n
             area.x += n
             area.w -= n
@@ -810,22 +810,23 @@ impl Line {
     }
 
     pub fn render_aligned(&self, frame: &mut tui.Frame, bounds: tui.Rect, alignment: Alignment) {
-        self.paint_line(&mut frame, bounds.intersection(frame.area()), alignment, self.style)
+        self.paint_line(&mut frame, bounds.intersection(frame.area()), alignment, self.colors, self.attributes)
     }
 
     fn draw(&self, frame: &mut tui.Frame, area: tui.Rect, parent: Alignment) {
-        self.paint_line(&mut frame, area, aligned(self.alignment, parent), self.style)
+        self.paint_line(&mut frame, area, aligned(self.alignment, parent), self.colors, self.attributes)
     }
 
     pub fn render_patched(&self, frame: &mut tui.Frame, bounds: tui.Rect, overlay: tui.Style) {
-        self.paint_line(&mut frame, bounds.intersection(frame.area()), aligned(self.alignment,.Left),self.style.patch(overlay))
+        style := self.get_style().patch(overlay)
+        self.paint_line(&mut frame, bounds.intersection(frame.area()), aligned(self.alignment,.Left), style.packed_colors(), style.packed_attributes())
     }
 
-    fn paint_line(&self, frame: &mut tui.Frame, area: tui.Rect, alignment: Alignment, style: tui.Style) {
+    fn paint_line(&self, frame: &mut tui.Frame, area: tui.Rect, alignment: Alignment, colors: i64, attributes: i64) {
         columns := self.width()
         if columns <= 0 || area.w <= 0 || area.h <= 0 { return }
         row := tui.Rect { x: area.x, y: area.y, w: area.w, h: 1 }
-        frame.apply_cell_style(row, style)
+        if colors != 0 || attributes != 0 { frame.apply_cell_style(row, tui.Style::from_packed(colors,attributes)) }
         delta := row.w - columns
         shift := match alignment { .Center => delta / 2, .Right => delta, _ => 0, }
         mut x := cmp.max<i32>(0, shift)
@@ -853,7 +854,7 @@ impl Text {
     pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
         area := bounds.intersection(frame.area())
         if area.w <= 0 || area.h <= 0 { return }
-        frame.apply_cell_style(area, self.style)
+        if self.colors != 0 || self.attributes != 0 { frame.apply_cell_style(area, self.get_style()) }
         for i in 0..cmp.min<i32>(area.h, self.lines.len) {
             row := tui.Rect { x: area.x, y: area.y + i, w: area.w, h: 1 }
             self.lines[i].draw(&mut frame, row, self.alignment)

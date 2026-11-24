@@ -96,3 +96,9 @@ pub fn transition(out: &mut []u8, from: Decoration, to: Decoration) {
     if old.modifiers != next.modifiers { modifiers(&mut out, start, old.modifiers, next.modifiers) }
     out.push(b'm')
 }
+
+pub trait PackedStyle {
+    fn packed_colors(&self) -> i64
+    fn packed_attributes(&self) -> i64
+    fn from_packed(colors: i64, attributes: i64) -> Self
+}

@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Minne för text i listor och tabeller
+
+På macOS ARM64 sjönk allokeringsanropen för att bygga 4 096 tabellrader från 329 255 till 224 079 med Dunder 0.12.1. [Uppbyggnad, bildtid och högsta RSS mot Ratatui](text-storage.md)
+
 ## Skrolla och storleksändra en läsare med ram
 
 Läsarprovet jämför 48 rader färgsatt Unicode-text med direkt och förberedd radbrytning. Det mäter fem arbetslaster i minne och i en pseudoterminal på macOS och Linux. [Bildtider, minne och terminalbyte](reader.md)

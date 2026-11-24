@@ -275,6 +275,26 @@ pub opaque struct Style {
     fg: i32, bg: i32, underline: i32, added: i32, removed: i32,
 }
 
+impl paint.PackedStyle for Style {
+    fn packed_colors(&self) -> i64 {
+        i64(self.fg - INHERIT).bit_or(i64(self.bg - INHERIT).shl(26))
+    }
+
+    fn packed_attributes(&self) -> i64 {
+        i64(self.underline - INHERIT).bit_or(i64(self.added).shl(26)).bit_or(i64(self.removed).shl(42))
+    }
+
+    fn from_packed(colors: i64, attributes: i64) -> Self {
+        Self {
+            fg: i32(colors.bit_and(0x3ffffff)) + INHERIT,
+            bg: i32(colors.shr(26).bit_and(0x3ffffff)) + INHERIT,
+            underline: i32(attributes.bit_and(0x3ffffff)) + INHERIT,
+            added: i32(attributes.shr(26).bit_and(0xffff)),
+            removed: i32(attributes.shr(42).bit_and(0xffff)),
+        }
+    }
+}
+
 pub fn plain() -> Style { Style { fg: INHERIT, bg: INHERIT, underline: INHERIT, added: 0, removed: 0 } }
 pub fn ink(color: Color) -> Style { plain().foreground(color) }
 
