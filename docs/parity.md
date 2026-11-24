@@ -370,3 +370,16 @@ dunder build --locked --offline tests/layout_reference.ddr -o build/layout
 cargo build --locked --offline --release --manifest-path benchmarks/reference/Cargo.toml --features layout-cache --example layout --target-dir build/rust
 build/layout --minimums | build/rust/release/examples/layout --minimums
 ```
+
+## De tio animationerna i releasepaketen
+
+Varje scen ritas vid 0 och 1,75 sekunder på en canvas med 72 × 40 pixlar. Galleritestet läser de 1 440 cellerna i den andra bilden via `Frame`, kontrollerar halvblockets tecken och båda RGB-färgerna och jämför celldiffens koordinater i ritordning med de pixlar som ändrades. [Galleritest](../examples/motion/tests.ddr)
+
+Terminalprovet startar den nedladdade `motion`-appen, läser scennamnen från skärmen, pausar, bläddrar genom alla tio scener och återupptar animationen. Vid avslut kontrolleras terminalens återställning. 0.20.2-paketen klarade provet i pseudoterminal på macOS ARM64 och Linux ARM64/x64 samt i Win32-konsol på Windows x64. Kryssa i `release_gallery` i arbetsflödet för att köra om det mot en publicerad version på båda x64-värdarna. [Unixprov](../tests/motion_terminal.ddr) · [Win32-prov](../tests/windows_console.ddr) · [Körning på x64](https://github.com/Mik-pe/dunder-tui/actions/runs/45318968188)
+
+```sh
+(cd examples/motion && dunder test --locked --offline)
+mkdir -p build
+dunder build --locked --offline tests/motion_terminal.ddr -o build/motion-test
+build/motion-test /sökväg/till/motion
+```
