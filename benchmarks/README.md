@@ -1,5 +1,18 @@
 # Rendering mot Ratatui 0.30.2
 
+## Radfyllning och textspann i 0.20.1
+
+Riktextvyn ger samma 1 100 bilder i Dunder och Ratatui. Tabellen visar median / p95 i µs för en oförändrad bild i terminalen. De två Dunder-versionerna kördes på samma värd med Dunder 0.11.2. Linux körde biblioteksparet och versionsparet i två separata serier. På Windows turades alla tre program om inom samma serie. [Alla arbetslaster mot Ratatui](results/ligatures-0.20.1.tsv) · [Versionsjämförelse med spridning](results/ligatures-before-after-0.20.1.tsv) · [x64-körning, råvärden och instruktionsprofil](https://github.com/Mik-pe/dunder-tui/actions/runs/45315649743)
+
+| Värd | Dunder 0.20.0 | Dunder 0.20.1 | Ratatui 0.30.2 |
+| --- | ---: | ---: | ---: |
+| macOS ARM64, Apple M5 | 16 / 18 | 14 / 17 | 32 / 36 |
+| Linux ARM64, Apple M5 | 18 / 22 | 17 / 19 | 39 / 45 |
+| Linux x64, Xeon Platinum 8573C | 362 / 385 | 293 / 314 | 84 / 98 |
+| Windows Server 2025 x64 | 909 / 1 060 | 762 / 874 | 217 / 303 |
+
+När ett spann ryms på raden behöver ritningen två nollor för startpositionen. Tidigare skapade den en tupel varje gång. Med två lokala heltal sjönk antalet allokeringsanrop för hela Unix-provet från 83 025 till 7 125, varav 272 färska i båda versionerna. Ratatui gjorde 23 184–23 188 anrop på Unix. Dunder begärde 628 142 byte i 0.20.1. Högsta RSS från tre körningar var 2 048 KiB på macOS, 444 KiB på Linux ARM64 och 1 132 KiB på Linux x64. På Windows var högsta working set 4 108 KiB. Dunders allokeringsräknare på Windows saknar fortfarande slutrapport. Terminalutmatningen var 1 382 478 byte för båda Dunder-versionerna och 1 624 225 byte för Ratatui. [Arbetslast och lokala körkommandon](ligatures.md#upprepa-mätningen) · [Isolerat prov för kompilatorn](language/conditional_pair.ddr)
+
 ## Riktext i 0.20.0
 
 Samma vy med 23 textrader gav 1 100 identiska bilder på varje plattform. Tabellen visar median / p95 i µs för en oförändrad bild i pseudoterminal eller Win32-konsol. Minneskolumnerna visar högsta RSS eller Windows working set i KiB från tre separata körningar. [Alla fem arbetslaster, utdata och spridning](results/ligatures-0.20.0.tsv) · [Arbetslast och körkommandon](ligatures.md#upprepa-mätningen) · [Nativa x64-körningar](https://github.com/Mik-pe/dunder-tui/actions/runs/45312061033)
