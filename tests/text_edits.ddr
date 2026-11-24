@@ -1,0 +1,59 @@
+capability stdio
+import ..src.text as rich
+import ..src.tui
+import .widget_cells as cells
+import std.bytes as bytes
+
+fn hex(value: &str) -> string { bytes.hex_u8(value.as_bytes()) }
+
+fn inspect(doc: &rich.Text) {
+    value := doc.to_string()
+    print(f"T {doc.width()} {doc.height()} {hex(value.as_str())}")
+    for line in doc.lines() {
+        value := line.to_string()
+        print(f"L {line.width()} {line.spans().len} {hex(value.as_str())}")
+        for span in line.spans() {
+            shown := span.to_string()
+            print(f"S {span.width()} {hex(span.content())} {hex(shown.as_str())}")
+        }
+    }
+    for w in [0, 1, 2, 4, 7, 13] {
+        for h in [1, 4] {
+            mut frame := cells.seeded(w,h)
+            doc.render(&mut frame, tui.Rect { x: 1, y: 1, w: w, h: h })
+            cells.snapshot(&frame)
+        }
+    }
+}
+
+fn main() {
+    mut doc := rich.Text::new([]).align(.Right)
+    inspect(&doc)
+    doc.push_span(rich.Span::styled("秋", tui.ink(.Red)))
+    inspect(&doc)
+    doc.push_span(rich.Span::raw("  👩🏽‍💻!"))
+    doc.push_line(rich.Line::raw("a\r\nb\n").align(.Center))
+    doc.line_mut(1).set_style(tui.plain().background(.Magenta))
+    doc.patch_style(tui.ink(.Yellow).italic())
+    inspect(&doc)
+    doc.line_mut(0).span_mut(1).set_content("")
+    doc.line_mut(0).span_mut(0).patch_style(tui.plain().bold())
+    doc.line_mut(1).patch_style(tui.ink(.Cyan))
+    inspect(&doc)
+    doc.line_mut(1).span_mut(0).set_content("Kör")
+    doc.line_mut(1).span_mut(1).set_style(tui.ink(.Yellow))
+    doc.line_mut(1).push_span(rich.Span::raw("!"))
+    doc.line_mut(0).span_mut(0).reset_style()
+    doc.set_style(tui.plain().background(.Red))
+    inspect(&doc)
+    doc.line_mut(1).reset_style()
+    doc.reset_style()
+    doc.push_line(rich.Line::raw(""))
+    doc.push_span(rich.Span::raw("x\r\ny\tz"))
+    inspect(&doc)
+    for value in ["", "\n", "\n\n", "\r", "\r\n", "\n界\r\nb\n\n", "لا", "🇸🇪!"] {
+        inspect(&rich.Text::raw(value.clone()))
+        inspect(&rich.Text::new([rich.Line::raw(value.clone())]))
+        inspect(&rich.Text::new([rich.Line::new([rich.Span::raw(value.clone())])]))
+    }
+}

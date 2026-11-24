@@ -1,4 +1,5 @@
 import .tui
+import .text_lines as scanning
 import std.bytes as bytes
 import std.cmp as cmp
 
@@ -18,6 +19,24 @@ impl Span {
     pub fn raw(move value: string) -> Self { Span::styled(move value, tui.plain()) }
     pub fn styled(move value: string, style: tui.Style) -> Self { Self { glyphs: tui.GlyphRun::new(move value), style: style } }
     pub fn width(&self) -> i32 { self.glyphs.text_width() }
+    pub fn content(&self) -> &str from self { self.glyphs.content() }
+    pub fn set_content(&mut self, move value: string) { self.glyphs = tui.GlyphRun::new(move value) }
+    pub fn get_style(&self) -> tui.Style { self.style }
+    pub fn set_style(&mut self, style: tui.Style) { self.style = style }
+    pub fn patch_style(&mut self, style: tui.Style) { self.style = self.style.patch(style) }
+    pub fn reset_style(&mut self) { self.style = tui.Style::reset() }
+    fn append_content(&self, out: &mut []u8) {
+        content := self.content()
+        mut rows := scanning.Cursor::new()
+        while rows.advance(content) {
+            bytes.extend_range(&mut out, content.as_bytes(), rows.start, rows.end)
+        }
+    }
+    pub fn to_string(&self) -> string {
+        mut out: []u8 = []
+        self.append_content(&mut out)
+        bytes.decode(&out).unwrap()
+    }
     fn count(&self) -> i32 { self.glyphs.count() }
 }
 
@@ -26,7 +45,15 @@ struct Token { span: i32, start: i32, end: i32, cells: i32, space: bool }
 pub opaque struct Line { spans: []Span, columns: i32, style: tui.Style, alignment: Alignment }
 
 impl Line {
-    pub fn raw(move value: string) -> Self { Line::new([Span::raw(move value)]) }
+    pub fn raw(move value: string) -> Self {
+        mut spans: []Span = []
+        mut rows := scanning.Cursor::new()
+        while rows.advance(value.as_str()) {
+            if rows.start == 0 && rows.end == value.len { return Line::new([Span::raw(move value)]) }
+            spans.push(Span::raw(value[rows.start..rows.end]))
+        }
+        Line::new(move spans)
+    }
     pub fn new(move spans: []Span) -> Self {
         mut columns := 0
         for span in &spans { columns += span.width() }
@@ -34,7 +61,33 @@ impl Line {
     }
     pub fn styled(move self, style: tui.Style) -> Self { mut line := move self; line.style = style; move line }
     pub fn align(move self, alignment: Alignment) -> Self { mut line := move self; line.alignment = alignment; move line }
-    pub fn width(&self) -> i32 { self.columns }
+    pub fn width(&self) -> i32 {
+        if self.columns >= 0 { return self.columns }
+        mut columns := 0
+        for span in &self.spans { columns += span.width() }
+        columns
+    }
+    pub fn spans(&self) -> &[]Span from self { &self.spans }
+    pub fn span_mut(&mut self, index: i32) -> &mut Span from self {
+        self.columns = -1
+        &mut self.spans[index]
+    }
+    pub fn push_span(&mut self, move span: Span) {
+        if self.columns >= 0 { self.columns += span.width() }
+        self.spans.push(move span)
+    }
+    pub fn get_style(&self) -> tui.Style { self.style }
+    pub fn set_style(&mut self, style: tui.Style) { self.style = style }
+    pub fn patch_style(&mut self, style: tui.Style) { self.style = self.style.patch(style) }
+    pub fn reset_style(&mut self) { self.style = tui.Style::reset() }
+    fn append_content(&self, out: &mut []u8) {
+        for span in &self.spans { span.append_content(&mut out) }
+    }
+    pub fn to_string(&self) -> string {
+        mut out: []u8 = []
+        self.append_content(&mut out)
+        bytes.decode(&out).unwrap()
+    }
 }
 
 struct ParagraphLine { content: Line, starts: []i32, ends: []i32, groups: []i32, count: i32 }
@@ -91,29 +144,59 @@ pub opaque struct Text { lines: []Line, columns: i32, style: tui.Style, alignmen
 impl Text {
     pub fn new(move lines: []Line) -> Self {
         mut columns := 0
-        for i in 0..lines.len { columns = cmp.max<i32>(columns, lines[i].columns) }
+        for line in &lines { columns = cmp.max<i32>(columns, line.width()) }
         Self { lines: move lines, columns: columns, style: tui.plain(), alignment: .Inherit }
     }
 
     pub fn raw(move value: string) -> Self {
         mut lines: []Line = []
-        mut start := 0
-        for i in 0..value.len {
-            if value[i] == 10 {
-                end := if i > start && value[i - 1] == 13 { i - 1 } else { i }
-                lines.push(Line::raw(value[start..end]))
-                start = i + 1
-            }
+        mut rows := scanning.Cursor::new()
+        if value.len == 0 { lines.push(Line::new([])) }
+        while rows.advance(value.as_str()) {
+            if rows.start == 0 && rows.end == value.len { return Text::new([Line::new([Span::raw(move value)])]) }
+            if rows.end == rows.start { lines.push(Line::new([])) }
+            else { lines.push(Line::new([Span::raw(value[rows.start..rows.end])])) }
         }
-        if start == 0 { lines.push(Line::raw(move value)) }
-        else if start < value.len { lines.push(Line::raw(value[start..value.len])) }
         Text::new(move lines)
     }
 
     pub fn styled(move self, style: tui.Style) -> Self { mut doc := move self; doc.style = style; move doc }
     pub fn align(move self, alignment: Alignment) -> Self { mut doc := move self; doc.alignment = alignment; move doc }
-    pub fn width(&self) -> i32 { self.columns }
+    pub fn width(&self) -> i32 {
+        if self.columns >= 0 { return self.columns }
+        mut columns := 0
+        for line in &self.lines { columns = cmp.max<i32>(columns, line.width()) }
+        columns
+    }
     pub fn height(&self) -> i32 { self.lines.len }
+    pub fn lines(&self) -> &[]Line from self { &self.lines }
+    pub fn line_mut(&mut self, index: i32) -> &mut Line from self {
+        self.columns = -1
+        &mut self.lines[index]
+    }
+    pub fn push_line(&mut self, move line: Line) {
+        if self.columns >= 0 { self.columns = cmp.max<i32>(self.columns, line.width()) }
+        self.lines.push(move line)
+    }
+    pub fn push_span(&mut self, move span: Span) {
+        if self.lines.len == 0 { self.lines.push(Line::new([])) }
+        last := self.lines.len - 1
+        self.lines[last].push_span(move span)
+        if self.columns >= 0 { self.columns = cmp.max<i32>(self.columns, self.lines[last].width()) }
+    }
+    pub fn get_alignment(&self) -> Alignment { self.alignment }
+    pub fn get_style(&self) -> tui.Style { self.style }
+    pub fn set_style(&mut self, style: tui.Style) { self.style = style }
+    pub fn patch_style(&mut self, style: tui.Style) { self.style = self.style.patch(style) }
+    pub fn reset_style(&mut self) { self.style = tui.Style::reset() }
+    pub fn to_string(&self) -> string {
+        mut out: []u8 = []
+        for i in 0..self.lines.len {
+            if i > 0 { out.push(10) }
+            self.lines[i].append_content(&mut out)
+        }
+        bytes.decode(&out).unwrap()
+    }
 }
 
 pub opaque struct Paragraph { lines: []ParagraphLine, text_style: tui.Style, style: tui.Style, alignment: Alignment, wrap_mode: Wrap, top: i32, left: i32 }
@@ -458,10 +541,11 @@ impl Line {
     }
 
     fn paint_line(&self, frame: &mut tui.Frame, area: tui.Rect, alignment: Alignment, style: tui.Style) {
-        if self.columns <= 0 || area.w <= 0 || area.h <= 0 { return }
+        columns := self.width()
+        if columns <= 0 || area.w <= 0 || area.h <= 0 { return }
         row := tui.Rect { x: area.x, y: area.y, w: area.w, h: 1 }
         frame.apply_style(row, style)
-        delta := row.w - self.columns
+        delta := row.w - columns
         shift := match alignment { .Center => delta / 2, .Right => delta, _ => 0, }
         mut x := cmp.max<i32>(0, shift)
         mut skip := cmp.max<i32>(0, -shift)

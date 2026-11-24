@@ -21,6 +21,29 @@ import ..src.width
 import ..src.material
 import ..src.tailwind
 
+@test fn nested_text_edits_update_width_and_preserve_source() {
+    mut doc := rich.Text::raw("longest\r\n界\n").align(.Right)
+    assert(doc.get_alignment() == .Right && doc.width() == 7)
+    doc.line_mut(0).span_mut(0).set_content("a")
+    assert(doc.height() == 2 && doc.width() == 2)
+    doc.push_span(rich.Span::styled("!", tui.ink(.Yellow)))
+    assert(doc.width() == 3)
+    doc.line_mut(1).span_mut(1).patch_style(tui.plain().italic())
+    last := &doc.lines()[1].spans()[1]
+    assert(last.get_style().has(.Italic) && last.get_style().get_foreground() == .Some(tui.Color.Yellow))
+    doc.line_mut(1).reset_style()
+    assert(doc.lines()[1].get_style().get_background() == .Some(tui.Color.Default))
+    doc.patch_style(tui.plain().bold())
+    assert(doc.get_style().has(.Bold))
+    doc.push_line(rich.Line::new([rich.Span::raw("\r\n終\r")]))
+    assert(doc.lines()[2].spans()[0].content() == "\r\n終\r")
+    assert(doc.to_string() == "a\n界!\n終\r")
+    p := rich.Paragraph::new(move doc).prepare(4)
+    mut frame := tui.Frame::new(4, 3)
+    p.render(&mut frame, frame.area())
+    assert(frame.line(0) == "   a" && frame.symbol_at(1,1).unwrap() == "界")
+}
+
 @test fn named_palettes_encode_truecolor_in_terminal_output() {
     mut frame := tui.Frame::new(1, 1)
     style := tui.ink(tailwind.color(.Violet, .C400)).background(material.color(.BlueGray, .C900))

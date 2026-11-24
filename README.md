@@ -86,7 +86,7 @@ Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.19.0", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.20.0", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.
@@ -349,6 +349,17 @@ artikel := rich.Paragraph::new(rich.Text::new([
 `.Trim` radbryter vid ord och tar bort inledande blanksteg. `.Preserve` behåller indrag och `.Clip` klipper långa rader. `set_scroll(rad, kolumn)` flyttar läspositionen. Horisontell skrollning gäller vänsterjusterad, klippt text. För en lång text som skrollas ofta kan `artikel.prepare(bredd)` beräkna radbrytningarna en gång. Den förberedda texten har `height()`, `set_top(rad)` och `resize(bredd)`.
 
 Kör `dunder run examples/reader/main.ddr` för att prova en läsare. Piltangenterna skrollar, Home och End hoppar mellan början och slutet. Läsaren använder `tui.run_stateful` så att ritfunktionen kan anpassa skrollpositionen till fönstrets storlek. [Läsarens källkod](examples/reader/main.ddr)
+
+För text som ändras under körning kan du lägga till rader, byta ut ett enskilt spanns innehåll och låta färgen följa med. `width()` mäter det aktuella innehållet i terminalkolumner.
+
+```dunder
+mut journal := rich.Text::new([])
+journal.push_span(rich.Span::styled("Väntar", tui.ink(.Cyan)))
+journal.push_line(rich.Line::raw("Kaj 4"))
+journal.line_mut(0).span_mut(0).set_content("Framme")
+```
+
+`lines()` och `spans()` lånar innehållet för läsning. `span.content()` ger den ursprungliga UTF-8-texten. `journal.to_string()` skriver en rad per `Line`. Radslut inne i ett spann utelämnas vid utskrift.
 
 ## Stilar som kan kombineras
 

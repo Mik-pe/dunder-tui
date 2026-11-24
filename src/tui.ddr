@@ -1469,9 +1469,10 @@ impl GlyphRun {
             at = group.end
         }
         if script { measured -= width.script_savings(&chars, 0, chars.len) }
-        Self { source: "", data: .Some(GlyphData { tokens: move tokens, clusters: move clusters, clipping: move clipping, text_width: measured }), zero_width: zero_width, columns: columns }
+        Self { source: move value, data: .Some(GlyphData { tokens: move tokens, clusters: move clusters, clipping: move clipping, text_width: measured }), zero_width: zero_width, columns: columns }
     }
 
+    pub fn content(&self) -> &str from self { self.source.as_str() }
     pub fn has_zero_width(&self) -> bool { self.zero_width }
     pub fn count(&self) -> i32 { match &self.data { .Some(d) => d.tokens.len / 2, .None => self.source.len, } }
     pub fn width(&self) -> i32 { self.columns }

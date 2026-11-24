@@ -8,7 +8,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | --- | --- | --- |
 | Buffer och Cell | Återanvända bildbuffertar, breda tecken, celldiff, exakt och ungefärlig sammanslagning av linjesymboler, färgutdata och avläsning av rader och cellstilar. Buffertar med förskjutet origo, rektangulär kopiering, linjär storleksändring och tillämpning av en diff på en delyta. Buffertsammanslagning, avläsning av en hel cell, fyra cellregler och strömmande besök av ändringar. | Större ytor än bibliotekets nuvarande gräns på 4 096 celler per axel och 1 048 576 celler totalt. |
 | Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. Tailwind och Material ger 500 namngivna RGB-värden. | Beständiga dataformat och full täckning för konvertering mellan stilrepresentationer. |
-| Text | Span, Line, Text, Paragraph, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. Cellprov för Unicode 18:s emojitest, presentationsvarianter och skriftspecifika ligaturer inom och över grafemgränser. | Återstående operationer på fristående texttyper. |
+| Text | Span, Line, Text, Paragraph, inkrementell redigering, stiländringar, läsning av textens delar, utskrift, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. Cellprov för Unicode 18:s emojitest, presentationsvarianter och skriftspecifika ligaturer inom och över grafemgränser. | Sammanslagning av hela dokument och genomgång av stiliserade grafem via det publika API:t. |
 | Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering och cache. 15 076 jämförda layouter, 1 200 rektangelprov och 1 100 jämförda bilder. | Utökad täckning av överbestämda system med många olika paneler och upprepade ändringar av reglerna. |
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna tecken, individuella kanter, justerade titlar, utfyllnad och skuggor. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
 | Övriga widgets | Fristående Clear och Fill med cellvisa symboler, stil och klippning, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, månadskalender med händelser och egna datumstilar, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. | Logotyp och maskot. |
@@ -345,3 +345,15 @@ Unixprovet läser döljning och återställning i pseudoterminalens byteföljd. 
 Provet jämför 1 512 buffertar och ordningen på deras ändrade celler med Ratatui. Det täcker 14 symboler, bland annat tom sträng, arabiska ligaturer, kombinerande tecken, två ASCII-tecken och sammansatta emoji. Det läser symbol, färg, attribut och diffregel på varje position, även bakom en bred symbol. Unixprovet tolkar terminalströmmen och Win32-provet läser tillbaka fem tecken från konsolen efter överlagrad fyllning och rensning. [Celljämförelse](../tests/cell_widgets.ddr) · [Referens](../benchmarks/reference/examples/cell_widgets.rs) · [Nativ plattformsverifiering](https://github.com/Mik-pe/dunder-tui/actions/runs/45308458992)
 
 Ratatui 0.30.2 kan gå utanför bufferten när en bakgrundsfärgad bred symbol i sista cellen ersätts med en smal och diffiteratorn avancerar igen. Kör Rustprovet med `--last-cell` för ett exempel med en enda cell. Dunder lämnar den sista ändringen och avslutar itereringen. Celljämförelsen kontrollerar referensen till och med sista giltiga positionen. [Regressionsprov](../tests/suite.ddr) · [Bildtider och terminalbyte](../benchmarks/cell-widgets.md)
+
+## Redigerbar text i 0.20.0
+
+Provet bygger först en tom text, lägger till spann och rader, kortar den bredaste raden och ändrar stilar på alla tre nivåer. Sedan jämförs konstruktion av spann, rader och dokument från åtta indata, bland annat tom text, blandade radslut, en arabisk ligatur och en flaggemoji. Sammanlagt matchar 360 cellbilder och 112 rader med bredder, antal element, källtext och formaterad text Ratatui 0.30.2. Varje bild omfattar också kanten utanför ritytan. [Dunderprov](../tests/text_edits.ddr) · [Ratatui-prov](../benchmarks/reference/examples/text_edits.rs)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/text_edits.ddr -o build/text-edits
+build/text-edits >build/dunder-edits
+cargo run --release --locked --offline --manifest-path benchmarks/reference/Cargo.toml --example text_edits >build/ratatui-edits
+diff -u build/ratatui-edits build/dunder-edits
+```
