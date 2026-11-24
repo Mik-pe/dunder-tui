@@ -1,0 +1,14 @@
+struct Screen { rows: i32 }
+struct Cursor { screen: &Screen }
+
+impl Screen {
+    fn cursor(&self) -> Cursor from self {
+        result := Cursor { screen:&self }
+        return move result
+    }
+}
+
+fn main() {
+    screen := Screen { rows:19 }
+    assert(screen.cursor().screen.rows == 19)
+}

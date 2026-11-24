@@ -219,6 +219,27 @@ fn raw_cases() {
         }
     }
     let changed = to_value(Cell::from('!')).unwrap();
+    let mut skipped = changed.clone();
+    skipped["diff_option"] = json!("Skip");
+    let mut wide = empty.clone();
+    wide["diff_option"] = json!({"ForcedWidth": 2});
+    let mut space = empty.clone();
+    space["symbol"] = json!(" ");
+    for (old, next) in [
+        (vec![], vec![changed.clone()]),
+        (vec![changed.clone()], vec![]),
+        (vec![empty.clone()], vec![space]),
+        (vec![empty.clone()], vec![skipped]),
+        (
+            vec![wide.clone(), empty.clone()],
+            vec![wide, changed.clone()],
+        ),
+        (vec![changed.clone()], vec![changed.clone(), empty.clone()]),
+    ] {
+        let previous = buffer(3, 7, 0, 2, &old);
+        let current = buffer(3, 7, 0, 3, &next);
+        println!("D\t{}", json!([previous, current]));
+    }
     let mut narrow = Vec::new();
     for symbol in [
         Value::Null,

@@ -126,6 +126,22 @@ import ..src.snapshot
     assert(next.diff_positions(&old).unwrap().len == 0)
 }
 
+@test fn zero_width_raw_buffers_can_exhaust_their_diff_without_coordinates() {
+    mut old := tui.Buffer::default()
+    old.content.push(tui.RawCell::empty())
+    mut next := tui.Buffer::default()
+    next.content.push(tui.RawCell::new(" "))
+    next.content.push(tui.RawCell::new("outside the common length"))
+    assert(next.diff_positions(&old).unwrap().len == 0)
+    _ := next.content[0].set_symbol("x").set_diff_option(.Skip)
+    assert(next.diff_positions(&old).unwrap().len == 0)
+    pair := tui.BufferPair { previous:&old, current:&next }
+    mut it := pair.diff_iter()
+    assert(it.next().is_none() && !it.advance())
+    _ := next.content[0].set_diff_option(.AlwaysUpdate)
+    assert(next.diff_positions(&old).is_err())
+}
+
 @test fn edit_a_borrowed_raw_cell_and_leave_neighbors_intact() {
     area := tui.Rect::new(2, 3, 4, 1)
     mut tile := tui.RawCell::new("┘")

@@ -24,8 +24,10 @@ fn pair(table: string, i: i32) -> i32 {
 }
 
 fn property(cp: i32) -> i32 {
-    if cp < 256 { return pair(width_data.latin1(), cp) }
-    page := pair(width_data.pages(), cp.shr(10))
+    if cp < 1024 { return pair(width_data.first_page(), cp) }
+    entry := pair(width_data.pages(), cp.shr(10))
+    if entry < 2048 { return entry }
+    page := entry - 2048
     group := pair(width_data.groups(), page * 32 + cp.shr(5).bit_and(31))
     state := i32(width_data.states()[group * 32 + cp.bit_and(31)]) - 35
     pair(width_data.values(), state)

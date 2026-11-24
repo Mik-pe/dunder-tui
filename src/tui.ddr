@@ -966,32 +966,32 @@ impl Default for Buffer {
 }
 
 pub struct BufferPair { previous: &Buffer, current: &Buffer }
-pub opaque struct BufferDiff { pair: &BufferPair, at:i32, trailing:i32, force:bool, limit: i32, index: i32 }
+pub opaque struct BufferDiff {
+    current: &Buffer, previous: &Buffer,
+    at: i32, trailing: i32, force: bool, limit: i32, index: i32,
+}
 pub struct CellChange { x: i32, y: i32, cell: &RawCell }
 
 impl BufferPair {
-    fn limit(&self) -> i32 {
-        a := self.current.area
-        b := self.previous.area
-        if a.x != b.x || a.y != b.y || a.w != b.w { return -1 }
-        limit := cmp.min<i32>(self.current.content.len, self.previous.content.len)
-        if a.w <= 0 && limit > 0 { return -1 }
-        limit
-    }
-    fn iter(&self, limit:i32) -> BufferDiff from self {
-        BufferDiff { pair:&self, at:0, trailing:0, force:false, limit:limit, index:-1 }
+    fn compatible(&self) -> bool {
+        a := &self.current.area
+        b := &self.previous.area
+        if a.x != b.x || a.y != b.y || a.w != b.w { return false }
+        a.w >= 0 || self.current.content.len == 0 || self.previous.content.len == 0
     }
     pub fn diff_iter(&self) -> BufferDiff from self {
-        limit := self.limit()
-        assert(limit >= 0)
-        self.iter(limit)
+        assert(self.compatible())
+        BufferDiff {
+            current:&self.current, previous:&self.previous, at:0, trailing:0, force:false,
+            limit:cmp.min<i32>(self.current.content.len,self.previous.content.len), index:-1,
+        }
     }
 }
 
 impl BufferDiff {
     pub fn advance(&mut self) -> bool {
-        current := &self.pair.current
-        previous := &self.pair.previous
+        current := &self.current
+        previous := &self.previous
         mut i := self.at
         while i < self.limit {
             a := &current.content[i]
@@ -1024,15 +1024,15 @@ impl BufferDiff {
         self.index = -1
         false
     }
-    pub fn x(&self) -> i32 { (self.pair.current.area.x + self.index%self.pair.current.area.w).bit_and(65535) }
-    pub fn y(&self) -> i32 { (self.pair.current.area.y + (self.index/self.pair.current.area.w).bit_and(65535)).bit_and(65535) }
-    pub fn cell(&self) -> &RawCell from self.pair { &self.pair.current.content[self.index] }
+    pub fn x(&self) -> i32 { (self.current.area.x + self.index%self.current.area.w).bit_and(65535) }
+    pub fn y(&self) -> i32 { (self.current.area.y + (self.index/self.current.area.w).bit_and(65535)).bit_and(65535) }
+    pub fn cell(&self) -> &RawCell from self.current { &self.current.content[self.index] }
 }
 
 impl Iterator for BufferDiff {
-    fn next(&mut self) -> Option<CellChange> from self.pair {
+    fn next(&mut self) -> Option<CellChange> from self.current {
         if self.advance() {
-            return .Some(CellChange { x:self.x(), y:self.y(), cell:&self.pair.current.content[self.index] })
+            return .Some(CellChange { x:self.x(), y:self.y(), cell:&self.current.content[self.index] })
         }
         .None
     }
@@ -1052,10 +1052,10 @@ impl Buffer {
         if option > 0 { option } else { cmp.max<i32>(1, self.content[i].columns()) }
     }
     fn same_symbol(&self, other: &Buffer, i: i32) -> bool { self.content[i].same_symbol(&other.content[i]) }
-    fn same_visible_cell(&self, other: &Buffer, i: i32) -> bool {
+    fn same_diff_cell(&self, other: &Buffer, i: i32) -> bool {
         a := &self.content[i]
         b := &other.content[i]
-        a.same_style(&b) && a.same_symbol(&b)
+        a == b
     }
     fn has_vs16(&self, i: i32) -> bool {
         match &self.content[i].symbol { .Some(s) => strings.contains(s,"\u{fe0f}"), .None => false, }
@@ -1066,9 +1066,12 @@ impl Buffer {
     }
     pub fn visit_changes(&self, previous: &Buffer, visit: &mut FnMut(i32,i32,&RawCell) -> bool) -> Result<(),string> {
         pair := BufferPair { previous:&previous, current:&self }
-        limit := pair.limit()
-        if limit < 0 { return .Err("Buffer diffs require equal origins and widths, and a positive width for stored cells.") }
-        mut changes := pair.iter(limit)
+        if !pair.compatible() { return .Err("Buffer diffs require equal origins and widths.") }
+        mut changes := pair.diff_iter()
+        if self.area.w == 0 {
+            if changes.advance() { return .Err("A changed cell needs a positive buffer width for its coordinates.") }
+            return .Ok
+        }
         while changes.advance() {
             if !visit(changes.x(), changes.y(), changes.cell()) { break }
         }
@@ -1552,16 +1555,15 @@ fn changed_cell<B>(current: &B, previous: &B, limit:i32, full:bool, at:&mut i32,
     step := current.output_width(i,option)
     at = i + cmp.min<i32>(limit-i,step)
     if full { return true }
-    old := previous.stored_option(i)
-    if option != ALWAYS_UPDATE && current.stored_option(i) == old && current.same_visible_cell(&previous,i) { return false }
+    if option != ALWAYS_UPDATE && current.same_diff_cell(&previous,i) { return false }
     if option > 0 { return true }
     if step > 1 && current.has_vs16(i) {
         trailing = at
         at = i+1
         force = false
-    } else if step == 1 {
-        old_step := previous.output_width(i,stored_rule(old))
-        if old_step > 1 && previous.visible_blank_style(i) {
+    } else if step == 1 && previous.visible_blank_style(i) {
+        old_step := previous.output_width(i,stored_rule(previous.stored_option(i)))
+        if old_step > 1 {
             trailing = i + cmp.min<i32>(limit-i,old_step)
             force = true
         }
@@ -2798,6 +2800,9 @@ impl Frame {
         false
     }
 
+    fn same_diff_cell(&self, previous: &Frame, i:i32) -> bool {
+        self.stored_option(i) == previous.stored_option(i) && self.same_visible_cell(&previous,i)
+    }
     fn same_visible_cell(&self, previous: &Frame, i: i32) -> bool {
         if !self.same_symbol(&previous,i) { return false }
         if self.glyphs[i] < 0 { return previous.glyphs[i] < 0 || previous.styles[i] == 0 }

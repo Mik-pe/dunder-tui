@@ -47,11 +47,12 @@ fn measure(mode:string, timed:bool, count:i32, check:bool) {
         }
         return
     }
+    clock := time.MonotonicClock.Raw
     mut samples: []i64 = []
     mut sum: i64 = 0
     mut emitted := 0
     for n in 0..count {
-        begin := if timed { time.monotonic_ns() } else { i64(0) }
+        begin := if timed { clock.now_ns() } else { i64(0) }
         emitted = 0
         mut value: i64 = 0
         mut changes := pair.diff_iter()
@@ -59,7 +60,7 @@ fn measure(mode:string, timed:bool, count:i32, check:bool) {
             emitted += 1
             value += i64(changes.y()*256 + changes.x() + i32(changes.cell().modifier.bits))
         }
-        if timed && n >= 10 { samples.push(time.monotonic_ns()-begin) }
+        if timed && n >= 10 { samples.push(clock.now_ns()-begin) }
         sum += value
     }
     if timed {

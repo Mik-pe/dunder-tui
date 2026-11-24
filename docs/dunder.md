@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Flytta en markör som lånar från anroparen
+
+När en namngiven markör lånar från `self` godtar Dunder 0.12.1 `return result`. Samma retur med `return move result` ger E4003. För 8 192 markörer gjorde runtimeprofilen 8 193 postkloner vid direkt konstruktion, 16 385 med en fabriksmetod och 24 577 när ytterligare en metod returnerade samma resultat. Alla tre gav 598 016 på macOS ARM64 och Linux ARM64. Låt returvärdet flytta med sig lånets ursprung och behåll kontrollen att ägaren lever till sista läsningen. [Kompilatorprov](../tests/dogfood/compiler/return_moved_cursor.ddr) · [Mätprogram](../benchmarks/language/borrowed_cursor.ddr)
+
 ## Låna en enumvariants innehåll muterbart
 
 När en vy ligger i en enum i en array behöver läsaren kunna uppdatera den på plats. I 0.12.1 ger `match &mut pages[index]` E3006. En vanlig lånad matchning ger E4002 vid skrivning till postfältet i varianten. Låt armen få ett exklusivt lån som upphör när armen lämnas. Läsarprovet kan i dag använda två konkreta sidtyper med samma trait. [Minimiprov](../tests/dogfood/compiler/match_mutable_payload.ddr) · [Läsarprovet](../benchmarks/reader.ddr)
