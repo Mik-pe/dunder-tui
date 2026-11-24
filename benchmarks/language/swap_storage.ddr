@@ -1,0 +1,54 @@
+capability stdio
+import sys
+
+struct Program { titles: []string, positions: []i32 }
+
+fn day() -> Program { Program { titles: ["Intro", "Ridå"], positions: [1, 11] } }
+fn evening() -> Program { Program { titles: ["Paus"], positions: [7] } }
+
+fn exchange(active: &mut Program, waiting: &mut Program) {
+    previous := replace(&mut active, Program { titles: [], positions: [] })
+    active = replace(&mut waiting, move previous)
+}
+
+fn verify(first: &Program, second: &Program) {
+    assert(first.titles == ["Paus"] && second.titles == ["Intro", "Ridå"])
+    assert(first.positions == [7] && second.positions == [1, 11])
+}
+
+fn independent(swapping: bool) -> i32 {
+    mut active := day()
+    mut waiting := evening()
+    mut sum := 0
+    for i in 0..4095 {
+        if swapping { exchange(&mut active, &mut waiting) }
+        if swapping || i%2 == 1 { sum += active.positions[0] }
+        else { sum += waiting.positions[0] }
+    }
+    if swapping { verify(&active, &waiting) } else { verify(&waiting, &active) }
+    sum
+}
+
+fn slots() -> i32 {
+    mut programs := [day(), evening()]
+    mut sum := 0
+    for _ in 0..4095 {
+        programs.swap(0, 1)
+        sum += programs[0].positions[0]
+    }
+    verify(&programs[0], &programs[1])
+    sum
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 2 }
+    sum := match sys.arg(1) {
+        "keep" => independent(false),
+        "swap" => independent(true),
+        "slots" => slots(),
+        _ => { return 2 },
+    }
+    assert(sum == 16383)
+    print(sum)
+    0
+}
