@@ -2,6 +2,9 @@ import .tui
 import .text as rich
 import .block
 import std.cmp as cmp
+import std.json
+import .json_format
+import .selection
 
 pub struct Clear {}
 impl Clear {
@@ -116,7 +119,23 @@ impl Sample {
     pub fn missing() -> Self { Self { value: .None, style: tui.plain() } }
     pub fn styled(value: u64, style: tui.Style) -> Self { Self { value: .Some(value), style: style } }
 }
+@derive(Encode, Eq, Hash)
 pub enum Flow { LeftToRight, RightToLeft }
+
+impl Default for Flow {
+    fn default() -> Self { .LeftToRight }
+}
+
+impl json.Decode for Flow {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        name := json_format.unit_name(&doc,node)?
+        match name {
+            "LeftToRight" => .Ok(.LeftToRight),
+            "RightToLeft" => .Ok(.RightToLeft),
+            _ => .Err(json.JsonError::new("unknown Flow",doc.node_offset(node))),
+        }
+    }
+}
 
 pub fn nine_levels() -> [rune; 9] { [` `, `▁`, `▂`, `▃`, `▄`, `▅`, `▆`, `▇`, `█`] }
 pub fn three_levels() -> [rune; 9] { [` `, ` `, `▄`, `▄`, `▄`, `▄`, `▄`, `█`, `█`] }
@@ -245,14 +264,118 @@ pub fn vertical_bar<S: BarSymbol>(frame: &mut tui.Frame, area: tui.Rect, ticks: 
     if whole > 0 { symbols[8].paint_bar(&mut frame, tui.Rect { x:area.x, y:full_y, w:area.w, h:whole }, style) }
 }
 
+@derive(Eq, Hash)
 pub enum Edge { Left, Right, Top, Bottom }
+
+impl Default for Edge {
+    fn default() -> Self { .Right }
+}
+
+impl json.Encode for Edge {
+    fn encode_json(&self, out: &mut json.Writer) {
+        out.string(match self { .Left => "VerticalLeft", .Right => "VerticalRight", .Top => "HorizontalTop", .Bottom => "HorizontalBottom", })
+    }
+}
+
+impl json.Decode for Edge {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        name := json_format.unit_name(&doc,node)?
+        match name {
+            "VerticalLeft" => .Ok(.Left),
+            "VerticalRight" => .Ok(.Right),
+            "HorizontalTop" => .Ok(.Top),
+            "HorizontalBottom" => .Ok(.Bottom),
+            _ => .Err(json.JsonError::new("unknown Edge",doc.node_offset(node))),
+        }
+    }
+}
+@derive(Encode, Eq, Hash)
+pub enum ScrollDirection { Forward, Backward }
+
+impl Default for ScrollDirection {
+    fn default() -> Self { .Forward }
+}
+
+impl json.Decode for ScrollDirection {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        name := json_format.unit_name(&doc,node)?
+        match name {
+            "Forward" => .Ok(.Forward),
+            "Backward" => .Ok(.Backward),
+            _ => .Err(json.JsonError::new("unknown ScrollDirection",doc.node_offset(node))),
+        }
+    }
+}
+
+@derive(Encode, Eq, Hash)
+pub struct SavedScrollState { content_length:u64, position:u64, viewport_content_length:u64 }
+
+impl Default for SavedScrollState {
+    fn default() -> Self { Self::new(0) }
+}
+
+impl SavedScrollState {
+    pub fn new(length: u64) -> Self { Self { content_length:length, position:0, viewport_content_length:0 } }
+    pub fn first(&mut self) { self.position = 0 }
+    pub fn last(&mut self) { self.position = selection.retreat(self.content_length,1) }
+    pub fn next(&mut self) { self.position = cmp.min<u64>(selection.advance(self.position,1),selection.retreat(self.content_length,1)) }
+    pub fn prev(&mut self) { self.position = selection.retreat(self.position,1) }
+    pub fn scroll(&mut self, direction: ScrollDirection) { if direction == .Forward { self.next() } else { self.prev() } }
+    fn metrics(&self) -> Self { self.clone() }
+}
+
+impl json.Decode for SavedScrollState {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        f := json_format.fields(&doc,node,&["content_length","position","viewport_content_length"],3,3)?
+        length := u64::decode_json(&doc,f[0])?
+        position := u64::decode_json(&doc,f[1])?
+        viewport := u64::decode_json(&doc,f[2])?
+        .Ok(Self { content_length:length, position:position, viewport_content_length:viewport })
+    }
+}
+
+@derive(Eq, Hash)
 pub struct ScrollState { length: i32, position: i32, viewport: i32 }
+
+impl Default for ScrollState {
+    fn default() -> Self { Self::new(0) }
+}
 impl ScrollState {
     pub fn new(length: i32) -> Self { Self { length: length, position: 0, viewport: 0 } }
     pub fn first(&mut self) { self.position = 0 }
     pub fn last(&mut self) { self.position = if self.length > 0 { self.length - 1 } else { 0 } }
     pub fn next(&mut self) { self.position = i32(cmp.clamp<i64>(i64(self.position) + 1, 0, cmp.max<i64>(0, i64(self.length) - 1))) }
     pub fn prev(&mut self) { self.position = if self.position > 0 { self.position - 1 } else { 0 } }
+    pub fn scroll(&mut self, direction: ScrollDirection) { if direction == .Forward { self.next() } else { self.prev() } }
+    fn metrics(&self) -> SavedScrollState {
+        SavedScrollState { content_length:u64(cmp.max<i32>(0,self.length)), position:u64(cmp.max<i32>(0,self.position)),
+            viewport_content_length:u64(cmp.max<i32>(0,self.viewport)) }
+    }
+}
+
+impl json.Encode for ScrollState {
+    fn encode_json(&self, out: &mut json.Writer) {
+        if self.length < 0 || self.position < 0 || self.viewport < 0 {
+            json_format.reject(&mut out,"scrollbar indices must be nonnegative")
+            return
+        }
+        json.encode(&mut out,&self.metrics())
+    }
+}
+
+impl json.Decode for ScrollState {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        state := SavedScrollState::decode_json(&doc,node)?
+        if state.content_length > 2147483647 || state.position > 2147483647 || state.viewport_content_length > 2147483647 {
+            return .Err(selection.overflow(&doc,node))
+        }
+        .Ok(Self { length:i32(state.content_length), position:i32(state.position), viewport:i32(state.viewport_content_length) })
+    }
+}
+
+fn track_fraction(value: u64, track: u64, denominator: u64) -> u64 {
+    product := if value > selection.MAX / track { selection.MAX } else { value * track }
+    product.wrapping_add(denominator/2) / denominator
 }
 pub struct ScrollPart { symbol: Option<rich.Span> }
 impl ScrollPart {
@@ -272,23 +395,24 @@ impl Scrollbar {
             end: ScrollPart::new(if v { "▼" } else { "►" }, tui.plain()) }
     }
 
-    pub fn render_stateful(&self, frame: &mut tui.Frame, bounds: tui.Rect, state: &mut ScrollState) {
+    pub fn render_stateful<S>(&self, frame: &mut tui.Frame, bounds: tui.Rect, state: &mut S) {
         self.render(&mut frame,bounds,&state)
     }
 
-    pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect, state: &ScrollState) {
+    pub fn render<S>(&self, frame: &mut tui.Frame, bounds: tui.Rect, state: &S) {
         area := bounds.intersection(frame.area())
-        if state.length <= 0 || area.w <= 0 || area.h <= 0 { return }
+        metrics := state.metrics()
+        if metrics.content_length == 0 || area.w <= 0 || area.h <= 0 { return }
         vertical := self.edge == .Left || self.edge == .Right
         length := if vertical { area.h } else { area.w }
         track := i64(length) - i64(self.begin.width()) - i64(self.end.width())
         if track <= 0 { return }
-        view := i64(if state.viewport > 0 { state.viewport } else { length })
-        last := i64(state.length - 1)
-        denom := last + view
-        thumb := cmp.clamp<i64>((view * track + denom / 2) / denom, 1, track)
-        pos := i64(cmp.clamp<i32>(state.position, 0, state.length - 1))
-        start := cmp.min<i64>((pos * track + denom / 2) / denom, track - thumb)
+        view := if metrics.viewport_content_length > 0 { metrics.viewport_content_length } else { u64(length) }
+        last := metrics.content_length-1
+        denom := selection.advance(last,view)
+        thumb := cmp.clamp<u64>(track_fraction(view,u64(track),denom),1,u64(track))
+        pos := cmp.min<u64>(metrics.position,last)
+        start := cmp.min<u64>(track_fraction(pos,u64(track),denom),u64(track)-thumb)
         head := if self.begin.symbol.is_some() { 1 } else { 0 }
         tail := head + i32(track)
         for i in 0..length {

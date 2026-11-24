@@ -624,6 +624,7 @@ fn reserve_cells(glyphs: &mut []i32, styles: &mut []i64, area: Rect) -> Result<(
 const SKIP_CELL: i32 = -1
 const ALWAYS_UPDATE: i32 = -2
 const LEGACY_SKIP: i32 = 65536
+const OVERLAPPING_WIDTHS: u8 = 4
 
 fn stored_rule(code: i32) -> i32 { if code >= LEGACY_SKIP { code - LEGACY_SKIP - 2 } else { code } }
 
@@ -652,7 +653,7 @@ impl Buffer {
                 }
             }
             frame.store_raw(i,&cell,if columns == 0 { 0 } else { span })
-            if columns > span { frame.overlaps = true }
+            if columns > span { frame.mark_overlap(i) }
             i += span
         }
         .Ok(move frame)
@@ -704,7 +705,7 @@ impl Frame {
         else if self.glyphs[i] >= WIDE { self.split_wide_cell(x+1,y) }
         columns := cell.columns()
         self.store_raw(i,&cell,if columns == 0 { 0 } else { 1 })
-        if columns > 1 { self.overlaps = true }
+        if columns > 1 { self.mark_overlap(i) }
         true
     }
 
@@ -747,7 +748,7 @@ impl DiffScan {
     fn new(current: &Frame, previous: &Frame) -> Self {
         full := current.bounds != previous.bounds
         Self { at:0, start:0, end:0, cached:-1, trailing:0, limit:current.glyphs.len, force:false, full:full,
-            precise:current.row_flags.len > 0 || previous.row_flags.len > 0 || current.overlaps || previous.overlaps,
+            precise:current.row_flags.len > 0 || previous.row_flags.len > 0,
             floor:if full { i64(0) } else { current.shared_style_floor(&previous) } }
     }
 
@@ -806,7 +807,7 @@ impl DiffScan {
                 if frame.row_flags.len > 0 { flags = frame.row_flags[y] }
                 if !self.full && previous.row_flags.len > 0 { flags = flags.bit_or(previous.row_flags[y]) }
             }
-            ordinary_widths := flags.bit_and(1) == 0 && !frame.overlaps && !previous.overlaps
+            ordinary_widths := flags.bit_and(OVERLAPPING_WIDTHS.bit_or(1)) == 0
             if self.full && ordinary_widths && self.cached < 0 && i >= self.trailing {
                 self.start = i
                 self.end = limit
@@ -817,7 +818,7 @@ impl DiffScan {
                 self.at = limit
                 continue
             }
-            if self.precise && (flags != 0 || frame.overlaps || previous.overlaps || self.cached >= 0 || self.at < self.trailing) {
+            if self.precise && (flags != 0 || self.cached >= 0 || self.at < self.trailing) {
                 self.start = if self.cached >= 0 { self.cached } else { self.next_cell(&frame,&previous,limit,ordinary_widths) }
                 self.cached = -1
                 if self.start < 0 { continue }
@@ -914,6 +915,11 @@ impl Frame {
         if code != 0 { self.has_options = true; self.mark_row(index,1) }
     }
 
+    fn mark_overlap(&mut self, index: i32) {
+        self.overlaps = true
+        self.mark_row(index,OVERLAPPING_WIDTHS)
+    }
+
     pub fn set_diff_option(&mut self, x: i32, y: i32, option: CellDiffOption) -> bool {
         if !self.bounds.contains(x,y) { return false }
         if !option.valid() { return false }
@@ -932,7 +938,7 @@ impl Frame {
         i := self.index(x,y)
         key := self.composite(self.styles[i],&style)
         self.put_cluster_at(i,y-self.bounds.y,value.clone(),1,key)
-        self.overlaps = true
+        self.mark_overlap(i)
         true
     }
 
@@ -1092,7 +1098,7 @@ impl Frame {
         end := head + self.advance(head)
         self.glyphs[head] = self.glyphs[head].bit_and(WIDE-1)
         for i in head+1..end { self.glyphs[i] = 0; self.styles[i] = 0 }
-        self.overlaps = true
+        self.mark_overlap(head)
     }
 
     fn erase_span(&mut self, i: i32) {
@@ -1341,10 +1347,10 @@ impl Frame {
             self.fill_narrow(area,i32(chars[0]),&style)
             return
         }
-        self.overlaps = true
         mut last := i64(0)
         mut brush := self.composite(last,&style)
         for y in area.y..area.bottom() {
+            self.mark_overlap(self.index(area.x,y))
             for x in area.x..area.right() {
                 i := self.index(x,y)
                 old := self.styles[i]
@@ -1557,7 +1563,16 @@ impl Frame {
         if y < self.bounds.y || y >= self.bounds.y+self.bounds.h { return "" }
         mut out: []u8 = []
         start := (y-self.bounds.y)*self.bounds.w
-        for i in start..(start + self.bounds.w) { self.append_cell(&mut out, i, false) }
+        mut covered := start
+        overlapping := self.row_flags.len > 0 && self.row_flags[y-self.bounds.y].bit_and(OVERLAPPING_WIDTHS) != 0
+        for i in start..(start + self.bounds.w) {
+            glyph := self.glyphs[i]
+            if glyph == 0 && i < covered { continue }
+            self.append_glyph(&mut out,i,glyph,false)
+            if overlapping && glyph >= 95 && glyph < WIDE && glyph != WRITTEN_SPACE {
+                covered = cmp.max<i32>(covered,i + cmp.min<i32>(self.output_width(i,0),self.bounds.w-(i-start)))
+            }
+        }
         bytes.decode(&out).unwrap()
     }
 
@@ -1582,7 +1597,9 @@ impl Frame {
             dest := self.index(x,y)
             for col in 0..span { self.set_option_code(dest+col,source.stored_option(i+col)) }
         }
-        if source.overlaps { self.overlaps = true }
+        if source.overlaps && source.row_flags[i/source.bounds.w].bit_and(OVERLAPPING_WIDTHS) != 0 {
+            self.mark_overlap(self.index(x,y))
+        }
         span
     }
 
@@ -1677,7 +1694,7 @@ impl Frame {
     }
 
     fn reshape_flags(&mut self, bounds: Rect, kept: i32) {
-        if kept == 0 { self.row_flags.clear(); self.has_options = false; return }
+        if kept == 0 { self.row_flags.clear(); self.has_options = false; self.overlaps = false; return }
         old_width := self.bounds.w
         if self.row_flags.len < bounds.h { array.resize<u8>(&mut self.row_flags,bounds.h,u8(0)) }
         if old_width != bounds.w {
@@ -2189,7 +2206,7 @@ impl GlyphData {
                 index := frame.index(i32(x),bounds.y)
                 if frame.glyphs[index] < 0 { frame.split_wide_cell(i32(x),bounds.y) }
                 storage := if cells > 1 { frame.cell_storage_width(index,frame.bounds.right()-i32(x),cells) } else { cells }
-                if storage != cells { frame.overlaps = true }
+                if storage != cells { frame.mark_overlap(index) }
                 old := frame.styles[index]
                 if old != last {
                     last = old

@@ -1,0 +1,38 @@
+capability stdio
+import sys
+import std.cmp
+import std.math
+import std.time
+
+const MAX: u64 = 0xffffffffffffffff
+
+fn checked(value: u64, step: u64) -> u64 {
+    next := math.checked_add_u64(value,step).unwrap_or(MAX)
+    prev := math.checked_sub_u64(value,step).unwrap_or(0)
+    scaled := math.checked_mul_u64(value,step).unwrap_or(MAX)
+    next.wrapping_add(prev).wrapping_add(scaled)
+}
+
+fn bounded(value: u64, step: u64) -> u64 {
+    next := value + cmp.min<u64>(step,MAX-value)
+    prev := value - cmp.min<u64>(step,value)
+    scaled := if step != 0 && value > MAX/step { MAX } else { value*step }
+    next.wrapping_add(prev).wrapping_add(scaled)
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 2 }
+    mode := sys.arg(1)
+    if mode != "checked" && mode != "bounded" { return 2 }
+    operation := if mode == "checked" { checked } else { bounded }
+    mut sum: u64 = 0
+    start := time.monotonic_ns()
+    for i in 0..65536 {
+        small := u64(i%97)
+        value := if i%2 == 0 { small } else { MAX-small }
+        sum = sum.wrapping_add(operation(value,u64(i%32)))
+    }
+    elapsed := time.monotonic_ns()-start
+    print(f"{sum} {elapsed}")
+    0
+}

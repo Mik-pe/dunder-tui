@@ -1,0 +1,32 @@
+import std.cmp
+import std.json
+
+pub const MAX: u64 = 0xffffffffffffffff
+
+pub fn advance(index: u64, amount: u64) -> u64 { index + cmp.min<u64>(amount,MAX - index) }
+pub fn retreat(index: u64, amount: u64) -> u64 { index - cmp.min<u64>(amount,index) }
+
+pub fn compact(index: u64) -> i32 { i32(cmp.min<u64>(index,2147483647)) }
+
+pub fn compact_optional(index: Option<u64>) -> Option<i32> {
+    match index { .Some(i) => .Some(compact(i)), .None => .None, }
+}
+
+pub fn widen(index: Option<i32>) -> Option<u64> {
+    match index { .Some(i) => .Some(u64(i)), .None => .None, }
+}
+
+pub fn fits(index: Option<u64>) -> bool { index.unwrap_or(0) <= 2147483647 }
+
+pub fn fit_index(index: &mut Option<i32>, count: i32) -> i32 {
+    if count == 0 { index = .None; return -1 }
+    if index.is_none() { return -1 }
+    current := index.unwrap()
+    visible := cmp.clamp<i32>(current,0,count-1)
+    if current != visible { index = .Some(visible) }
+    visible
+}
+
+pub fn overflow(doc: &json.Doc, node: i32) -> json.JsonError {
+    json.JsonError::new("use a 64-bit saved state for indices above 2147483647",doc.node_offset(node))
+}

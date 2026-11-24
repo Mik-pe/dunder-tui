@@ -2,6 +2,9 @@ import .block
 import .text as rich
 import .tui
 import std.cmp as cmp
+import std.json
+import .json_format
+import .selection
 
 pub struct Item { content: rich.Text, style: tui.Style }
 
@@ -12,9 +15,86 @@ impl Item {
     pub fn width(&self) -> i32 { self.content.width() }
 }
 
+@derive(Eq, Hash)
 pub struct ListState { offset: i32, selected: Option<i32> }
 
+impl Default for ListState {
+    fn default() -> Self { Self::new() }
+}
+
 const LAST: i32 = 2147483647
+
+@derive(Encode, Eq, Hash)
+pub struct SavedState { offset: u64, selected: Option<u64> }
+
+impl Default for SavedState {
+    fn default() -> Self { Self::new() }
+}
+
+impl SavedState {
+    pub fn new() -> Self { Self { offset:0, selected:.None } }
+
+    pub fn select(&mut self, index: Option<u64>) {
+        self.selected = index
+        if index.is_none() { self.offset = 0 }
+    }
+
+    pub fn first(&mut self) { self.select(.Some(0)) }
+    pub fn last(&mut self) { self.select(.Some(selection.MAX)) }
+    pub fn next(&mut self) { if self.selected.is_none() { self.first() } else { self.scroll_down_by(1) } }
+    pub fn previous(&mut self) { if self.selected.is_none() { self.last() } else { self.scroll_up_by(1) } }
+    pub fn scroll_down_by(&mut self, n: u16) { self.select(.Some(selection.advance(self.selected.unwrap_or(0),u64(n)))) }
+    pub fn scroll_up_by(&mut self, n: u16) { self.select(.Some(selection.retreat(self.selected.unwrap_or(0),u64(n)))) }
+
+    fn indexed(&self) -> ListState {
+        ListState { offset:selection.compact(self.offset), selected:selection.compact_optional(self.selected) }
+    }
+
+    fn draw(&mut self, widget: &List, frame: &mut tui.Frame, area: tui.Rect) {
+        mut local := self.indexed()
+        widget.draw_items(&mut frame,area,&mut local)
+        self = local.saved()
+    }
+}
+
+impl json.Decode for SavedState {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        f := json_format.fields(&doc,node,&["offset","selected"],1,2)?
+        offset := u64::decode_json(&doc,f[0])?
+        selected := json.decode<Option<u64>>(&doc,f[1])?
+        .Ok(Self { offset:offset, selected:selected })
+    }
+}
+
+impl ListState {
+    fn saved(&self) -> SavedState {
+        SavedState { offset:u64(self.offset), selected:selection.widen(self.selected) }
+    }
+
+    fn draw(&mut self, widget: &List, frame: &mut tui.Frame, area: tui.Rect) {
+        widget.draw_items(&mut frame,area,&mut self)
+    }
+}
+
+impl json.Encode for ListState {
+    fn encode_json(&self, out: &mut json.Writer) {
+        if self.offset < 0 || self.selected.unwrap_or(0) < 0 {
+            json_format.reject(&mut out,"widget indices must be nonnegative")
+            return
+        }
+        json.encode(&mut out,&self.saved())
+    }
+}
+
+impl json.Decode for ListState {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        state := SavedState::decode_json(&doc,node)?
+        if state.offset > 2147483647 || !selection.fits(state.selected) {
+            return .Err(selection.overflow(&doc,node))
+        }
+        .Ok(state.indexed())
+    }
+}
 
 impl ListState {
     pub fn new() -> Self { Self { offset: 0, selected: .None } }
@@ -41,8 +121,41 @@ impl ListState {
     }
 }
 
+@derive(Encode, Eq, Hash)
 pub enum Direction { TopToBottom, BottomToTop }
+
+impl Default for Direction {
+    fn default() -> Self { .TopToBottom }
+}
+
+impl json.Decode for Direction {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        name := json_format.unit_name(&doc,node)?
+        match name {
+            "TopToBottom" => .Ok(.TopToBottom),
+            "BottomToTop" => .Ok(.BottomToTop),
+            _ => .Err(json.JsonError::new("unknown Direction",doc.node_offset(node))),
+        }
+    }
+}
+@derive(Encode, Eq, Hash)
 pub enum HighlightSpacing { Always, WhenSelected, Never }
+
+impl Default for HighlightSpacing {
+    fn default() -> Self { .WhenSelected }
+}
+
+impl json.Decode for HighlightSpacing {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        name := json_format.unit_name(&doc,node)?
+        match name {
+            "Always" => .Ok(.Always),
+            "WhenSelected" => .Ok(.WhenSelected),
+            "Never" => .Ok(.Never),
+            _ => .Err(json.JsonError::new("unknown HighlightSpacing",doc.node_offset(node))),
+        }
+    }
+}
 
 pub opaque struct Items { entries: []Item, starts: []i64 }
 
@@ -121,16 +234,16 @@ impl List {
         self.render_stateful(&mut frame, bounds, &mut state)
     }
 
-    pub fn render_stateful(&self, frame: &mut tui.Frame, bounds: tui.Rect, state: &mut ListState) {
-        frame.apply_style(bounds, self.style)
+    pub fn render_stateful<S>(&self, frame: &mut tui.Frame, bounds: tui.Rect, state: &mut S) {
+        frame.apply_cell_style(bounds, self.style)
         area := self.block.render(&mut frame, bounds)
         if area.w <= 0 || area.h <= 0 { return }
+        state.draw(&self,&mut frame,area)
+    }
+
+    fn draw_items(&self, frame: &mut tui.Frame, area: tui.Rect, state: &mut ListState) {
         if self.is_empty() { state.select(.None); return }
-        mut selected := -1
-        if state.selected.is_some() {
-            selected = cmp.clamp<i32>(state.selected.unwrap(), 0, self.len() - 1)
-            if selected != state.selected.unwrap() { state.select(.Some(selected)) }
-        }
+        selected := selection.fit_index(&mut state.selected,self.len())
         mut first := cmp.clamp<i32>(state.offset, 0, self.len() - 1)
         mut end := self.items.fitting_end(first, self.len(), area.h)
         target := self.items.target(selected, self.scroll_padding, first, end, area.h)
@@ -153,11 +266,11 @@ impl List {
             if h == 0 { continue }
             if self.direction == .BottomToTop { y -= h }
             row := tui.Rect { x: area.x, y: y, w: area.w, h: h }
-            frame.apply_style(row, self.style.patch(item.style))
+            frame.apply_cell_style(row, self.style.patch(item.style))
             mut content := row
             marker := content.take_cols(gutter)
             item.content.render(&mut frame, content)
-            if i == selected { frame.apply_style(row, self.highlight) }
+            if i == selected { frame.apply_cell_style(row, self.highlight) }
             if gutter > 0 {
                 mut blanks := marker
                 if i == selected {

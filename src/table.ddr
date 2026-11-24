@@ -4,6 +4,9 @@ import .layout
 import .list
 import .text as rich
 import std.cmp as cmp
+import std.json
+import .json_format
+import .selection
 
 pub struct Cell { content: rich.Text, style: tui.Style, column_span: u16 }
 
@@ -13,7 +16,7 @@ impl Cell {
     pub fn spanning(move self, count: u16) -> Self { mut cell := move self; cell.column_span = count; move cell }
 
     fn draw(&self, frame: &mut tui.Frame, area: tui.Rect) {
-        frame.apply_style(area, self.style)
+        frame.apply_cell_style(area, self.style)
         self.content.render(&mut frame, area)
     }
 }
@@ -37,7 +40,103 @@ impl Row {
 
 const LAST: i32 = 2147483647
 
+@derive(Encode, Eq, Hash)
+pub struct SavedState { offset: u64, selected: Option<u64>, selected_column: Option<u64> }
+
+impl Default for SavedState {
+    fn default() -> Self { Self::new() }
+}
+
+impl SavedState {
+    pub fn new() -> Self { Self { offset:0, selected:.None, selected_column:.None } }
+
+    pub fn select(&mut self, index: Option<u64>) {
+        self.selected = index
+        if index.is_none() { self.offset = 0 }
+    }
+
+    pub fn first(&mut self) { self.select(.Some(0)) }
+    pub fn last(&mut self) { self.select(.Some(selection.MAX)) }
+    pub fn next(&mut self) { if self.selected.is_none() { self.first() } else { self.scroll_down_by(1) } }
+    pub fn previous(&mut self) { if self.selected.is_none() { self.last() } else { self.scroll_up_by(1) } }
+    pub fn scroll_down_by(&mut self, n: u16) { self.select(.Some(selection.advance(self.selected.unwrap_or(0),u64(n)))) }
+    pub fn scroll_up_by(&mut self, n: u16) { self.select(.Some(selection.retreat(self.selected.unwrap_or(0),u64(n)))) }
+
+    pub fn select_column(&mut self, index: Option<u64>) { self.selected_column = index }
+    pub fn select_cell(&mut self, value: Option<(u64,u64)>) {
+        match value {
+            .Some(p) => { self.select(.Some(p.0)); self.select_column(.Some(p.1)) },
+            .None => { self.select(.None); self.select_column(.None) },
+        }
+    }
+    pub fn selected_cell(&self) -> Option<(u64,u64)> {
+        if self.selected.is_none() || self.selected_column.is_none() { return .None }
+        .Some((self.selected.unwrap(),self.selected_column.unwrap()))
+    }
+    pub fn first_column(&mut self) { self.select_column(.Some(0)) }
+    pub fn last_column(&mut self) { self.select_column(.Some(selection.MAX)) }
+    pub fn next_column(&mut self) { if self.selected_column.is_none() { self.first_column() } else { self.scroll_right_by(1) } }
+    pub fn previous_column(&mut self) { if self.selected_column.is_none() { self.last_column() } else { self.scroll_left_by(1) } }
+    pub fn scroll_right_by(&mut self, n: u16) { self.select_column(.Some(selection.advance(self.selected_column.unwrap_or(0),u64(n)))) }
+    pub fn scroll_left_by(&mut self, n: u16) { self.select_column(.Some(selection.retreat(self.selected_column.unwrap_or(0),u64(n)))) }
+
+    fn indexed(&self) -> TableState {
+        TableState { offset:selection.compact(self.offset), selected:selection.compact_optional(self.selected), selected_column:selection.compact_optional(self.selected_column) }
+    }
+
+    fn draw(&mut self, widget: &mut Table, frame: &mut tui.Frame, area: tui.Rect) {
+        mut local := self.indexed()
+        widget.draw_items(&mut frame,area,&mut local)
+        self = local.saved()
+    }
+}
+
+impl json.Decode for SavedState {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        f := json_format.fields(&doc,node,&["offset","selected","selected_column"],1,3)?
+        offset := u64::decode_json(&doc,f[0])?
+        selected := json.decode<Option<u64>>(&doc,f[1])?
+        column := json.decode<Option<u64>>(&doc,f[2])?
+        .Ok(Self { offset:offset, selected:selected, selected_column:column })
+    }
+}
+
+impl TableState {
+    fn saved(&self) -> SavedState {
+        SavedState { offset:u64(self.offset), selected:selection.widen(self.selected), selected_column:selection.widen(self.selected_column) }
+    }
+
+    fn draw(&mut self, widget: &mut Table, frame: &mut tui.Frame, area: tui.Rect) {
+        widget.draw_items(&mut frame,area,&mut self)
+    }
+}
+
+impl json.Encode for TableState {
+    fn encode_json(&self, out: &mut json.Writer) {
+        if self.offset < 0 || self.selected.unwrap_or(0) < 0 || self.selected_column.unwrap_or(0) < 0 {
+            json_format.reject(&mut out,"widget indices must be nonnegative")
+            return
+        }
+        json.encode(&mut out,&self.saved())
+    }
+}
+
+impl json.Decode for TableState {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        state := SavedState::decode_json(&doc,node)?
+        if state.offset > 2147483647 || !selection.fits(state.selected) || !selection.fits(state.selected_column) {
+            return .Err(selection.overflow(&doc,node))
+        }
+        .Ok(state.indexed())
+    }
+}
+
+@derive(Eq, Hash)
 pub struct TableState { offset: i32, selected: Option<i32>, selected_column: Option<i32> }
+
+impl Default for TableState {
+    fn default() -> Self { Self::new() }
+}
 
 fn shifted(current: Option<i32>, amount: i32) -> i32 {
     i32(cmp.clamp<i64>(i64(current.unwrap_or(0)) + i64(amount), 0, i64(LAST)))
@@ -88,10 +187,9 @@ impl Rows {
         Self { entries: move rows, starts: move starts, column_count: n }
     }
 
-    fn visible(&self, state: &TableState, height: i32) -> (i32,i32) {
+    fn visible(&self, offset: i32, selected: i32, height: i32) -> (i32,i32) {
         last := self.entries.len - 1
-        selected := state.selected.unwrap_or(-1)
-        mut first := cmp.clamp<i32>(state.offset, 0, last)
+        mut first := cmp.clamp<i32>(offset,0,last)
         if selected >= 0 { first = cmp.min<i32>(first, selected) }
         ceiling := self.starts[first] + i64(height)
         mut end := first
@@ -199,16 +297,19 @@ impl Table {
         self.render_stateful(&mut frame,bounds,&mut state)
     }
 
-    pub fn render_stateful(&mut self, frame: &mut tui.Frame, bounds: tui.Rect, state: &mut TableState) {
-        frame.apply_style(bounds,self.style)
+    pub fn render_stateful<S>(&mut self, frame: &mut tui.Frame, bounds: tui.Rect, state: &mut S) {
+        frame.apply_cell_style(bounds,self.style)
         area := self.block.render(&mut frame,bounds)
         if area.is_empty() { return }
-        if self.len() == 0 { state.select(.None) }
-        else if state.selected.is_some() { state.select(.Some(cmp.clamp<i32>(state.selected.unwrap(),0,self.len()-1))) }
+        state.draw(&mut self,&mut frame,area)
+    }
+
+    fn draw_items(&mut self, frame: &mut tui.Frame, area: tui.Rect, state: &mut TableState) {
+        if self.len() == 0 { state.offset = 0 }
+        selected := selection.fit_index(&mut state.selected,self.len())
         n := self.column_count()
-        if n == 0 { state.select_column(.None) }
-        else if state.selected_column.is_some() { state.select_column(.Some(cmp.clamp<i32>(state.selected_column.unwrap(),0,n-1))) }
-        reserved := self.highlight_spacing == .Always || (self.highlight_spacing == .WhenSelected && state.selected.is_some())
+        c := selection.fit_index(&mut state.selected_column,n)
+        reserved := self.highlight_spacing == .Always || (self.highlight_spacing == .WhenSelected && selected >= 0)
         gutter := if reserved { cmp.min<i32>(area.w,self.marker.width()) } else { 0 }
         self.columns.prepare(area,gutter,n,self.column_spacing,self.flex)
         self.bands.prepare(area,&self.header,&self.footer)
@@ -218,33 +319,32 @@ impl Table {
         match &self.footer { .Some(row) => { draw_band(&row,&mut frame,bands[5],&cols) }, .None => {}, }
         if self.len() == 0 { return }
         body := bands[3]
-        (first,end) := self.rows.visible(&state,body.h)
+        (first,end) := self.rows.visible(state.offset,selected,body.h)
         state.offset = first
-        mut selected_row: Option<tui.Rect> = .None
+        mut selected_row := tui.Rect::new(0,0,0,0)
         for i in first..end {
             row := &self.rows.entries[i]
             relative := self.rows.starts[i]-self.rows.starts[first]+i64(row.top_margin)
             y := body.y+i32(cmp.min<i64>(relative,i64(body.h)))
             line := tui.Rect { x:body.x, y:y, w:body.w, h:cmp.min<i32>(i32(row.height),body.bottom()-y) }
-            frame.apply_style(line,row.style)
-            if state.selected == .Some(i) {
-                selected_row = .Some(line)
+            frame.apply_cell_style(line,row.style)
+            if selected == i {
+                selected_row = line
                 if gutter > 0 { self.marker.render(&mut frame,line.cols(gutter).0) }
             }
             draw_cells(&row,&mut frame,line,&cols,i32(self.column_spacing))
         }
-        match selected_row { .Some(r) => { frame.apply_style(r,self.row_highlight) }, .None => {}, }
-        c := state.selected_column.unwrap_or(-1)
+        frame.apply_cell_style(selected_row,self.row_highlight)
         if c >= 0 && c < cols.len {
             column := tui.Rect { x:cols[c].x, y:body.y, w:cols[c].w, h:body.h }
-            frame.style_glyphs(column,self.column_highlight)
-            match selected_row { .Some(r) => { frame.style_glyphs(column.intersection(r),self.cell_highlight) }, .None => {}, }
+            frame.apply_cell_style(column,self.column_highlight)
+            frame.apply_cell_style(column.intersection(selected_row),self.cell_highlight)
         }
     }
 }
 
 fn draw_band(row: &Row, frame: &mut tui.Frame, area: tui.Rect, cols: &[]tui.Rect) {
-    frame.apply_style(area,row.style)
+    frame.apply_cell_style(area,row.style)
     for i in 0..cmp.min<i32>(row.cells.len,cols.len) {
         row.cells[i].draw(&mut frame,tui.Rect { x:cols[i].x, y:area.y, w:cols[i].w, h:area.h })
     }

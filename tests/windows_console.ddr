@@ -6,6 +6,7 @@ import .shadow_cells
 import .border_cells
 import .saved_layout
 import .saved_buffer
+import .saved_widgets
 import .meter_cells
 import ..src.tui
 import ..src.calendar as cal
@@ -300,6 +301,12 @@ unsafe fn shadow_and_meter_screen(out: ptr, x: i32, y: i32) -> i32 {
     if term.draw(&mut frames[0], saved_buffer.paint).is_err() || unit_at(out,x+10,y+3) != 49 { return 179 }
     if term.draw(&mut frames[1], saved_buffer.paint).is_err() || unit_at(out,x+10,y+3) != 50 { return 180 }
     if unit_at(out,x+6,y+3) != 69 { return 181 }
+    mut session := saved_widgets.Session::open()
+    if term.draw(&mut session,saved_widgets.paint).is_err() { return 182 }
+    if unit_at(out,x+3,y+2) != 84 || unit_at(out,x+9,y+2) != 84 || unit_at(out,x+12,y+4) != 35 { return 183 }
+    session.up()
+    if term.draw(&mut session,saved_widgets.paint).is_err() { return 184 }
+    if unit_at(out,x+3,y+2) != 73 || unit_at(out,x+9,y+2) != 73 || unit_at(out,x+3,y+4) != 35 { return 185 }
     0
 }
 

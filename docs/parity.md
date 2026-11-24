@@ -26,7 +26,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | `layout-cache` | `Layout.cache_capacity` styr antal sparade uppdelningar. Layoutproven återanvänder tidigare storlekar efter regelbyten. |
 | `scrolling-regions` | Backendens regionskrollning och reservvägen med radmatning jämförs genom skrollhistorik och terminalutdata. |
 | `macros` | Konstruktorer för spann, rader, text och layout finns. Jämförelse per dokumenterad makroform återstår. |
-| `serde` | Färger, stilar, attribut, celler, diffregler, buffertar, layouter och geometri läses och skrivs med `std.json`. Bland annat widgettillstånd, testbackend, paletter och justering återstår. Referensens `Span`, `Line` och `Text` saknar Serde-format. |
+| `serde` | Färger, stilar, attribut, celler, diffregler, buffertar, layouter och geometri läses och skrivs med `std.json`. List-, tabell- och skrolltillstånd samt deras riktningsval stöds. Bland annat testbackend, paletter och justering återstår. Referensens `Span`, `Line` och `Text` saknar Serde-format. |
 | `crossterm`, `crossterm_0_28`, `crossterm_0_29`, `termina`, `termion`, `termwiz` | Dunder använder POSIX och Win32 direkt. Den låsta Crossterm-referensen och de faktiska terminalproven täcker bland annat ritning, markör och återställning. Skillnader mellan referensens övriga backendval är öppna. |
 | `std`, `portable-atomic`, `default` | Dunder bygger offline med sitt standardbibliotek. `portable-atomic` gäller referensens mål utan atomära typer. `default` väljer kalender, Crossterm, layoutcache, makron och understrykningsfärg. |
 
@@ -69,6 +69,27 @@ ref=build/rust/release/examples/themes
 build/themes build/theme-input >build/actual
 diff -u build/expected build/actual
 dunder run --locked --offline tests/theme_terminal.ddr
+```
+
+### Sparade markeringar och skrollpositioner
+
+Listor, tabeller och skrollister läser Ratatuis sparade tillstånd via `std.json`. `list.SavedState`, `table.SavedState` och `widgets.SavedScrollState` behåller hela det osignerade 64-bitarsintervallet. De vanliga typerna `ListState`, `TableState` och `ScrollState` kan läsa och skriva samma format inom sina befintliga 32-bitarsgränser. Båda varianterna kan skickas direkt till `render_stateful_widget`. En tom rityta behåller indexet. En synlig lista eller tabell justerar det efter antalet poster och kolumner.
+
+2 545 JSON-indata jämförs med Ratatui 0.30.2. Provet navigerar före första ritningen, ritar 311 giltiga listtillstånd och 619 tabelltillstånd, flyttar markeringen och jämför den nya bilden. För 1 448 giltiga skrolltillstånd jämförs båda axlarna, de fyra kanterna, framåt, bakåt, första och sista position. Totalt jämförs **177 644 celler** med symboler, färger och attribut. Fallen omfattar även fem enumtyper, positionsbaserade fält, saknade och upprepade nycklar samt tal på båda sidor om 32- och 64-bitarsgränserna. Vid mycket stora skrollvärden följer tummens avrundning referensens optimerade 64-bitarsbygge. [Dunderprov](../tests/widget_state_json.ddr) · [Ratatui och indata](../benchmarks/reference/examples/widget_state_json.rs)
+
+Macen och båda Linuxgästerna körde även ett tangentprov som öppnar sista raden och flyttar markeringen uppåt. Win32-provet läser tillbaka listan, tabellen och skrolltummen från konsolbufferten. Samtliga JSON-fall matchade på macOS ARM64, Linux ARM64, översatt Linux x86-64 och Win64 under Wine. [Unix-terminal](../tests/widget_state_terminal.ddr) · [Win32-konsol](../tests/windows_console.ddr)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/widget_state_json.ddr -o build/states
+cargo build --locked --offline --release --manifest-path benchmarks/reference/Cargo.toml \
+  --features theme-oracle --example widget_state_json --target-dir build/rust
+ref=build/rust/release/examples/widget_state_json
+"$ref" --cases >build/state-input
+"$ref" <build/state-input >build/expected-states
+build/states build/state-input >build/actual-states
+cmp build/expected-states build/actual-states
+dunder run --locked --offline tests/widget_state_terminal.ddr
 ```
 
 ### Sparade celler och bildbuffertar

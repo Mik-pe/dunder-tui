@@ -360,6 +360,18 @@ cursor.first()
 
 Rita med `books.render_stateful(&mut frame, area, &mut cursor)`. Anropa `cursor.next()` och `cursor.previous()` från tangenthanteraren. När vyn krymper justerar listan `cursor.offset` så att hela den markerade posten syns om den ryms. `cursor.last()` hittar sista posten vid nästa ritning, även om innehållet har bytts med `books.set_items(...)`. En lista från nederkanten använder `books.direction = .BottomToTop`. [Bokhyllans källkod](examples/bokhylla/main.ddr) · [Mätning med 16 384 poster](benchmarks/lists.md)
 
+På `main` kan du spara markering och skrollposition med `std.json` och öppna dem igen i nästa session.
+
+```dunder
+import std.json
+
+sparat := json.to_string(&cursor).unwrap()
+mut position := json.from_str<lists.SavedState>(sparat).unwrap()
+books.render_stateful(&mut frame, area, &mut position)
+```
+
+`lists.SavedState`, `table.SavedState` och `widgets.SavedScrollState` kan också läsa Ratatuis 64-bitarsindex. En sparad markering på sista posten anpassas till den aktuella datamängden vid första ritningen. [Format och terminalprov](docs/parity.md#sparade-markeringar-och-skrollpositioner)
+
 ## Tabeller
 
 Kör `dunder run --example avganger` för en tidtabell med flerradiga avgångar. Piltangenterna byter rad eller kolumn. Home och End hoppar till första eller sista avgången. [Exemplets källkod](examples/avganger/main.ddr)

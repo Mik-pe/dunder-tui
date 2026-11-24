@@ -1,0 +1,53 @@
+import std.json
+import ..src.list
+import ..src.table
+import ..src.text as rich
+import ..src.tui
+import ..src.widgets as ui
+
+pub fn menu() -> list.List {
+    mut items: []list.Item = []
+    for word in ["Fyr","茶","Röd","Is","Te"] { items.push(list.Item::raw(word)) }
+    mut view := list.List::new(move items)
+    view.marker = rich.Line::raw(">")
+    view.highlight = tui.plain().background(.Blue)
+    move view
+}
+
+pub fn grid() -> table.Table {
+    mut rows: []table.Row = []
+    for word in ["Fyr","茶","Röd","Is","Te"] { rows.push(table.Row::strings([word,"茶"])) }
+    mut view := table.Table::new(move rows,[.Length(3),.Fill(1)])
+    view.marker = rich.Text::raw(">")
+    view.row_highlight = tui.ink(.Yellow)
+    view.column_highlight = tui.plain().underlined()
+    view.cell_highlight = tui.plain().background(.Blue)
+    move view
+}
+
+pub struct Session {
+    menu: list.List, grid: table.Table, rail: ui.Scrollbar,
+    row: list.SavedState, cell: table.SavedState, scroll: ui.SavedScrollState,
+}
+
+impl Session {
+    pub fn open() -> Self {
+        mut rail := ui.Scrollbar::new(.Bottom)
+        rail.begin = ui.ScrollPart::new("[",tui.plain())
+        rail.end = ui.ScrollPart::new("]",tui.plain())
+        rail.track = ui.ScrollPart::new(".",tui.plain())
+        rail.thumb = ui.ScrollPart::new("#",tui.ink(.Cyan))
+        Self { menu:menu(), grid:grid(), rail:move rail,
+            scroll:json.from_str<ui.SavedScrollState>("[128,127,15]").unwrap(),
+            row:json.from_str<list.SavedState>("[18446744073709551615,18446744073709551615]").unwrap(),
+            cell:json.from_str<table.SavedState>("[18446744073709551615,18446744073709551615,18446744073709551615]").unwrap() }
+    }
+    pub fn up(&mut self) { self.row.previous(); self.cell.previous(); self.cell.previous_column(); self.scroll.first() }
+}
+
+pub fn paint(frame: &mut tui.Frame, session: &mut Session) {
+    area := frame.area()
+    frame.render_stateful_widget(&session.menu,tui.Rect::new(area.x,area.y,6,2),&mut session.row)
+    frame.render_stateful_widget(&mut session.grid,tui.Rect::new(area.x+6,area.y,8,2),&mut session.cell)
+    frame.render_stateful_widget(&session.rail,tui.Rect::new(area.x,area.y+2,12,1),&mut session.scroll)
+}

@@ -1,0 +1,36 @@
+capability unsafe, stdio, process
+import sys
+import .saved_widgets
+import .terminal_driver as driver
+import ..src.tui
+
+fn child() -> i32 {
+    mut terminal := tui.open(.Fullscreen).unwrap()
+    mut session := saved_widgets.Session::open()
+    if terminal.draw(&mut session,saved_widgets.paint).is_err() { return 1 }
+    match terminal.backend_mut().next(3000) { .Press(.Up) => { session.up() }, _ => { return 1 }, }
+    if terminal.draw(&mut session,saved_widgets.paint).is_err() { return 1 }
+    match terminal.backend_mut().next(3000) { .Press(.Char(c)) if c == rune(126) => {}, _ => { return 1 }, }
+    0
+}
+
+fn exercise(master: i32, slave: i32, screen: &mut driver.Screen) -> bool {
+    unsafe {
+        if !driver.wait_for(master,&mut screen,2,"[.........#]","") || !screen.contains(0,">Te   >Te") { return false }
+        if !driver.send(master,"\x1b[A") || !driver.wait_for(master,&mut screen,2,"[#.........]","") { return false }
+        if !screen.contains(0,">Is   >Is") || !screen.contains(1," Te") { return false }
+        return driver.send(master,"~") && driver.wait_for(master,&mut screen,0,"","\x1b[?1049l")
+    }
+    false
+}
+
+fn main() -> i32 {
+    if sys.arg_count() == 2 { return child() }
+    unsafe {
+        if driver.test_with_args(sys.arg(0),["draw"],16,4,exercise) {
+            print("Restored selection, Up key, scrollbar endpoints and terminal modes OK")
+            return 0
+        }
+    }
+    1
+}

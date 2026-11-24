@@ -2,6 +2,8 @@
 
 ## Omprov med den publicerade 0.12.0
 
+Navigering med 64-bitarsindex behöver kunna stanna vid noll och maxvärdet. För 65 536 index gav `math.checked_add_u64`, `checked_sub_u64` och `checked_mul_u64` följda av `unwrap_or` 155 393 allokeringsanrop. Med samma gränser direkt i heltalsuttryck blev det 11. Båda gav kontrollsumman 23 392 260 på macOS ARM64 och i Linuxgästerna. [Mätprogram](../benchmarks/language/saturating_indices.ddr)
+
 Vid läsning av en sparad cell måste ett upprepat känt fält ge fel. Dunders `@derive(Decode)` väljer det sista värdet för både `"width"` och `"w\u0069dth"` när ett tidigare `"width"` finns. Provet gav 4, 9, 9, 4 på macOS och Linux ARM64 i 0.12.0. Bibliotekets cellavkodare kontrollerar därför dubbletter själv. [Minimiprov](../tests/dogfood/json_duplicate_fields.ddr)
 
 Teman läses och skrivs med `std.json.Decode` och `std.json.Encode`. För att upptäcka dubbla fält i ett objekt behöver läsaren besöka varje nyckel. I 0.12.0 går både `key_at` och `val_at` från första barnet för varje index. Att besöka ett redan tolkat objekt tog i median 0,46, 1,83, 7,40 och 29,69 ms för 512, 1 024, 2 048 och 4 096 fält på macOS ARM64. Varje storlek kördes sju gånger med samma kontrollsumma inom serien. [Fristående Dunderprov](../benchmarks/language/json_members.ddr)

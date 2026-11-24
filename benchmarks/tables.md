@@ -47,3 +47,17 @@ cargo run --locked --release --manifest-path benchmarks/reference/Cargo.toml --t
 ```
 
 För RSS, kör de två tidsmätta binärerna var för sig med `/usr/bin/time -l` på macOS eller `/usr/bin/time -v` på Linux. För att spara hela strömmen från pseudoterminalen, kör `build/pty build/table-bench build/table.ansi`.
+
+## Sparade markeringar i listor och tabeller
+
+En lista med 16 384 poster och en tabell med 4 096 rader kördes med Dunder 0.12.0 och Ratatui 0.30.2, byggt med Rust 1.99.1. Samma Apple M5 körde macOS 27.2.1 och de två Linuxgästerna. Linux x86-64 använde processoröversättning. Varje arbetslast kördes med 20 uppvärmningsbilder följda av 200 tidtagna bilder. Programmen växlade startordning. Rådata anger medianen från sju processpar efter två uppvärmningspar och intervallet mellan lägsta och högsta uppmätta p50 och p95. JSON-inläsningen ingår endast i det separata beteendeprovet. [Samtliga bildtider](results/widget-state-dunder-0.12.0-local.tsv) · [Beteendeprov med sparade tillstånd](../docs/parity.md#sparade-markeringar-och-skrollpositioner)
+
+Vid rullning i pseudoterminalen mättes följande bildtider, avrundade till hela mikrosekunder. Varje cell visar p50 / p95.
+
+| Värd | Lista, Dunder | Lista, Ratatui | Tabell, Dunder | Tabell, Ratatui |
+| --- | ---: | ---: | ---: | ---: |
+| macOS ARM64 | 71 / 92 | 93 / 112 | 70 / 128 | 93 / 130 |
+| Linux ARM64 | 60 / 105 | 86 / 155 | 63 / 126 | 77 / 142 |
+| Linux x86-64, översatt | 613 / 840 | 181 / 282 | 674 / 1 117 | 141 / 255 |
+
+Över 1 320 bilder skrev Dunder 1 441 240 byte för listan och 1 499 730 för tabellen till pseudoterminalen. Ratatui skrev 1 595 009 och 1 848 065 byte. När tabellen återanvände de valda rad- och kolumnindexen sjönk antalet allokeringsanrop i samma Dunderprov från 342 540 till 316 140 på Macen. Räknarna omfattar uppbyggnad och ritning. Minnesvärdet är medianen för fem processers högsta RSS i KiB. [Allokeringsanrop, begärda byte och minne per värd](results/widget-state-dunder-0.12.0-resources.tsv)

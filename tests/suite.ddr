@@ -849,6 +849,76 @@ import ..src.tailwind
     assert(frame.style_at(2,0).unwrap().has(.Bold) && !frame.style_at(2,0).unwrap().has(.Underlined))
     target := frame.style_at(4,0).unwrap()
     assert(target.get_foreground() == .Some(tui.Color.Cyan) && target.has(.Underlined) && target.has(.Bold))
+    tail := frame.raw_cell_at(3,0).unwrap()
+    assert(tail.symbol.is_none() && tail.fg == .Cyan && tail.modifier.contains(.Underlined))
+}
+
+@test fn indexed_widget_states_round_trip_and_reject_out_of_range_indices() {
+    assert(lists.Direction::default() == .TopToBottom && lists.HighlightSpacing::default() == .WhenSelected)
+    assert(widgets.Edge::default() == .Right && widgets.Flow::default() == .LeftToRight && widgets.ScrollDirection::default() == .Forward)
+    assert(table.TableState::default() == table.TableState::new())
+    assert(widgets.SavedScrollState::default() == widgets.SavedScrollState::new(0))
+    selection := json.from_str<lists.ListState>("[12,null]").unwrap()
+    assert(selection.offset == 12 && selection.selected.is_none())
+    assert(json.to_string(&selection).unwrap() == "{\"offset\":12,\"selected\":null}")
+    assert(json.from_str<lists.ListState>("{\"offset\":9}").unwrap().selected.is_none())
+    assert(json.from_str<lists.ListState>("[0,2147483648]").is_err())
+    mut cells := json.from_str<table.TableState>("[1,2,3]").unwrap()
+    assert(cells.selected_cell() == .Some((2,3)))
+    twin := json.from_str<table.TableState>(json.to_string(&cells).unwrap()).unwrap()
+    assert(cells == twin && cells.hash() == twin.hash())
+    assert(json.to_string(&cells).unwrap() == "{\"offset\":1,\"selected\":2,\"selected_column\":3}")
+    cells.offset = -1
+    assert(json.to_string(&cells).is_err())
+    assert(json.from_str<table.TableState>("[0,null,18446744073709551615]").is_err())
+    mut rail := json.from_str<widgets.ScrollState>("[13,11,3]").unwrap()
+    rail.scroll(.Forward)
+    assert(json.to_string(&rail).unwrap() == "{\"content_length\":13,\"position\":12,\"viewport_content_length\":3}")
+    assert(json.from_str<widgets.ScrollState>("[1,4294967296,1]").is_err())
+    rail.viewport = -1
+    assert(json.to_string(&rail).is_err())
+}
+
+@test fn saved_selections_use_all_64_bits_and_reset_when_data_disappears() {
+    mut rows := lists.SavedState::new()
+    rows.previous()
+    rows.scroll_up_by(1)
+    assert(json.to_string(&rows).unwrap() == "{\"offset\":0,\"selected\":18446744073709551614}")
+    rows.scroll_down_by(65535)
+    rows.next()
+    assert(rows.selected == .Some(0xffffffffffffffff))
+    mut cells := table.SavedState::new()
+    cells.last()
+    cells.previous_column()
+    assert(cells.selected_cell() == .Some((0xffffffffffffffff,0xffffffffffffffff)))
+    mut empty := tui.Frame::new(3,1)
+    menu := lists.List::new([])
+    mut grid := table.Table::new([],[])
+    empty.render_stateful_widget(&menu,empty.area(),&mut rows)
+    empty.render_stateful_widget(&mut grid,empty.area(),&mut cells)
+    assert(rows.selected.is_none() && rows.offset == 0 && cells.selected_cell().is_none() && cells.offset == 0)
+    cells.select_cell(.Some((5,7)))
+    cells.offset = 12
+    cells.select_cell(.None)
+    assert(cells.selected_column.is_none() && cells.offset == 0)
+}
+
+@test fn overlapping_symbols_keep_cross_row_diffs_after_copy_and_resize() {
+    mut next := tui.Frame::new(4,3)
+    mut cell := tui.RawCell::empty()
+    cell.symbol = .Some("abc")
+    assert(next.set_raw_cell(3,0,&cell))
+    old := next.clone()
+    next.text(tui.Rect::new(0,1,4,1),"ABCD",tui.plain())
+    mut copy := tui.Frame::new(4,3)
+    copy.copy_region(&next,next.area(),0,0)
+    changes := copy.diff_positions(&old).unwrap()
+    assert(changes.len == 2 && changes[0] == (2,1) && changes[1] == (3,1))
+    copy.resize(0,0)
+    copy.resize(4,3)
+    copy.text(copy.area(),"new",tui.plain())
+    next.copy_region(&copy,copy.area(),0,0)
+    assert(next.line(0) == "new ")
 }
 
 @test fn plot_coordinates_layers_and_labels_survive_resizing() {

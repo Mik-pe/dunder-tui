@@ -49,3 +49,5 @@ cargo run --locked --release --manifest-path benchmarks/reference/Cargo.toml --t
 ```
 
 För RSS, kör de två tidsmätta binärerna var för sig med `/usr/bin/time -l` på macOS eller `/usr/bin/time -v` på Linux. För att spara hela strömmen från pseudoterminalen, kör `build/pty build/list-bench build/list.ansi`.
+
+Efter stödet för sparade tillstånd kördes listan med 16 384 poster och tabellen med 4 096 rader om på tre lokala mål. [Bildtider, allokeringar, minne och terminalbyte](tables.md#sparade-markeringar-i-listor-och-tabeller)

@@ -1,0 +1,107 @@
+capability filesystem, stdio
+import sys
+import std.json
+import std.text
+import ..src.tui
+import ..src.list
+import ..src.table
+import ..src.widgets as ui
+import .saved_widgets
+
+fn canonical<T: json.Decode + json.Encode + Storable>(value: string) -> Result<string,json.JsonError> {
+    parsed := json.from_str<T>(value)?
+    json.to_string(&parsed)
+}
+
+fn lists(value: string) -> Result<string,json.JsonError> {
+    mut state := json.from_str<list.SavedState>(value)?
+    saved := json.to_string(&state)?
+    view := saved_widgets.menu()
+    mut frame := tui.Frame::new(9,3)
+    frame.render_stateful_widget(&view,tui.Rect::new(0,0,0,0),&mut state)
+    assert(json.to_string(&state)? == saved)
+    mut nav := state.clone()
+    nav.previous()
+    nav.scroll_up_by(65535)
+    a := json.to_string(&nav)?
+    nav.scroll_down_by(65535)
+    nav.next()
+    b := json.to_string(&nav)?
+    frame.render_stateful_widget(&view,frame.area(),&mut state)
+    drawn := json.to_string(&state)? + "\t" + json.to_string(&frame)?
+    state.previous()
+    frame.clear()
+    frame.render_stateful_widget(&view,frame.area(),&mut state)
+    .Ok(saved + "\t" + a + "\t" + b + "\t" + drawn + "\t" + json.to_string(&state)? + "\t" + json.to_string(&frame)?)
+}
+
+fn tables(value: string) -> Result<string,json.JsonError> {
+    mut state := json.from_str<table.SavedState>(value)?
+    saved := json.to_string(&state)?
+    mut view := saved_widgets.grid()
+    mut frame := tui.Frame::new(9,3)
+    frame.render_stateful_widget(&mut view,tui.Rect::new(0,0,0,0),&mut state)
+    assert(json.to_string(&state)? == saved)
+    mut nav := state.clone()
+    nav.previous()
+    nav.previous_column()
+    nav.scroll_up_by(65535)
+    nav.scroll_left_by(65535)
+    a := json.to_string(&nav)?
+    nav.scroll_down_by(65535)
+    nav.scroll_right_by(65535)
+    nav.next()
+    nav.next_column()
+    b := json.to_string(&nav)?
+    frame.render_stateful_widget(&mut view,frame.area(),&mut state)
+    drawn := json.to_string(&state)? + "\t" + json.to_string(&frame)?
+    state.previous()
+    state.previous_column()
+    frame.clear()
+    frame.render_stateful_widget(&mut view,frame.area(),&mut state)
+    .Ok(saved + "\t" + a + "\t" + b + "\t" + drawn + "\t" + json.to_string(&state)? + "\t" + json.to_string(&frame)?)
+}
+
+fn rails(state: &mut ui.SavedScrollState) -> Result<string,json.JsonError> {
+    mut frame := tui.Frame::new(11,4)
+    edges: []ui.Edge = [.Left,.Right,.Top,.Bottom]
+    for edge in &edges {
+        bar := ui.Scrollbar::new(edge)
+        frame.render_stateful_widget(&bar,frame.area(),&mut state)
+    }
+    json.to_string(&frame)
+}
+
+fn scrollbar(value: string) -> Result<string,json.JsonError> {
+    mut state := json.from_str<ui.SavedScrollState>(value)?
+    saved := json.to_string(&state)?
+    first := rails(&mut state)?
+    state.scroll(.Backward)
+    a := json.to_string(&state)?
+    state.scroll(.Forward)
+    b := json.to_string(&state)?
+    state.last()
+    last := json.to_string(&state)?
+    end := rails(&mut state)?
+    state.first()
+    .Ok(saved + "\t" + first + "\t" + a + "\t" + b + "\t" + last + "\t" + end + "\t" + json.to_string(&state)?)
+}
+
+fn check(line: string) -> Result<string,json.JsonError> {
+    value := line[2..line.len]
+    match line[0] {
+        b'L' => lists(value), b'T' => tables(value), b'B' => scrollbar(value),
+        b'D' => canonical<list.Direction>(value), b'H' => canonical<list.HighlightSpacing>(value),
+        b'F' => canonical<ui.Flow>(value), b'E' => canonical<ui.Edge>(value),
+        _ => canonical<ui.ScrollDirection>(value),
+    }
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 2 }
+    for line in text.split(sys.read(sys.arg(1)).unwrap(),"\n") {
+        if line.len == 0 { continue }
+        match check(line) { .Ok(result) => { print(result) }, .Err(_) => { print("error") }, }
+    }
+    0
+}
