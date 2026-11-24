@@ -1,5 +1,11 @@
 name: Native terminal tests
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        type: boolean
+        default: false
+        description: Profile the idle rich-text workload on native Linux x64
 
 permissions: {}
 
@@ -160,3 +166,14 @@ jobs:
           build/profile$EXT --allocations
           cargo build --release --locked --offline --manifest-path benchmarks/reference/Cargo.toml --features layout-cache,allocation-counts --example terminal_bench --target-dir build/rust
           "$ref" --allocations
+      - name: Profile native x64 instructions for an idle frame
+        if: runner.os == 'Linux' && inputs.profile
+        run: |
+          cd "$SOURCE_ROOT"
+          if ! command -v valgrind >/dev/null; then
+            sudo apt-get -qq update
+            sudo apt-get -qq install --no-install-recommends valgrind
+          fi
+          build/dunder build -g --locked --offline benchmarks/terminal.ddr -o build/benchmark-symbols
+          valgrind --tool=callgrind --callgrind-out-file=build/idle.calls build/benchmark-symbols --idle
+          callgrind_annotate --threshold=90 --auto=no build/idle.calls
