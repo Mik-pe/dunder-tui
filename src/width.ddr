@@ -337,7 +337,13 @@ pub fn cell_columns(value: string) -> i32 {
 }
 
 pub fn cell_columns_view(value: &str) -> i32 {
+    if value.len == 0 { return 0 }
     if value.len == 1 { return 1 }
+    first := scalar_at(value, 0)
+    if encoded(first) == value.len {
+        w := columns(first)
+        return if w < 0 { 1 } else { w }
+    }
     measured := measured_columns(value)
     if measured <= 65535 { return measured }
     mut marks := 0

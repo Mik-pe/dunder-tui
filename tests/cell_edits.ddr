@@ -122,13 +122,15 @@ fn main() {
         }
         return
     }
-    if sys.arg_count() == 2 && sys.arg(1) == "--scalars" {
+    if sys.arg_count() == 2 && (sys.arg(1) == "--scalars" || sys.arg(1) == "--raw-widths") {
+        raw := sys.arg(1) == "--raw-widths"
         mut b := tui.Buffer::empty(tui.Rect::new(0,0,4,1))
         mut widths: []u8 = []
         widths.reserve(0x110000-2048)
         for cp in 0..0x110000 {
             if cp >= 0xd800 && cp <= 0xdfff { continue }
             s := rune(cp).str()
+            if raw { widths.push(u8(65+tui.RawCell::new(move s).cell_width())); continue }
             (x,_) := b.set_stringn(0,0,s.as_str(),4,tui.plain())
             if x > 0 { assert(b.get(0,0).symbol_text() == s) }
             widths.push(u8(65+x))

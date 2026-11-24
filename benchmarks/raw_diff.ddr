@@ -1,0 +1,51 @@
+capability stdio
+import ..src.tui
+import std.array
+import std.time
+import sys
+
+fn picture(height:i32, offset:i32) -> tui.Buffer {
+    mut image := tui.Buffer::empty(tui.Rect::new(3,5,96,height))
+    labels := ["│ 水 é", "│ 火 é", "│ 木 é", "│ 金 é"]
+    for y in 0..height {
+        image.set_string(3,5+y,labels[(y+offset)%4].as_str(),tui.ink(.Green))
+        image.set_string(87,5+y,"STATUS",tui.plain())
+    }
+    move image
+}
+
+fn measure(mode:string, timed:bool, count:i32) {
+    old := picture(if mode == "resize" { 20 } else { 24 },0)
+    mut next := picture(24,if mode == "scroll" { 1 } else { 0 })
+    if mode == "one" || mode == "resize" { _ := next.get_mut(97,24).set_char(`!`) }
+    if mode == "repaint" {
+        area := next.area
+        next.set_style(area,tui.ink(.Yellow).background(.Blue))
+    }
+    pair := tui.BufferPair { previous:&old, current:&next }
+    mut samples: []i64 = []
+    mut sum: i64 = 0
+    mut emitted := 0
+    for n in 0..count {
+        begin := if timed { time.monotonic_ns() } else { i64(0) }
+        emitted = 0
+        mut value: i64 = 0
+        mut changes := pair.diff_iter()
+        while changes.advance() {
+            emitted += 1
+            value += i64(changes.y()*256 + changes.x() + i32(changes.cell().modifier.bits))
+        }
+        if timed && n >= 10 { samples.push(time.monotonic_ns()-begin) }
+        sum += value
+    }
+    if timed {
+        array.sort<i64>(&mut samples)
+        print(f"{mode} {emitted} {sum} {samples[49]} {samples[94]}")
+    } else { print(f"{mode} {emitted} {sum}") }
+}
+
+fn main() {
+    timed := sys.arg_count() == 1
+    count := if !timed && sys.arg(1) == "--setup" { 0 } else { 110 }
+    for mode in ["idle","one","scroll","resize","repaint"] { measure(mode,timed,count) }
+}

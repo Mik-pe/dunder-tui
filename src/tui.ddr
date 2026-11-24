@@ -202,7 +202,10 @@ impl Display for Color {
 }
 
 impl Eq for Color {
-    fn eq(&self, other: &Self) -> bool { self.encoded() == other.encoded() }
+    fn eq(&self, other: &Self) -> bool {
+        if self.is_default() { return other.is_default() }
+        self.encoded() == other.encoded()
+    }
 }
 
 impl Hash for Color {
@@ -748,13 +751,22 @@ impl RawCell {
 
 impl Default for RawCell { fn default() -> Self { Self::empty() } }
 
-impl Eq for RawCell {
-    fn eq(&self, other: &Self) -> bool {
-        if self.skip != other.skip || self.diff_option != other.diff_option || self.style() != other.style() { return false }
+impl RawCell {
+    fn same_style(&self, other: &Self) -> bool {
+        self.modifier.bits == other.modifier.bits && self.fg == other.fg && self.bg == other.bg && self.underline_color == other.underline_color
+    }
+    fn same_symbol(&self, other: &Self) -> bool {
         match &self.symbol {
             .None => match &other.symbol { .Some(b) => b == " ", .None => true, },
             .Some(a) => match &other.symbol { .Some(b) => a == b, .None => a == " ", },
         }
+    }
+}
+
+impl Eq for RawCell {
+    fn eq(&self, other: &Self) -> bool {
+        self.skip == other.skip && self.diff_option == other.diff_option &&
+            self.same_style(&other) && self.same_symbol(&other)
     }
 }
 
@@ -814,6 +826,107 @@ impl snapshot.Read for RawCell {
 
 @derive(Eq, Hash)
 pub struct Buffer { area: Rect, content: []RawCell }
+
+pub struct BufferPair { previous: &Buffer, current: &Buffer }
+pub opaque struct BufferDiff { pair: &BufferPair, at:i32, trailing:i32, force:bool, limit: i32, index: i32 }
+pub struct CellChange { x: i32, y: i32, cell: &RawCell }
+
+impl BufferPair {
+    fn limit(&self) -> i32 {
+        a := self.current.area
+        b := self.previous.area
+        if a.x != b.x || a.y != b.y || a.w != b.w { return -1 }
+        limit := cmp.min<i32>(self.current.content.len, self.previous.content.len)
+        if a.w <= 0 && limit > 0 { return -1 }
+        limit
+    }
+    fn iter(&self, limit:i32) -> BufferDiff from self {
+        BufferDiff { pair:&self, at:0, trailing:0, force:false, limit:limit, index:-1 }
+    }
+    pub fn diff_iter(&self) -> BufferDiff from self {
+        limit := self.limit()
+        assert(limit >= 0)
+        self.iter(limit)
+    }
+}
+
+impl BufferDiff {
+    pub fn advance(&mut self) -> bool {
+        current := &self.pair.current
+        previous := &self.pair.previous
+        while self.at < self.limit {
+            i := self.at
+            a := &current.content[i]
+            b := &previous.content[i]
+            if i >= self.trailing && a.symbol.is_none() && b.symbol.is_none() && a.diff_option.code() == 0 && b.diff_option.code() == 0 {
+                self.at += 1
+                if a.skip || (!b.skip && a.same_style(&b)) { continue }
+            } else if !changed_cell(&current,&previous,self.limit,false,&mut self.at,&mut self.trailing,&mut self.force) {
+                continue
+            }
+            self.index = i
+            return true
+        }
+        self.index = -1
+        false
+    }
+    pub fn x(&self) -> i32 { (self.pair.current.area.x + self.index%self.pair.current.area.w).bit_and(65535) }
+    pub fn y(&self) -> i32 { (self.pair.current.area.y + (self.index/self.pair.current.area.w).bit_and(65535)).bit_and(65535) }
+    pub fn cell(&self) -> &RawCell from self.pair { &self.pair.current.content[self.index] }
+}
+
+impl Iterator for BufferDiff {
+    fn next(&mut self) -> Option<CellChange> from self.pair {
+        if self.advance() {
+            return .Some(CellChange { x:self.x(), y:self.y(), cell:&self.pair.current.content[self.index] })
+        }
+        .None
+    }
+}
+
+impl Buffer {
+    fn stored_option(&self, i: i32) -> i32 {
+        cell := &self.content[i]
+        cell_rule(cell.diff_option.code(), cell.skip)
+    }
+    fn option_code(&self, i: i32) -> i32 {
+        cell := &self.content[i]
+        code := cell.diff_option.code()
+        if cell.skip && code == 0 { SKIP_CELL } else { code }
+    }
+    fn output_width(&self, i: i32, option: i32) -> i32 {
+        if option > 0 { option } else { cmp.max<i32>(1, self.content[i].columns()) }
+    }
+    fn same_symbol(&self, other: &Buffer, i: i32) -> bool { self.content[i].same_symbol(&other.content[i]) }
+    fn same_visible_cell(&self, other: &Buffer, i: i32) -> bool {
+        a := &self.content[i]
+        b := &other.content[i]
+        a.same_style(&b) && a.same_symbol(&b)
+    }
+    fn has_vs16(&self, i: i32) -> bool {
+        match &self.content[i].symbol { .Some(s) => strings.contains(s,"\u{fe0f}"), .None => false, }
+    }
+    fn visible_blank_style(&self, i: i32) -> bool {
+        cell := &self.content[i]
+        !cell.bg.is_default() || i32(cell.modifier.bits).bit_and(VISIBLE_ON_BLANK) != 0
+    }
+    pub fn visit_changes(&self, previous: &Buffer, visit: &mut FnMut(i32,i32,&RawCell) -> bool) -> Result<(),string> {
+        pair := BufferPair { previous:&previous, current:&self }
+        limit := pair.limit()
+        if limit < 0 { return .Err("Buffer diffs require equal origins and widths, and a positive width for stored cells.") }
+        mut changes := pair.iter(limit)
+        while changes.advance() {
+            if !visit(changes.x(), changes.y(), changes.cell()) { break }
+        }
+        .Ok
+    }
+    pub fn diff_positions(&self, previous: &Buffer) -> Result<[](i32,i32),string> {
+        mut positions: [](i32,i32) = []
+        collect := fn[&mut positions](x:i32, y:i32, cell:&RawCell) -> bool { positions.push((x,y)); true }
+        self.visit_changes(&previous, &mut collect)?
+        .Ok(move positions)
+    }
+}
 
 pub trait BufferText {
     fn buffer_width(&self) -> i32
@@ -881,6 +994,7 @@ const SKIP_CELL: i32 = -1
 const ALWAYS_UPDATE: i32 = -2
 const LEGACY_SKIP: i32 = 65536
 const OVERLAPPING_WIDTHS: u8 = 4
+const VISIBLE_ON_BLANK: i32 = 8+16+32+64+256
 
 fn stored_rule(code: i32) -> i32 { if code >= LEGACY_SKIP { code - LEGACY_SKIP - 2 } else { code } }
 
@@ -1214,8 +1328,38 @@ impl snapshot.Read for Frame {
     }
 }
 
+fn changed_cell<B>(current: &B, previous: &B, limit:i32, full:bool, at:&mut i32, trailing:&mut i32, force:&mut bool) -> bool {
+    i := at
+    option := current.option_code(i)
+    if i < trailing {
+        at += cmp.min<i32>(limit-i, current.output_width(i,option))
+        trailing = cmp.max<i32>(trailing,at)
+        return option != SKIP_CELL && (force || !current.same_symbol(&previous,i))
+    }
+    at += 1
+    if option == SKIP_CELL { return false }
+    step := current.output_width(i,option)
+    at = i + cmp.min<i32>(limit-i,step)
+    if full { return true }
+    old := previous.stored_option(i)
+    if option != ALWAYS_UPDATE && current.stored_option(i) == old && current.same_visible_cell(&previous,i) { return false }
+    if option > 0 { return true }
+    if step > 1 && current.has_vs16(i) {
+        trailing = at
+        at = i+1
+        force = false
+    } else if step == 1 {
+        old_step := previous.output_width(i,stored_rule(old))
+        if old_step > 1 && previous.visible_blank_style(i) {
+            trailing = i + cmp.min<i32>(limit-i,old_step)
+            force = true
+        }
+    }
+    true
+}
+
 struct DiffScan {
-    at: i32, start: i32, end: i32, cached: i32, trailing: i32, limit: i32, force: bool,
+    at: i32, trailing: i32, force: bool, start: i32, end: i32, cached: i32, limit: i32,
     full: bool, precise: bool, packed: bool, floor: i64,
 }
 
@@ -1223,7 +1367,7 @@ impl DiffScan {
     fn new(current: &Frame, previous: &Frame) -> Self {
         full := current.bounds != previous.bounds
         precise := current.row_flags.len > 0 || previous.row_flags.len > 0
-        Self { at:0, start:0, end:0, cached:-1, trailing:0, limit:current.glyphs.len, force:false, full:full,
+        Self { at:0, trailing:0, force:false, start:0, end:0, cached:-1, limit:current.glyphs.len, full:full,
             precise:precise, packed:current.packed_cells() && previous.packed_cells(),
             floor:if full { i64(0) } else { current.shared_style_floor(&previous) } }
     }
@@ -1240,33 +1384,7 @@ impl DiffScan {
                     continue
                 }
             }
-            option := frame.option_code(i)
-            if i < self.trailing {
-                self.at += frame.output_width(i,option)
-                self.trailing = cmp.max<i32>(self.trailing,self.at)
-                if option != SKIP_CELL && (self.force || !frame.same_symbol(&previous,i)) { return i }
-                continue
-            }
-            self.at += 1
-            if option == SKIP_CELL { continue }
-            step := frame.output_width(i,option)
-            self.at = i+step
-            if self.full { return i }
-            old_stored := previous.stored_option(i)
-            if option != ALWAYS_UPDATE && frame.stored_option(i) == old_stored && frame.same_visible_cell(&previous,i) { continue }
-            if option > 0 { return i }
-            if step > 1 && frame.has_vs16(i) {
-                self.at = i+1
-                self.trailing = i+step
-                self.force = false
-            } else if step == 1 {
-                old_step := previous.output_width(i,stored_rule(old_stored))
-                if old_step > 1 && previous.visible_blank_style(i) {
-                    self.trailing = i+old_step
-                    self.force = true
-                }
-            }
-            return i
+            if changed_cell(&frame,&previous,self.limit,self.full,&mut self.at,&mut self.trailing,&mut self.force) { return i }
         }
         -1
     }
@@ -2418,7 +2536,7 @@ impl Frame {
     fn visible_blank_style(&self, i: i32) -> bool {
         if self.glyphs[i] < 0 { return false }
         brush := paint.Brush::unpack(self.decoration(self.styles[i]).packed)
-        brush.bg >= 0 || brush.modifiers.bit_and(8+16+32+64+256) != 0
+        brush.bg >= 0 || brush.modifiers.bit_and(VISIBLE_ON_BLANK) != 0
     }
 
     fn normalized_symbol(&self, i: i32) -> i32 {

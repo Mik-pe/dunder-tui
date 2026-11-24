@@ -10,7 +10,15 @@ pub fn snapshots() -> []tui.Frame {
     mut masked := updated.raw_cell_at(6,4).unwrap()
     masked.skip = true
     assert(updated.set_raw_cell(6,4,&masked))
-    [move original, json.from_str<tui.Frame>(json.to_string(&updated).unwrap()).unwrap()]
+    previous := original.to_buffer()
+    next := json.from_str<tui.Buffer>(json.to_string(&updated).unwrap()).unwrap()
+    pair := tui.BufferPair { previous:&previous, current:&next }
+    mut applied := previous.to_frame().unwrap()
+    for change in pair.diff_iter() {
+        assert(applied.set_raw_cell(change.x,change.y,&change.cell))
+    }
+    assert(applied.symbol_at(6,4) == .Some("E") && applied.symbol_at(10,4) == .Some("2"))
+    [move original, move applied]
 }
 
 pub fn paint(frame: &mut tui.Frame, saved: &mut tui.Frame) {

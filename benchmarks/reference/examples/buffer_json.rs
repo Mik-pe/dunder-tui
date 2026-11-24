@@ -171,8 +171,73 @@ fn cases() {
     }
 }
 
+fn raw_cases() {
+    let empty = to_value(Cell::EMPTY).unwrap();
+    let mut cells = vec![empty.clone()];
+    for symbol in [" ", "", "界", "♥️", "e\u{301}", "ab", "\u{301}"] {
+        for rule in [
+            json!("None"),
+            json!("Skip"),
+            json!("AlwaysUpdate"),
+            json!({"ForcedWidth":3}),
+        ] {
+            let mut c = empty.clone();
+            c["symbol"] = json!(symbol);
+            c["diff_option"] = rule;
+            cells.push(c.clone());
+            c["skip"] = json!(true);
+            c["bg"] = json!({"Indexed":11});
+            c["modifier"] = json!("UNDERLINED | 0x8000");
+            cells.push(c);
+        }
+    }
+    for (i, a) in cells.iter().enumerate() {
+        for (j, b) in cells.iter().enumerate() {
+            let old = [
+                empty.clone(),
+                a.clone(),
+                cells[(i + j) % cells.len()].clone(),
+                empty.clone(),
+                empty.clone(),
+                empty.clone(),
+            ];
+            let new = [
+                empty.clone(),
+                b.clone(),
+                a.clone(),
+                b.clone(),
+                empty.clone(),
+                empty.clone(),
+                a.clone(),
+                empty.clone(),
+            ];
+            // The wide cell in slot 1 may extend across a row boundary.
+            let previous = buffer(3, 7, 2, 3, &old);
+            let height = 2 + ((i + j) % 3) as u16;
+            let next = buffer(3, 7, 2, height, &new[..usize::from(2 * height)]);
+            println!("D\t{}", json!([previous, next]));
+        }
+    }
+    let changed = to_value(Cell::from('!')).unwrap();
+    for (x, y, w) in [(0, 0, 3), (65534, 65535, 3), (65535, 65534, 1)] {
+        for a in 0..7 {
+            for b in 0..7 {
+                let old = buffer(x, y, w, 1, &vec![empty.clone(); a]);
+                let new = buffer(x, y, w, 1, &vec![changed.clone(); b]);
+                println!("D\t{}", json!([old, new]));
+            }
+        }
+    }
+}
+
 fn check(kind: &str, input: &str) -> serde_json::Result<String> {
     match kind {
+        "D" => {
+            let [a, b]: [Buffer; 2] = from_str(input)?;
+            let changes: Vec<_> = a.diff_iter(&b).collect();
+            assert_eq!(a.diff(&b), changes);
+            to_string(&changes)
+        }
         "O" => to_string(&from_str::<CellDiffOption>(input)?),
         "M" => to_string(&from_str::<Modifier>(input)?),
         "C" => to_string(&from_str::<Cell>(input)?),
@@ -216,6 +281,10 @@ fn check(kind: &str, input: &str) -> serde_json::Result<String> {
 }
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--raw-cases") {
+        raw_cases();
+        return;
+    }
     if std::env::args().nth(1).as_deref() == Some("--cases") {
         cases();
         return;

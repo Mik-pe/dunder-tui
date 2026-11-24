@@ -155,6 +155,21 @@ Samma val finns för stilar, celler, buffertar och testterminaler. I en egen pos
 
 Bilden innehåller ytans origo, storlek, symboler, färger och diffregler. Markör och bildnummer hör till terminalen. Med `raw_cell_at(x,y)` kan du läsa ett enskilt sparat cellvärde, även bakom ett brett tecken. [Dataformat och körbara prov](docs/parity.md#sparade-celler-och-bildbuffertar)
 
+### Läs ändrade celler ur två buffertar
+
+`BufferPair` lånar båda buffertarna. Iteratorn lämnar den nya cellen och dess terminalkoordinater i ritordning. En backend kan använda dem direkt.
+
+```dunder
+före := tui.Buffer::with_lines(&["Pris 42"])
+efter := tui.Buffer::with_lines(&["Pris 43"])
+par := tui.BufferPair { previous:&före, current:&efter }
+for ändring in par.diff_iter() {
+    assert(ändring.x == 6 && ändring.y == 0 && ändring.cell.symbol_text() == "3")
+}
+```
+
+Buffertarna ska ha samma origo och bredd. Höjden får skilja sig. För en tät ritloop kan du läsa samma iterator med `while iter.advance()` och hämta `iter.x()`, `iter.y()` och `iter.cell()`. `efter.diff_positions(&före)` samlar koordinaterna. `efter.visit_changes(&före,&mut besök)` lämnar ett fel för oförenliga ytor och stannar när besökaren returnerar `false`.
+
 ## Dela terminalyta med en annan ritare
 
 Sätt en cellregel efter att du ritat innehållet. Med `.Skip` kan exempelvis en bildvisare behålla sina pixlar i terminalen. `.AlwaysUpdate` ritar tillbaka appens tecken även när föregående bild innehöll samma tecken. När en cell återgår till `.None` skriver biblioteket åter dess aktuella innehåll.

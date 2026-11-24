@@ -27,6 +27,51 @@ import ..src.material
 import ..src.tailwind
 import ..src.snapshot
 
+@test fn raw_buffer_changes_borrow_cells_and_stop_on_request() {
+    mut old := tui.Buffer::empty(tui.Rect::new(3,2,4,2))
+    mut next := tui.Buffer::empty(tui.Rect::new(3,2,4,3))
+    _ := old.get_mut(4,2).set_symbol("界").set_bg(.Red)
+    _ := next.get_mut(5,2).set_diff_option(.AlwaysUpdate).set_skip(true)
+    _ := next.get_mut(6,2).set_symbol("skip").set_diff_option(.Skip)
+    _ := next.get_mut(3,3).set_symbol("!").set_fg(.Green)
+    _ := next.get_mut(3,4).set_char(`X`)
+    positions := next.diff_positions(&old).unwrap()
+    assert(positions.len == 3 && positions[0] == (4,2) && positions[1] == (5,2) && positions[2] == (3,3))
+    pair := tui.BufferPair { previous:&old, current:&next }
+    mut i := 0
+    for change in pair.diff_iter() {
+        assert((change.x,change.y) == positions[i])
+        assert(change.cell == next.get(change.x,change.y))
+        i += 1
+    }
+    assert(i == positions.len)
+    mut iter := pair.diff_iter()
+    first := iter.next().unwrap()
+    second := iter.next().unwrap()
+    assert(first.x == 4 && first.cell.symbol.is_none() && second.x == 5 && second.cell.skip)
+    assert(iter.advance() && iter.cell().fg == .Green && !iter.advance() && !iter.advance())
+    mut visits := 0
+    stop := fn[&mut visits](x:i32, y:i32, cell:&tui.RawCell) -> bool {
+        visits += 1
+        assert(x == 4 && y == 2 && cell.symbol.is_none())
+        false
+    }
+    assert(next.visit_changes(&old,&mut stop).is_ok())
+    assert(tui.Buffer::empty(tui.Rect::new(0,0,4,2)).visit_changes(&old,&mut stop).is_err())
+    assert(visits == 1)
+    old.resize(tui.Rect::new(3,2,1,1))
+    next.resize(old.area)
+    _ := old.content[0].set_symbol("wide").set_bg(.Blue)
+    _ := next.content[0].set_symbol("x").set_diff_option(.None)
+    assert(next.diff_positions(&old).unwrap().len == 1)
+    next.area.w = 0
+    assert(next.diff_positions(&old).is_err())
+    old.area.w = 0
+    assert(next.diff_positions(&old).is_err())
+    next.content.clear()
+    assert(next.diff_positions(&old).unwrap().len == 0)
+}
+
 @test fn edit_a_borrowed_raw_cell_and_leave_neighbors_intact() {
     area := tui.Rect::new(2, 3, 4, 1)
     mut tile := tui.RawCell::new("┘")

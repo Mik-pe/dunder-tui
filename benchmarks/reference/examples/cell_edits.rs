@@ -207,7 +207,9 @@ fn main() {
         moving(false, true);
         return;
     }
-    if bench.as_deref() == Some("--scalars") {
+    if matches!(bench.as_deref(), Some("--scalars" | "--raw-widths")) {
+        use ratatui::buffer::CellWidth;
+        let raw = bench.as_deref() == Some("--raw-widths");
         let widths = io::read_to_string(io::stdin()).unwrap();
         let mut observed = widths.trim_end().bytes();
         let mut b = Buffer::empty(Rect::new(0, 0, 4, 1));
@@ -215,8 +217,12 @@ fn main() {
         for ch in char::MIN..=char::MAX {
             let mut bytes = [0; 4];
             let symbol = ch.encode_utf8(&mut bytes);
-            let (x, _) = b.set_stringn(0, 0, &*symbol, 4, Style::new());
-            if x > 0 {
+            let x = if raw {
+                Cell::from(ch).cell_width()
+            } else {
+                b.set_stringn(0, 0, &*symbol, 4, Style::new()).0
+            };
+            if !raw && x > 0 {
                 assert_eq!(b[(0, 0)].symbol(), symbol);
             }
             assert_eq!(observed.next(), Some(b'A' + x as u8), "U+{:04X}", ch as u32);

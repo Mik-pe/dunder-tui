@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## En iterator över två lånade buffertar
+
+I Dunder 0.12.1 kan en lokal post låna två oberoende ägare. Därför kan `BufferPair` ge en iterator över ändrade celler utan att kopiera buffertarna. Med `from self.pair` går det också att läsa den första cellen efter att iteratorn har lämnat nästa. En funktion som försöker lämna själva paret från två separata parametrar får däremot E4003 när returkontraktet pekar ut den ena. Ett kontrakt som omfattar båda parametrarna skulle göra det möjligt att skapa iteratorn direkt med ett metodanrop. [Lokalt par](../tests/dogfood/compiler/paired_views.ddr) · [Minimiprov för returvärdet](../tests/dogfood/compiler/return_two_owners.ddr) · [Iteratorprov](../tests/suite.ddr)
+
 ## Läs en skalär vid ett byteindex i lånad text
 
 Buffertskrivaren behöver både en skalär och dess nästa byteindex i en giltig `&str`. I ett separat prov med Dunder 0.12.1 behövde 8 192 uppslag i median 103 µs via `std.bytes.utf8.decode_prefix` och 39 µs med direkt läsning ur textvyn på macOS ARM64. På Linux ARM64 var tiderna 107 och 39 µs. Båda sätten gav summan 12 177 657 856 över alla 37 omgångar. Den profilerade processen begärde 227 480 respektive 153 allokeringar. Ett typat uppslag för redan giltig text skulle kunna ersätta buffertskrivarens lokala UTF-8-avkodning. För råa byte behöver prefixavkodaren även kunna skilja ofullständiga sekvenser från ogiltiga. [Minimiprov](../benchmarks/language/string_scalar.ddr) · [Råmätningar](../benchmarks/results/unicode-writes-0.12.1.tsv)

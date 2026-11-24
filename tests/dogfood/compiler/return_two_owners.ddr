@@ -1,0 +1,12 @@
+struct Pair { left: &i32, right: &i32 }
+
+fn pair(left: &i32, right: &i32) -> Pair from left {
+    Pair { left:left, right:right }
+}
+
+fn main() {
+    a := 3
+    b := 5
+    result := pair(&a,&b)
+    assert(result.left + result.right == 8)
+}

@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Jämför råa buffertar
+
+Att läsa de 2 280 ändrade cellerna efter en omritning på 96 × 24 tog 55 µs i median på macOS ARM64 med Dunder och 17,8 µs med Ratatui. [Bildtider, allokeringar och minne för fem arbetslaster](raw-diff.md)
+
 ## Skriv till en rå cellbuffert
 
 På macOS ARM64 sjönk mediantiden för en Unicode-bild med 96 × 24 celler från 212 till 91 µs. När även texten byttes mellan bilderna sjönk tiden från 234 till 107 µs. Ratatui tog 36,5 µs i båda fallen. [Alla fem arbetslaster, allokeringar och minne](cell-writes.md)
