@@ -1,0 +1,9 @@
+pub fn collect<T: Clone + Storable>(move value: T, count: i32) -> []T {
+    assert(count >= 0)
+    mut items: []T = []
+    if count == 0 { return move items }
+    items.reserve(count)
+    for _ in 1..count { items.push(value.clone()) }
+    items.push(move value)
+    move items
+}

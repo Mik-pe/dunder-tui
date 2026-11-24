@@ -1,0 +1,92 @@
+import ..src.tui
+import ..src.text as rich
+import ..src.table
+import ..src.layout
+
+pub fn span(kind: i32, n: i32) -> rich.Span {
+    value := n-7
+    name := "Sjö"
+    style := tui.ink(.Cyan).bold().underlined().underline_color(.Rgb(20,80,160))
+    match kind {
+        0 => rich.Span::default(),
+        1 => rich.Span::raw("A{B}"),
+        2 => rich.Span::raw(f"{value} {name}"),
+        3 => rich.Span::raw(f"{name}/{value:04d}"),
+        4 => rich.Span::raw(f"{value:4}"),
+        5 => rich.Span::raw(f"{value}"),
+        6 => rich.Span::styled("tea 茶",style),
+        7 => rich.Span::styled(f"{name}/{value:04d}",style),
+        8 => rich.Span::styled(f"{value:4}",tui.ink(.Yellow)),
+        9 => rich.Span::styled(f"{value}",tui.plain().italic()),
+        10 => rich.Span::styled(f"{name} {name}",style),
+        11 => rich.Span::raw(f"{n:04X}"),
+        _ => rich.Span::raw("e\u{301}\n茶"),
+    }
+}
+
+pub fn line(kind: i32, n: i32) -> rich.Line {
+    match kind {
+        0 => rich.Line::default(),
+        1 => rich.Line::strings(["A\nB","","茶"]),
+        2 => rich.Line::new([span(2,n),rich.Span::styled("◆",tui.ink(.Magenta)),span(4,n)]),
+        3 => rich.Line::repeat(rich.Span::styled("茶",tui.ink(.Blue)),n),
+        _ => {
+            mut value := rich.Line::repeat(rich.Span::styled("🌊",tui.ink(.Cyan)),n)
+            if n > 0 { value.span_mut(0).set_content("X") }
+            value.align(.Right)
+        },
+    }
+}
+
+pub fn document(kind: i32, n: i32) -> rich.Text {
+    match kind {
+        0 => rich.Text::default(),
+        1 => rich.Text::strings(["A\r\nB","","茶"]),
+        2 => rich.Text::new([rich.Line::raw("NORD"),line(2,n),rich.Line::new([span(9,n)])]),
+        3 => rich.Text::repeat(line(3,2).align(.Center),n),
+        _ => {
+            mut value := rich.Text::repeat(line(3,2),n)
+            if n > 0 { value.line_mut(0).span_mut(0).set_content("IS") }
+            value
+        },
+    }
+}
+
+pub fn row(kind: i32, n: i32) -> table.Row {
+    match kind {
+        0 => table.Row::default(),
+        1 => table.Row::repeat(table.Cell::raw(""),0),
+        2 => table.Row::strings(["A\nB","茶",""]),
+        3 => table.Row::new([table.Cell::from("F"),table.Cell::from(line(2,n)),table.Cell::from(document(2,n)),table.Cell::from(span(9,n))]),
+        4 => table.Row::repeat(table.Cell::new(document(2,2)),n),
+        _ => {
+            mut cell := table.Cell::new(document(4,2))
+            cell.style = tui.ink(.Yellow).background(.Blue)
+            mut value := table.Row::repeat(move cell,n)
+            value.height = 2
+            if n > 0 { value.cells[0].content.line_mut(0).span_mut(0).set_content("Ö") }
+            value
+        },
+    }
+}
+
+pub fn grid(kind: i32, n: i32) -> table.Table {
+    width: layout.Constraint = .Length(5)
+    table.Table::new([table.Row::strings(["FÖRE"]),row(kind,n),table.Row::strings(["EFTER"])],width.repeat(5))
+}
+
+pub fn rules(kind: i32, n: i32) -> []layout.Constraint {
+    number := u16(n+1)
+    ratio: layout.Constraint = .Ratio(u32(n),9)
+    match kind {
+        0 => [.Length(number),.Min(u16(n)),.Max(u16(2*n)),.Percentage(u16(17+n)),.Ratio(u32(n),9),.Fill(number)],
+        1 => ratio.repeat(0),
+        2 => ratio.repeat(1),
+        _ => ratio.repeat(5),
+    }
+}
+
+pub fn layout_for(vertical: bool, kind: i32, n: i32) -> layout.Layout {
+    if vertical { return layout.Layout::vertical(rules(kind,n)) }
+    layout.Layout::horizontal(rules(kind,n))
+}

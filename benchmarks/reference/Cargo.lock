@@ -1060,6 +1060,7 @@ dependencies = [
  "palette",
  "ratatui-core",
  "ratatui-crossterm",
+ "ratatui-macros",
  "ratatui-termina",
  "ratatui-termion",
  "ratatui-termwiz",
@@ -1103,6 +1104,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ratatui-macros"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed7dc68daa7498a43e4d68e0eb078427e10c38fbcfbb1e42d955f1fa2140d814"
+dependencies = [
+ "ratatui-core",
+ "ratatui-widgets",
+]
+
+[[package]]
 name = "ratatui-render-reference"
 version = "0.1.0"
 dependencies = [
@@ -1111,6 +1122,7 @@ dependencies = [
  "num-traits",
  "ratatui",
  "ratatui-crossterm",
+ "ratatui-widgets",
  "serde_json",
  "time",
 ]

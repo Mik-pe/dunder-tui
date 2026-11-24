@@ -9,6 +9,8 @@ import .selection
 pub struct Item { content: rich.Text, style: tui.Style }
 
 impl Item {
+    pub fn from<T: rich.IntoText>(move value: T) -> Self { Item::new(value.into_text()) }
+
     pub fn new(move content: rich.Text) -> Self { Self { content: move content, style: tui.plain() } }
     pub fn raw(move value: string) -> Self { Item::new(rich.Text::raw(move value)) }
     pub fn height(&self) -> i32 { self.content.height() }

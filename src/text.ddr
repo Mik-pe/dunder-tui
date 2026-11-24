@@ -1,4 +1,5 @@
 import .tui
+import .repetition
 import .text_lines as scanning
 import std.bytes as bytes
 import std.array as array
@@ -103,6 +104,8 @@ impl Iterator for SpanGraphemes {
     }
 }
 
+impl Default for Span { fn default() -> Self { Span::raw("") } }
+
 impl Span {
     pub fn raw(move value: string) -> Self { Span::styled(move value, tui.plain()) }
     pub fn styled(move value: string, style: tui.Style) -> Self { Self { glyphs: tui.GlyphRun::new(move value), style: style } }
@@ -177,7 +180,20 @@ impl Iterator for LineGraphemes {
     }
 }
 
+impl Default for Line { fn default() -> Self { Line::new([]) } }
+
 impl Line {
+    pub fn repeat(move span: Span, count: i32) -> Self {
+        Line::new(repetition.collect(move span,count))
+    }
+
+    pub fn strings(move values: []string) -> Self {
+        mut spans: []Span = []
+        spans.reserve(values.len)
+        for value in move values { spans.push(Span::raw(move value)) }
+        Line::new(move spans)
+    }
+
     pub fn raw(move value: string) -> Self {
         mut spans: []Span = []
         mut rows := scanning.Cursor::new()
@@ -291,13 +307,34 @@ impl ParagraphLine {
 
 pub opaque struct Text { lines: []Line, columns: i32, style: tui.Style, alignment: Alignment }
 
+pub trait IntoText { fn into_text(move self) -> Text }
+
+impl IntoText for string { fn into_text(move self) -> Text { Text::raw(move self) } }
+impl IntoText for Span { fn into_text(move self) -> Text { Text::new([Line::new([move self])]) } }
+impl IntoText for Line { fn into_text(move self) -> Text { Text::new([move self]) } }
+impl IntoText for Text { fn into_text(move self) -> Text { move self } }
+impl IntoText for []Line { fn into_text(move self) -> Text { Text::new(move self) } }
+
 fn lines_width(lines: &[]Line) -> i32 {
     mut columns := 0
     for line in &lines { columns = cmp.max<i32>(columns, line.width()) }
     columns
 }
 
+impl Default for Text { fn default() -> Self { Text::new([]) } }
+
 impl Text {
+    pub fn repeat(move line: Line, count: i32) -> Self {
+        Text::new(repetition.collect(move line,count))
+    }
+
+    pub fn strings(move values: []string) -> Self {
+        mut lines: []Line = []
+        lines.reserve(values.len)
+        for value in move values { lines.push(Line::raw(move value)) }
+        Text::new(move lines)
+    }
+
     pub fn new(move lines: []Line) -> Self {
         columns := lines_width(&lines)
         Self { lines: move lines, columns: columns, style: tui.plain(), alignment: .Inherit }
@@ -375,6 +412,8 @@ impl Text {
 pub opaque struct Paragraph { lines: []ParagraphLine, text_style: tui.Style, style: tui.Style, alignment: Alignment, wrap_mode: Wrap, wide: WideWrap, top: i32, left: i32 }
 
 impl Paragraph {
+    pub fn from<T: IntoText>(move value: T) -> Self { Paragraph::new(value.into_text()) }
+
     pub fn new(move text: Text) -> Self {
         alignment := text.alignment
         text_style := text.style

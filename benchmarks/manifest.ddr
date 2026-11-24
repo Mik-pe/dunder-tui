@@ -1,0 +1,27 @@
+capability stdio
+import sys
+import ..src.tui
+import .manifest_scene
+import .frames
+import ..tests.widget_cells
+
+fn draw(scene: &mut manifest_scene.Scene, frame: &mut tui.Frame, mode: string, n: i32) {
+    scene.draw(&mut frame,mode,n)
+}
+
+fn main() {
+    mut scene := manifest_scene.Scene::new()
+    modes: []string = ["idle","cell","scroll","resize","repaint"]
+    if sys.arg_count() == 2 && sys.arg(1) == "--check" {
+        for mode in &modes {
+            for n in 0..220 {
+                w := if mode == "resize" && n%2 == 0 { 80 } else { 96 }
+                mut frame := tui.Frame::new(w,24)
+                scene.draw(&mut frame,mode,n)
+                widget_cells.snapshot(&frame)
+            }
+        }
+        return
+    }
+    frames.run(&mut scene,&modes,draw)
+}

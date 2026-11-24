@@ -1,5 +1,6 @@
 import .tui
 import .json_format
+import .repetition
 import std.json
 import .layout_solver as lp
 import std.cmp as cmp
@@ -33,6 +34,10 @@ impl json.Decode for VerticalAlignment {
 pub enum Flex { Start, Center, End, SpaceBetween, SpaceAround, SpaceEvenly, Legacy }
 @derive(Encode, Decode)
 pub enum Constraint { Length(u16), Percentage(u16), Ratio(u32, u32), Min(u16), Max(u16), Fill(u16) }
+
+impl Constraint {
+    pub fn repeat(self, count: i32) -> []Constraint { repetition.collect(self,count) }
+}
 
 @derive(Encode, Decode, Eq)
 pub enum Spacing { Space(u16), Overlap(u16) }

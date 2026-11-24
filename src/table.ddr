@@ -7,10 +7,13 @@ import std.cmp as cmp
 import std.json
 import .json_format
 import .selection
+import .repetition
 
 pub struct Cell { content: rich.Text, style: tui.Style, column_span: u16 }
 
 impl Cell {
+    pub fn from<T: rich.IntoText>(move value: T) -> Self { Cell::new(value.into_text()) }
+
     pub fn new(move content: rich.Text) -> Self { Self { content: move content, style: tui.plain(), column_span: 1 } }
     pub fn raw(move value: string) -> Self { Cell::new(rich.Text::raw(move value)) }
     pub fn spanning(move self, count: u16) -> Self { mut cell := move self; cell.column_span = count; move cell }
@@ -23,7 +26,15 @@ impl Cell {
 
 pub struct Row { cells: []Cell, style: tui.Style, height: u16, top_margin: u16, bottom_margin: u16 }
 
+impl Default for Row {
+    fn default() -> Self { Self { cells:[], style:tui.plain(), height:0, top_margin:0, bottom_margin:0 } }
+}
+
 impl Row {
+    pub fn repeat(move cell: Cell, count: i32) -> Self {
+        Row::new(repetition.collect(move cell,count))
+    }
+
     pub fn new(move cells: []Cell) -> Self {
         Self { cells: move cells, style: tui.plain(), height: 1, top_margin: 0, bottom_margin: 0 }
     }

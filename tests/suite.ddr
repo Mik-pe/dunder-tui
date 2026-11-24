@@ -26,6 +26,58 @@ import ..src.material
 import ..src.tailwind
 import ..src.snapshot
 
+struct Pier { name: string }
+impl rich.IntoText for Pier {
+    fn into_text(move self) -> rich.Text {
+        content := rich.Span::styled(move self.name,tui.ink(.Green))
+        content.into_text()
+    }
+}
+
+@test fn list_items_table_cells_and_paragraphs_accept_owned_text_sources() {
+    cell := table.Cell::from(rich.Line::raw("KAJ").styled(tui.ink(.Red)).align(.Right))
+    assert(cell.content.lines()[0].get_alignment() == .Right && cell.content.lines()[0].get_style() == tui.ink(.Red))
+    item := lists.Item::from(Pier { name:"VIK" })
+    assert(item.width() == 3 && item.content.lines()[0].spans()[0].get_style() == tui.ink(.Green))
+    lines: []rich.Line = [rich.Line::raw("hamn"),rich.Line::raw("ö")]
+    paragraph := rich.Paragraph::from(move lines)
+    mut frame := tui.Frame::new(4,2)
+    paragraph.render(&mut frame,frame.area())
+    assert(frame.line(0) == "hamn" && frame.line(1) == "ö   ")
+}
+
+@test fn repeated_styled_text_has_independent_editable_parts() {
+    seed := rich.Span::styled("茶",tui.ink(.Cyan).bold())
+    mut line := rich.Line::repeat(move seed,3)
+    line.span_mut(1).set_content("X")
+    assert(line.to_string() == "茶X茶" && line.width() == 5)
+    mut doc := rich.Text::repeat(move line,2)
+    doc.line_mut(0).span_mut(2).set_content("IS")
+    assert(doc.lines()[0].to_string() == "茶XIS" && doc.lines()[1].to_string() == "茶X茶")
+    assert(doc.lines()[1].spans()[2].get_style() == tui.ink(.Cyan).bold())
+    assert(rich.Span::default().width() == 0 && rich.Line::default().spans().len == 0)
+    assert(rich.Text::default().height() == 0 && rich.Text::repeat(rich.Line::raw("x"),0).height() == 0)
+    strings := rich.Line::strings(["A\nB","","C"])
+    assert(strings.spans().len == 3 && strings.spans()[0].content() == "A\nB" && strings.to_string() == "ABC")
+    lines := rich.Text::strings(["A\r\nB","","C"])
+    assert(lines.height() == 3 && lines.lines()[0].spans().len == 2)
+}
+
+@test fn a_default_table_row_uses_no_screen_line_and_a_zero_cell_row_uses_one() {
+    empty := table.Row::default()
+    blank := table.Row::repeat(table.Cell::raw(""),0)
+    assert(empty.height == 0 && blank.height == 1)
+    mut row := table.Row::repeat(table.Cell::raw("茶"),3)
+    row.cells[1].content.line_mut(0).span_mut(0).set_content("Ö")
+    assert(row.cells[0].content.to_string() == "茶" && row.cells[2].content.to_string() == "茶")
+    width: layout.Constraint = .Length(4)
+    mut table := table.Table::new([move empty,table.Row::strings(["A"]),move blank,move row],width.repeat(3))
+    mut frame := tui.Frame::new(16,4)
+    table.render(&mut frame,frame.area())
+    assert(frame.symbol_at(0,0).unwrap() == "A" && frame.line(1) == "                ")
+    assert(frame.symbol_at(5,2).unwrap() == "Ö" && frame.symbol_at(10,2).unwrap() == "茶")
+}
+
 @derive(Encode, Decode)
 struct SavedPreferences { name: string, styles: []Option<snapshot.WithoutUnderlineColor<tui.Style>> }
 

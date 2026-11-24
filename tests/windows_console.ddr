@@ -6,6 +6,7 @@ import .shadow_cells
 import .border_cells
 import .saved_layout
 import .saved_buffer
+import ..benchmarks.manifest_scene
 import .saved_widgets
 import .saved_backend
 import .saved_palette
@@ -330,6 +331,13 @@ unsafe fn shadow_and_meter_screen(out: ptr, x: i32, y: i32) -> i32 {
     if term.draw(&mut basic,saved_buffer.paint).is_err() { return 196 }
     if unit_at(out,x+3,y+3) != 66 || unit_at(out,x+7,y+3) != 67 { return 197 }
     if read_attr(out,addr(&mut attr),1,first,addr(&mut count)) == 0 || count != 1 || attr.bit_and(15) != 2 { return 198 }
+    mut manifest := manifest_scene.Scene::new()
+    for i in 0..2 {
+        manifest.draw(&mut term.get_frame(),"scroll",i)
+        if term.apply_buffer().is_err() { return 199 }
+        if unit_at(out,x+2,y+2) != 84 || unit_at(out,x+4,y+3) != 48+i { return 200 }
+        if unit_at(out,x+2,y+6) != 0x00d6 { return 201 }
+    }
     0
 }
 

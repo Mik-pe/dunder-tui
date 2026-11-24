@@ -1,0 +1,36 @@
+import ..src.tui
+import ..src.table
+import ..src.text as rich
+import ..src.layout
+
+pub struct Scene { panels: layout.Layout, body: rich.Paragraph, footer: table.Table }
+
+impl Scene {
+    pub fn new() -> Self {
+        line := rich.Line::new([rich.Span::raw(""),rich.Span::styled("  SKÄRGÅRD",tui.ink(.Cyan)),
+            rich.Span::raw("  •  "),rich.Span::styled("KAJ 03",tui.ink(.Yellow).bold())])
+        mut log := rich.Text::repeat(move line,128)
+        for i in 0..log.height() { log.line_mut(i).span_mut(0).set_content(f"{i:03d}") }
+        width: layout.Constraint = .Fill(1)
+        mut cell := table.Cell::raw("ÖPPEN")
+        cell.style = tui.ink(.Green)
+        Self { panels:layout.Layout::vertical([.Length(1),.Fill(1),.Length(1)]),
+            body:rich.Paragraph::new(move log),
+            footer:table.Table::new([table.Row::repeat(move cell,4)],width.repeat(4)) }
+    }
+
+    pub fn draw(&mut self, frame: &mut tui.Frame, mode: string, n: i32) {
+        area := frame.area()
+        parts := self.panels.arrange(area).regions()
+        if mode == "repaint" {
+            bg: tui.Color = if n%2 == 0 { .Blue } else { .Magenta }
+            frame.apply_cell_style(area,tui.plain().background(bg))
+        }
+        heading := if mode == "cell" && n%2 == 1 { "TRAFIK +" } else { "TRAFIK -" }
+        title := rich.Line::raw(move heading).styled(tui.ink(.LightCyan).bold())
+        frame.render_widget(&title,parts.areas[0])
+        self.body.set_scroll(if mode == "scroll" { n%100 } else { 0 },0)
+        self.body.render(&mut frame,parts.areas[1])
+        self.footer.render(&mut frame,parts.areas[2])
+    }
+}

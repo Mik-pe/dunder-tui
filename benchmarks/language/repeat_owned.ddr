@@ -1,0 +1,39 @@
+capability stdio
+import std.array
+import sys
+import ...src.repetition
+
+struct Packet { values: []i32 }
+
+fn make() -> Packet {
+    mut values: []i32 = []
+    values.reserve(128)
+    for i in 0..128 { values.push(i) }
+    Packet { values:move values }
+}
+
+fn copies(move packet: Packet, count: i32) -> []Packet {
+    mut values: []Packet = []
+    array.resize<Packet>(&mut values,count,&packet)
+    move values
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 3 { return 2 }
+    take := sys.arg(1) == "move"
+    if !take && sys.arg(1) != "resize" { return 2 }
+    count := match sys.arg(2) { "0" => 0, "1" => 1, "4" => 4, _ => { return 2 }, }
+    mut sum: i64 = 0
+    for i in 0..4096 {
+        mut packets := if take { repetition.collect(make(),count) } else { copies(make(),count) }
+        if count > 0 {
+            packets[0].values[0] = i
+            sum += i64(packets[0].values[0])
+            if count > 1 { assert(packets[1].values[0] == 0) }
+            sum += i64(packets[count-1].values[127])
+        }
+    }
+    assert(sum == if count == 0 { i64(0) } else { i64(8906752) })
+    print(f"{sum}")
+    0
+}
