@@ -2,7 +2,25 @@
 
 Mixern delar upp terminalen i tolv färgade band med `Length(8)`, `SpaceAround` och två cellers avstånd. Vid 80 kolumner konkurrerar banden och mellanrummen om samma plats. Dunder och Ratatui 0.30.2 gav samma 1 100 bilder på 80 × 24 och 96 × 24 celler. [Dunderprogram](bands.ddr) · [Rustprogram](reference/examples/bands.rs)
 
-## Dela upp en ny bredd
+## Bildtider med Dunder 0.12.1
+
+Biblioteket kan nu jämföra vanliga celler direkt och skriva en följd av ASCII-tecken med samma stil i en genomgång. Tabellen visar **Dunder · Ratatui 0.30.2** och median/p95 i mikrosekunder per bild med utmatning till en pseudoterminal.
+
+| Arbete | macOS ARM64 | Linux ARM64 | Översatt Linux x86-64 |
+| --- | ---: | ---: | ---: |
+| Oförändrad bild | 8/17 · 20/39 | 8/18 · 24/43 | 49/106 · 35/67 |
+| En cell | 9/10 · 19/37 | 12/20 · 24/39 | 54/81 · 34/64 |
+| Skrollning | 34/72 · 60/97 | 23/39 · 48/86 | 168/263 · 73/137 |
+| Storleksändring | 29/51 · 52/91 | 19/49 · 40/77 | 146/228 · 60/113 |
+| Full omritning | 37/61 · 82/133 | 27/57 · 65/113 | 174/287 · 118/180 |
+
+I ett separat parprov byggdes den föregående biblioteksrevisionen också med 0.12.1. På översatt x86-64 sjönk medianen för full omritning från 404 till 173 µs och för skrollning från 335 till 166 µs. På macOS steg medianen för en oförändrad bild från 4 till 8 µs och på Linux ARM64 från 4,7 till 7,9 µs. Alla fem medianer och p95 låg under Ratatuis på de två ARM64-värdarna. Ratatui var snabbare på översatt x86-64. [Före ändringen](https://github.com/Mik-pe/dunder-tui/tree/6779828e2626c2ff48f704a2417f924fcb9e0960) · [Mätt kod](https://github.com/Mik-pe/dunder-tui/tree/80d1e1cf10496477dce9a948a18d98145edf179c) · [Samtliga bildtider och spridningen mellan sju processpar](results/frame-runs-0.12.1-local.tsv)
+
+De 1 100 cellbilderna matchade Ratatui. Terminalströmmen före och efter ändringen var byteidentisk för både mixern (2 328 959 byte) och avgångstavlan (1 399 408 byte) på alla tre Unix-målen. Ratatui skrev 3 354 661 byte för mixern. Dunder begärde totalt 353 378 byte i 452 allokeringsanrop på varje plattform. Även Win64 under Wine gav samma cellbilder, passerade 102 bibliotekstester och läste tillbaka tecken och attribut ur Win32-konsolen. Nativa bildtider för Windows x64 och Linux x86-64 med 0.12.1 återstår. [Allokeringar och högsta RSS för fem körningar per program](results/frame-runs-0.12.1-resources.tsv)
+
+Mätningen använde den publicerade Dunder 0.12.1 och Rust 1.99.1 på samma Apple M5 med macOS 27.2.1 och lokal Linux-VM. Varje process hade 20 uppvärmningsbilder och 200 mätta bilder per arbetslast. Två uppvärmningspar följdes av sju mätta par i växlande ordning. Kör kommandona under [Kör lokalt](#kör-lokalt) med respektive biblioteksrevision. Avgångstavlans parprov använder `benchmarks/manifest.ddr` med samma mätprogram.
+
+## Dela upp en ny bredd med Dunder 0.12.0
 
 Bredden växlar från 80 till 111 kolumner med en enda plats i layoutcachen. Varje delning omfattar alla tolv panelerna och tretton mellanrummen. Kontrollsumman för de 120 delningarna är 170 656 för alla tre programmen. Tabellen visar median / p95 i **mikrosekunder per delning**.
 
@@ -14,7 +32,7 @@ Bredden växlar från 80 till 111 kolumner med en enda plats i layoutcachen. Var
 
 Varje process körde fem uppvärmningsgrupper och 25 uppmätta grupper om fyra delningar. Programmen växlade startordning över sju processer var. Tabellen använder medianen av processernas p50 och p95. Gruppstorleken ger steg om 0,25 µs på den provade Macens mikrosekundklocka. [De 63 processresultaten](results/bands-dunder-0.12.0-cold.tsv) · [Biblioteket före ändringen](https://github.com/Mik-pe/dunder-tui/tree/b9fc9f4eb69ad098c44ff922afdf9bf9fb0b638c)
 
-## Hela bilder med terminalutdata
+## Hela bilder med Dunder 0.12.0
 
 Mixern använder bibliotekens vanliga layoutcache under interaktiv ritning. Vid skrollning flyttas bandens nivåer ett steg, vid storleksändring växlar bildens bredd och vid full omritning byter bakgrunden färg. Tiderna omfattar rendering, celldiff och skrivning till en pseudoterminal. Varje cell visar **Dunder · Ratatui**, med median/p95 i µs för respektive program.
 

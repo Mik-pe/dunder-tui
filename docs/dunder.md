@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Nollställning och radjämförelse i 0.12.1
+
+För en bild med 96 × 24 celler tog två anrop till `std.bytes.zero_memory` tillsammans 28,64 µs på översatt Linux x86-64. En Dunder-loop över de två heltalsarrayerna tog 2,94 µs. Att jämföra alla rader tog 44,49 µs med `std.bytes.equal_memory` och 20,57 µs med typade index. På macOS ARM64 tog nollställningen 0,92 respektive 1,92 µs och radjämförelserna 1,17 respektive 3,99 µs. Varje program kontrollerar samma 45 120 lika rader vid bredderna 95, 96 och 97. Tiderna är medianer av fem processmedianer. Bygg provet offline och kör med argumentet `memory` eller `cells`. [Körbart mätprogram](../benchmarks/language/cell_planes.ddr) · [Alla mätningar](../benchmarks/results/cell-planes-0.12.1.tsv)
+
 ## Omprov med den publicerade 0.12.0
 
 När ett bildarkiv innehåller många celler behöver avkodaren gå en gång genom en redan tolkad JSON-array. I 0.12.0 börjar `doc.at` från första barnet för varje index. På Macen tog 4 096 heltal 25,34 ms via index och 0,26 ms med `first_child` och `next_sibling`, med samma summa 8 386 560. På Linux ARM64 tog det 20,66 respektive 0,19 ms. En publik barniterator skulle låta avkodare göra samma genomgång utan att känna till `Doc`s interna arrayer. [Mätprogram](../benchmarks/language/json_array.ddr)
@@ -30,7 +34,7 @@ Ramarnas 18 fasta symboluppsättningar läses från en konstant teckentabell. P�
 
 Kalendern använder även `std.time.local_from_unix` på macOS och Linux. Åtta tidpunkter gav samma datum i tre tidszoner med båda Unixbyggena och på Macen. I Win32-provet under Wine gav systemets kalenderomvandling 1969-12-31 för tidsstämpeln −1 i UTC, medan standardbiblioteket gav `.None`. Windowsversionen av kalendern behåller därför sitt Win32-anrop. [Jämför med `--compare -315619200 -1 0 1711924200 32535216000`](../tests/calendar_clock.ddr)
 
-Ett bildrutnät med 24 rader om 96 heltal jämförs med `==`, `std.array.equal` och `std.bytes.equal_memory`. Varannan bild skiljer sig i en rads sista kolumn. På macOS ARM64 tog jämförelserna 9,85, 9,91 och 1,53 µs per bild. På Linux ARM64 i lokal VM tog de 8,43, 10,12 och 1,14 µs. Tiderna är medianer av sex processmedianer med växlande ordning. Varje process kontrollerar summan 330 880. Därför använder renderaren fortfarande bytejämförelse för de tätt lagrade heltalen. [Körbart prov med lägena `eq`, `array` och `memory`](../benchmarks/language/row_equality.ddr)
+Ett bildrutnät med 24 rader om 96 heltal jämförs med `==`, `std.array.equal` och `std.bytes.equal_memory`. Varannan bild skiljer sig i en rads sista kolumn. På macOS ARM64 tog jämförelserna 9,85, 9,91 och 1,53 µs per bild. På Linux ARM64 i lokal VM tog de 8,43, 10,12 och 1,14 µs. Tiderna är medianer av sex processmedianer med växlande ordning. Varje process kontrollerar summan 330 880. I 0.11.3 använde renderaren därför bytejämförelse för de tätt lagrade heltalen. [Körbart prov med lägena `eq`, `array` och `memory`](../benchmarks/language/row_equality.ddr)
 
 Med Dunder 0.11.3 gav 65 536 palettuppslag samma summa på macOS och Linux ARM64. Både lånad och direkt skickad färg gav 259 allokeringsanrop för hela programmet. En färg i `Some` gav 65 795. Skuggritaren räknar nu ut dämpningen en gång för en följd av celler med samma stil. [Isolerat färgprov](../benchmarks/language/colors.ddr) · [Mätning av tre skugglager](../benchmarks/shadows.md)
 

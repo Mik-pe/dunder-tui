@@ -1,0 +1,7 @@
+host	implementation	allocation_requests	requested_bytes	peak_rss_kib_run1	peak_rss_kib_run2	peak_rss_kib_run3	peak_rss_kib_run4	peak_rss_kib_run5	pty_bytes
+arm64-macos	dunder	452	353378	1808	1776	1776	1776	1808	2328959
+arm64-macos	ratatui	5843	3060079	3280	3232	3392	3232	3280	3354661
+arm64-linux	dunder	452	353378	172	172	172	172	172	2328959
+arm64-linux	ratatui	5868	3134894	2264	2292	2188	2172	2188	3354661
+x86_64-linux-translated	dunder	452	353378	5632	5632	5632	5632	5632	2328959
+x86_64-linux-translated	ratatui	5737	2708758	5744	5744	5744	5744	5744	3354661
