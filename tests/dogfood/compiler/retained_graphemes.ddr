@@ -1,0 +1,11 @@
+capability stdio
+import std.text as text
+
+fn main() {
+    source := "a秋"
+    mut parts := text.graphemes(source.as_str())
+    first := parts.next().unwrap()
+    second := parts.next().unwrap()
+    print(first.as_str())
+    print(second.as_str())
+}

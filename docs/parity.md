@@ -385,3 +385,18 @@ mkdir -p build
 dunder build --locked --offline tests/motion_terminal.ddr -o build/motion-test
 build/motion-test /sökväg/till/motion
 ```
+
+## Sammanslagna dokument och stiliserade grafem i 0.21.0
+
+`Text.append` tar över rader och spann från nästa dokument. Det första dokumentet bestämmer övergripande stil och justering. Efter redigering, sammanslagning och ytterligare ändringar jämförs text, terminalbredd och 456 renderade bilder med Ratatui. 96 av bilderna prövar själva sammanslagningen. [Dunderprov](../tests/text_edits.ddr) · [Ratatuis dokument och bildbuffert](../benchmarks/reference/examples/text_edits.rs)
+
+För `Span` och `Line` ger både `styled_graphemes` och `visit_graphemes` lånade symboler. Varje spann har egna grafemgränser och egen stil, även när det börjar med ett kombinerande märke. 6 920 fall omfattar Unicode 17:s gränsprov, Unicode 18:s emoji och presentationsvarianter samt styrtecken. Spannen delas på olika skalärgränser. 75 792 avläsningar jämförs med Ratatuis publika iteratorer. Varje jämförelse kontrollerar symbolens UTF-8-byte, tre färger och påslagna och borttagna attribut. För iteratorerna jämförs också behandlingen av blanksteg. [Dunderprov](../tests/styled_graphemes.ddr) · [Ratatui-prov](../benchmarks/reference/examples/styled_graphemes.rs)
+
+I Dunder 0.11.2 lånar ett returnerat element iteratorn. Förbruka elementet innan nästa anrop till `next`. Samma begränsning kan återskapas med enbart `std.text.graphemes`. [Minimalt program](../tests/dogfood/compiler/retained_graphemes.ddr)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/styled_graphemes.ddr -o build/graphemes
+cargo build --locked --offline --release --manifest-path benchmarks/reference/Cargo.toml --features style-oracle --example styled_graphemes --target-dir build/rust
+build/graphemes tests/data/emoji-18.txt tests/data/emoji-variation-18.txt | build/rust/release/examples/styled_graphemes
+```
