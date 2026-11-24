@@ -12,3 +12,16 @@ pub fn paint(frame: &mut tui.Frame, layout: &mut layout.Layout) {
     frame.fill(parts[0], rune(65), tui.ink(.Cyan))
     frame.fill(parts[1], rune(66), tui.ink(.Magenta))
 }
+
+pub fn channels() -> layout.Layout {
+    width: layout.Constraint = .Length(8)
+    layout.Layout::horizontal(width.repeat(12)).flex(.SpaceAround)
+}
+
+pub fn paint_channels(frame: &mut tui.Frame, grid: &mut layout.Layout) {
+    area := frame.area().cols(12).0.rows(6).0
+    parts := grid.arrange(area).regions()
+    for i in 0..parts.areas.len {
+        frame.fill(parts.areas[i], rune(65 + i), tui.ink(if i % 2 == 0 { .Cyan } else { .Yellow }))
+    }
+}

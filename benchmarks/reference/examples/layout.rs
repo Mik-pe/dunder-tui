@@ -148,12 +148,24 @@ fn compare(line: &str) -> u8 {
             }
         })
         .collect();
-    let (parts, spacers) = Layout::new(direction, rules.clone())
+    let layout = Layout::new(direction, rules.clone())
         .horizontal_margin(mx)
         .vertical_margin(my)
         .flex(flex)
-        .spacing(gap)
-        .split_with_spacers(area);
+        .spacing(gap);
+    let (parts, spacers) = match std::panic::catch_unwind(|| layout.split_with_spacers(area)) {
+        Ok(regions) => regions,
+        Err(error) => {
+            let message = error
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| error.downcast_ref::<&str>().copied());
+            if message == Some("failed to split: InternalSolverError(ObjectiveUnbounded)") {
+                return b'U';
+            }
+            std::panic::resume_unwind(error)
+        }
+    };
     let expected = parts
         .iter()
         .chain(spacers.iter())
@@ -295,15 +307,15 @@ fn overlapping_space_around_reference_requires_an_optimal_dunder_layout() {
     assert_eq!(classify(&observed, &observed), b'!');
 }
 
-fn minimums(lines: &[String]) -> Vec<u8> {
+fn checked_batches(lines: &[String], batch_size: usize, isolated_attempts: usize) -> Vec<u8> {
     let executable = std::env::current_exe().unwrap();
     let mut results = Vec::with_capacity(lines.len());
-    let mut retry = None;
+    let mut stalled = 0;
     while results.len() < lines.len() {
         let start = results.len();
-        let end = (start + 64).min(lines.len());
+        let end = (start + if stalled == 0 { batch_size } else { 1 }).min(lines.len());
         let mut child = Command::new(&executable)
-            .arg("--minimum-batch")
+            .arg("--layout-batch")
             .args(&lines[start..end])
             .stdout(Stdio::piped())
             .spawn()
@@ -324,7 +336,7 @@ fn minimums(lines: &[String]) -> Vec<u8> {
                 "could not stop the reference: {error}"
             );
         }
-        let output = child.wait_with_output().unwrap();
+        let mut output = child.wait_with_output().unwrap();
         assert!(
             timed_out || output.status.success(),
             "reference exited {} in cases {}–{}",
@@ -333,22 +345,32 @@ fn minimums(lines: &[String]) -> Vec<u8> {
             end
         );
         assert!(output.stdout.len() <= end - start);
+        let unbounded = output.stdout.last() == Some(&b'U');
+        if unbounded {
+            output.stdout.pop();
+        }
         results.extend(output.stdout);
-        if timed_out && results.len() < end {
+        if (timed_out || unbounded) && results.len() < end {
             let index = results.len();
             eprintln!(
-                "Ratatui layout deadline at case {}: {}",
+                "Ratatui layout {} at case {}: {}",
+                if unbounded {
+                    "ObjectiveUnbounded"
+                } else {
+                    "deadline"
+                },
                 index + 1,
                 lines[index]
             );
-            assert_ne!(
-                retry,
-                Some(index),
-                "reference did not finish the same case twice"
+            stalled = if index == start { stalled + 1 } else { 1 };
+            assert!(
+                stalled <= isolated_attempts,
+                "reference did not return case {} in isolation",
+                index + 1
             );
-            retry = Some(index);
         } else {
             assert_eq!(results.len(), end, "missing reference results");
+            stalled = 0;
         }
     }
     results
@@ -359,11 +381,16 @@ fn main() {
     match mode.as_deref() {
         Some("--geometry") => return geometry(),
         Some("--frames") => return frames(),
-        Some("--minimum-batch") => {
+        Some("--rules") => return rule_values(),
+        Some("--layout-batch") => {
             let mut out = io::stdout().lock();
             for line in std::env::args().skip(2) {
-                out.write_all(&[compare(&line)]).unwrap();
+                let verdict = compare(&line);
+                out.write_all(&[verdict]).unwrap();
                 out.flush().unwrap();
+                if verdict == b'U' {
+                    break;
+                }
             }
             return;
         }
@@ -379,13 +406,14 @@ fn main() {
     let expected = match mode.as_deref() {
         Some("--limits") => 980,
         Some("--minimums") => 6048,
+        Some("--many-panels") => 1284,
         _ => 14_096,
     };
     assert_eq!(lines.len(), expected);
-    let results = if mode.as_deref() == Some("--minimums") {
-        minimums(&lines)
-    } else {
-        lines.iter().map(|line| compare(line)).collect()
+    let results = match mode.as_deref() {
+        Some("--minimums") => checked_batches(&lines, 64, 1),
+        Some("--many-panels") => checked_batches(&lines, 8, 4),
+        _ => lines.iter().map(|line| compare(line)).collect(),
     };
     let matches = results.iter().filter(|&&v| v == b'=').count();
     let ties = results.iter().filter(|&&v| v == b'~').count();
@@ -396,4 +424,63 @@ fn main() {
         "{matches} identical, {ties} verified alternate optima, {invalid_reference} overlapping nonoptimal reference layouts, {differs} unresolved"
     );
     assert_eq!(differs, 0);
+}
+
+#[allow(deprecated)]
+fn rule_values() {
+    use std::fmt::Write;
+    let values = [0, 1, 3, 17, 53, 99, 100, 101, 32768, 65535];
+    let pairs = [
+        (0, 0),
+        (1, 0),
+        (0, 9),
+        (2, 3),
+        (7, 11),
+        (16777215, 16777217),
+        (4294967294, 4294967295),
+        (4294967295, 1),
+    ];
+    for rules in [
+        vec![Constraint::default()],
+        Constraint::from_lengths([]),
+        Constraint::from_lengths(values),
+        Constraint::from_percentages(values),
+        Constraint::from_ratios(pairs),
+        Constraint::from_mins(values),
+        Constraint::from_maxes(values),
+        Constraint::from_fills(values),
+    ] {
+        println!("{}", rules.len());
+        for rule in rules {
+            println!("{rule}");
+            let mut row = String::with_capacity(262144);
+            for extent in 0..=u16::MAX {
+                write!(row, "{:04x}", rule.apply(extent)).unwrap();
+            }
+            println!("{row}");
+        }
+    }
+    let mut layout = Layout::default();
+    let mut direction = Direction::default();
+    for count in [0, 3, 8] {
+        layout = layout.constraints(Constraint::from_ratios(pairs[..count].iter().copied()));
+        for step in 0..4 {
+            if step != 0 {
+                direction = direction.perpendicular();
+                layout = layout.direction(direction);
+            }
+            for area in [
+                Rect::new(2, 3, 13, 7),
+                Rect::new(5, 1, 11, 11),
+                Rect::new(2, 3, 13, 7),
+            ] {
+                let (parts, spacers) = layout.split_with_spacers(area);
+                let mut row = String::new();
+                for r in parts.iter().chain(spacers.iter()) {
+                    write!(row, " {} {} {} {}", r.x, r.y, r.width, r.height).unwrap();
+                }
+                println!("{row}");
+            }
+        }
+    }
 }

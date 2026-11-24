@@ -12,6 +12,12 @@ fn child() -> i32 {
         if terminal.draw(&mut panels[i], saved_layout.paint).is_err() { return 1 }
         match terminal.backend_mut().next(3000) { .Press(_) => {}, _ => { return 1 }, }
     }
+    mut grid := saved_layout.channels()
+    for i in 0..2 {
+        if i == 1 { grid.set_direction(.Vertical) }
+        if terminal.draw(&mut grid, saved_layout.paint_channels).is_err() { return 1 }
+        match terminal.backend_mut().next(3000) { .Press(_) => {}, _ => { return 1 }, }
+    }
     0
 }
 
@@ -19,6 +25,9 @@ fn exercise(master: i32, slave: i32, screen: &mut driver.Screen) -> bool {
     unsafe {
         if !driver.wait_for(master, &mut screen, 1, "AAA  BBBBBBB", "") { return false }
         if !driver.send(master, "n") || !driver.wait_for(master, &mut screen, 1, "BBBBBBBBBBBB", "") { return false }
+        if !screen.contains(0, "AAAAAAAAAAAA") { return false }
+        if !driver.send(master, "n") || !driver.wait_for(master, &mut screen, 0, "ABCDEFGHIJKL", "") { return false }
+        if !driver.send(master, "n") || !driver.wait_for(master, &mut screen, 5, "KKKKKKKKKKKK", "") { return false }
         if !screen.contains(0, "AAAAAAAAAAAA") { return false }
         return driver.send(master, "q") && driver.wait_for(master, &mut screen, 0, "", "\x1b[?1049l")
     }
@@ -28,8 +37,8 @@ fn exercise(master: i32, slave: i32, screen: &mut driver.Screen) -> bool {
 fn main() -> i32 {
     if sys.arg_count() == 2 { return child() }
     unsafe {
-        if driver.test_with_args(sys.arg(0), ["draw"], 12, 5, exercise) {
-            print("Loaded split, overlap and terminal restoration OK")
+        if driver.test_with_args(sys.arg(0), ["draw"], 12, 6, exercise) {
+            print("Loaded split, overlap, twelve channels, rotation and terminal restoration OK")
             return 0
         }
     }

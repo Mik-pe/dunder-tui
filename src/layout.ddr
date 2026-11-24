@@ -4,9 +4,15 @@ import .repetition
 import std.json
 import .layout_solver as lp
 import std.cmp as cmp
+import std.math
 
 @derive(Encode)
 pub enum Direction { Horizontal, Vertical }
+
+impl Default for Direction { fn default() -> Self { .Vertical } }
+impl Direction {
+    pub fn perpendicular(&self) -> Self { if self == .Horizontal { .Vertical } else { .Horizontal } }
+}
 
 @derive(Encode, Eq, Hash)
 pub enum VerticalAlignment { Top, Center, Bottom }
@@ -35,8 +41,51 @@ pub enum Flex { Start, Center, End, SpaceBetween, SpaceAround, SpaceEvenly, Lega
 @derive(Encode, Decode)
 pub enum Constraint { Length(u16), Percentage(u16), Ratio(u32, u32), Min(u16), Max(u16), Fill(u16) }
 
+impl Default for Constraint { fn default() -> Self { .Percentage(100) } }
+impl Display for Constraint {
+    fn str(&self) -> string {
+        match self {
+            .Length(n) => f"Length({n})", .Percentage(n) => f"Percentage({n})",
+            .Ratio(n, d) => f"Ratio({n}, {d})", .Min(n) => f"Min({n})",
+            .Max(n) => f"Max({n})", .Fill(n) => f"Fill({n})",
+        }
+    }
+}
+
+fn numeric_rules(values: &[]u16, build: fn(u16) -> Constraint) -> []Constraint {
+    mut rules: []Constraint = []
+    rules.reserve(values.len)
+    for n in values { rules.push(build(n)) }
+    move rules
+}
+
 impl Constraint {
     pub fn repeat(self, count: i32) -> []Constraint { repetition.collect(self,count) }
+
+    pub fn from_lengths(values: &[]u16) -> []Self { numeric_rules(&values, fn(n: u16) -> Constraint { .Length(n) }) }
+    pub fn from_percentages(values: &[]u16) -> []Self { numeric_rules(&values, fn(n: u16) -> Constraint { .Percentage(n) }) }
+    pub fn from_mins(values: &[]u16) -> []Self { numeric_rules(&values, fn(n: u16) -> Constraint { .Min(n) }) }
+    pub fn from_maxes(values: &[]u16) -> []Self { numeric_rules(&values, fn(n: u16) -> Constraint { .Max(n) }) }
+    pub fn from_fills(values: &[]u16) -> []Self { numeric_rules(&values, fn(n: u16) -> Constraint { .Fill(n) }) }
+    pub fn from_ratios(values: &[](u32,u32)) -> []Self {
+        mut rules: []Constraint = []
+        rules.reserve(values.len)
+        for pair in values { rules.push(.Ratio(pair.0, pair.1)) }
+        move rules
+    }
+
+    pub fn apply(&self, length: u16) -> u16 {
+        fraction := match self {
+            .Length(n) => { return cmp.min<u16>(n, length) },
+            .Fill(n) => { return cmp.min<u16>(n, length) },
+            .Max(n) => { return cmp.min<u16>(n, length) },
+            .Min(n) => { return cmp.max<u16>(n, length) },
+            .Percentage(n) => f32(n) / f32(100),
+            .Ratio(n, d) => f32(n) / f32(cmp.max<u32>(1, d)),
+        }
+        scaled := fraction * f32(length)
+        if scaled >= f32(length) { length } else { u16(scaled) }
+    }
 }
 
 @derive(Encode, Decode, Eq)
@@ -91,6 +140,8 @@ pub opaque struct Layout {
     entries: []Entry, capacity: i32, tick: u64, recent: i32,
 }
 
+impl Default for Layout { fn default() -> Self { Layout::vertical([]) } }
+
 impl Layout {
     pub fn new(axis: Direction, move rules: []Constraint) -> Self {
         Self {
@@ -102,6 +153,9 @@ impl Layout {
     pub fn horizontal(move rules: []Constraint) -> Self { Layout::new(.Horizontal, move rules) }
     pub fn vertical(move rules: []Constraint) -> Self { Layout::new(.Vertical, move rules) }
     pub fn len(&self) -> i32 { self.rules.len }
+    pub fn set_direction(&mut self, direction: Direction) {
+        if self.axis != direction { self.axis = direction; self.view_valid = false }
+    }
     pub fn set_constraints(&mut self, move rules: []Constraint) { self.rules = move rules; self.invalidate() }
     fn invalidate(&mut self) { self.entries.clear(); self.recent = -1; self.view_valid = false }
     pub fn flex(move self, value: Flex) -> Self {
@@ -136,6 +190,12 @@ impl Layout {
 const EDGE: f64 = 1001000999.0
 const SPACER: f64 = 100100100.0
 const BOUND: f64 = 100000000.0
+const LENGTH_SIZE: f64 = 10000000.0
+const PERCENT_SIZE: f64 = 1000000.0
+const RATIO_SIZE: f64 = 100000.0
+const LIMIT_SIZE: f64 = 10000.0
+const FILL_GROW: f64 = 1000.0
+const SPACE_GROW: f64 = 10.0
 
 impl json.Encode for Layout {
     fn encode_json(&self, out: &mut json.Writer) {
@@ -216,6 +276,43 @@ fn growth_cost(rule: &Constraint) -> i32 {
 }
 
 impl Layout {
+    fn compressed(&self, extent: i32, gap: f64, lead: f64, available: f64, edges: &mut []i32) -> bool {
+        n := self.rules.len
+        length := f64(extent)
+        first := &self.rules[0]
+        target := desired(&first, length, self.flex_mode)
+        if target * f64(n) <= available { return false }
+        rank := shrink_rank(&first)
+        for i in 1..n {
+            if shrink_rank(&self.rules[i]) != rank || desired(&self.rules[i], length, self.flex_mode) != target { return false }
+        }
+        mut step := gap
+        mut start := lead
+        mut room := available
+        if self.flex_mode == .SpaceAround {
+            unit := length / f64(n)
+            step = math.min(gap, unit)
+            loss := match &first {
+                .Min(v) => if v <= 32767 { BOUND + FILL_GROW } else { FILL_GROW },
+                .Length(_) => LENGTH_SIZE, .Percentage(_) => PERCENT_SIZE, .Ratio(_, _) => RATIO_SIZE,
+                .Max(_) => LIMIT_SIZE, .Fill(_) => FILL_GROW,
+            }
+            if f64(n) * (loss - SPACE_GROW) > SPACER {
+                step = math.clamp(unit - target, math.min(gap / 2.0, unit), step)
+            }
+            start = step / 2.0
+            room = math.max(0.0, length - f64(n) * step)
+        }
+        edges.push(0)
+        for i in 0..n {
+            offset := start + step * f64(i)
+            edges.push(cell(offset + room * f64(i) / f64(n), extent))
+            edges.push(cell(offset + room * f64(i + 1) / f64(n), extent))
+        }
+        edges.push(extent)
+        true
+    }
+
     fn direct(&self, extent: i32, edges: &mut []i32) -> bool {
         n := self.rules.len
         length := f64(extent)
@@ -237,40 +334,21 @@ impl Layout {
             if self.flex_mode == .SpaceAround && n > 1 { gap *= 2.0 }
         }
         available := length - 2.0 * lead - gap * f64(n - 1)
-        if available < 0.0 {
-            if self.flex_mode == .SpaceEvenly || self.flex_mode == .SpaceBetween {
-                outer := self.flex_mode == .SpaceEvenly
-                divisions := if outer { n + 1 } else { n - 1 }
-                edges.push(0)
-                for i in 0..n {
-                    x := cell(length * f64(if outer { i + 1 } else { i }) / f64(divisions), extent)
-                    edges.push(x); edges.push(x)
-                }
-                edges.push(extent)
-                return true
+        if available < 0.0 && (self.flex_mode == .SpaceEvenly || self.flex_mode == .SpaceBetween) {
+            outer := self.flex_mode == .SpaceEvenly
+            divisions := if outer { n + 1 } else { n - 1 }
+            edges.push(0)
+            for i in 0..n {
+                x := cell(length * f64(if outer { i + 1 } else { i }) / f64(divisions), extent)
+                edges.push(x); edges.push(x)
             }
-            return false
+            edges.push(extent)
+            return true
         }
-        if n > 1 && fixed_gaps && self.flex_mode != .Legacy && gap >= 0.0 {
-            first := &self.rules[0]
-            target := desired(&first, length, self.flex_mode)
-            if target * f64(n) > available {
-                rank := shrink_rank(&first)
-                mut same := true
-                for i in 1..n {
-                    if shrink_rank(&self.rules[i]) != rank || desired(&self.rules[i], length, self.flex_mode) != target { same = false; break }
-                }
-                if same {
-                    edges.push(0)
-                    for i in 0..n {
-                        edges.push(cell(gap * f64(i) + available * f64(i) / f64(n), extent))
-                        edges.push(cell(gap * f64(i) + available * f64(i + 1) / f64(n), extent))
-                    }
-                    edges.push(extent)
-                    return true
-                }
-            }
+        if n > 1 && self.flex_mode != .Legacy && gap >= 0.0 && self.compressed(extent, gap, lead, available, &mut edges) {
+            return true
         }
+        if available < 0.0 { return false }
         mut sizes: []f64 = []
         sizes.reserve(n)
         mut used := 0.0
@@ -385,7 +463,7 @@ impl Layout {
             if between && (i == 0 || i == n) { axis.size(&mut model, 2 * i, .Equal, 0.0, EDGE) }
             else {
                 axis.size(&mut model, 2 * i, .AtLeast, gap, SPACER)
-                axis.size(&mut model, 2 * i, .Equal, axis.extent, 10.0)
+                axis.size(&mut model, 2 * i, .Equal, axis.extent, SPACE_GROW)
             }
         }
     }
@@ -410,16 +488,16 @@ impl Layout {
         for i in 0..n {
             p := 2 * i + 1
             match &self.rules[i] {
-                .Length(v) => { axis.size(&mut model, p, .Equal, f64(v), 10000000.0) },
-                .Percentage(v) => { axis.size(&mut model, p, .Equal, axis.extent * f64(v) / 100.0, 1000000.0) },
-                .Ratio(a, b) => { axis.size(&mut model, p, .Equal, axis.extent * f64(a) / f64(cmp.max<u32>(1, b)), 100000.0) },
-                .Max(v) => { axis.size(&mut model, p, .AtMost, f64(v), BOUND); axis.size(&mut model, p, .Equal, f64(v), 10000.0) },
+                .Length(v) => { axis.size(&mut model, p, .Equal, f64(v), LENGTH_SIZE) },
+                .Percentage(v) => { axis.size(&mut model, p, .Equal, axis.extent * f64(v) / 100.0, PERCENT_SIZE) },
+                .Ratio(a, b) => { axis.size(&mut model, p, .Equal, axis.extent * f64(a) / f64(cmp.max<u32>(1, b)), RATIO_SIZE) },
+                .Max(v) => { axis.size(&mut model, p, .AtMost, f64(v), BOUND); axis.size(&mut model, p, .Equal, f64(v), LIMIT_SIZE) },
                 .Min(v) => {
                     axis.size(&mut model, p, .AtLeast, minimum_bound(v), BOUND)
-                    if self.flex_mode == .Legacy { axis.size(&mut model, p, .Equal, f64(v), 10000.0) }
-                    else { axis.size(&mut model, p, .Equal, axis.extent, 1000.0) }
+                    if self.flex_mode == .Legacy { axis.size(&mut model, p, .Equal, f64(v), LIMIT_SIZE) }
+                    else { axis.size(&mut model, p, .Equal, axis.extent, FILL_GROW) }
                 },
-                .Fill(_) => { axis.size(&mut model, p, .Equal, axis.extent, 1000.0) },
+                .Fill(_) => { axis.size(&mut model, p, .Equal, axis.extent, FILL_GROW) },
             }
         }
         for i in 0..n {

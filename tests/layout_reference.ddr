@@ -157,7 +157,56 @@ fn large_minimums() {
     }
 }
 
+fn many_panels() {
+    modes: [lay.Flex; 7] = [.Start, .Center, .End, .SpaceBetween, .SpaceAround, .SpaceEvenly, .Legacy]
+    for n in [12, 24] {
+        for d in 0..2 {
+            direction: lay.Direction = if d == 0 { .Horizontal } else { .Vertical }
+            for m in 0..7 {
+                for gap in [0, 2] {
+                    mut layout := lay.Layout::new(direction, []).flex(modes[m]).spacing(gap)
+                    for kind in 0..7 {
+                        rule: lay.Constraint = match kind {
+                            0 => .Length(6), 1 => .Percentage(12), 2 => .Ratio(1, 9),
+                            3 => .Min(7), 4 => .Max(8), _ => .Fill(2),
+                        }
+                        mut spec := rule.repeat(n)
+                        if kind == 6 {
+                            for i in 0..n {
+                                spec[i] = match i % 6 {
+                                    0 => .Length(8), 1 => .Percentage(4), 2 => .Ratio(1, 13),
+                                    3 => .Min(3), 4 => .Max(5), _ => .Fill(2),
+                                }
+                            }
+                        }
+                        layout.set_constraints(spec.clone())
+                        for extent in [17, 79, 191] {
+                            area := tui.Rect::new(2, 3, if d == 0 { extent } else { 4 }, if d == 0 { 4 } else { extent })
+                            emit(&mut layout, area, f"{d} {m} {gap} 0 0", &spec)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for n in [9, 10, 11, 12] {
+        width: lay.Constraint = .Length(8)
+        spec := width.repeat(n)
+        for gap in [1, 2, 4] {
+            mut layout := lay.Layout::horizontal(spec.clone()).flex(.SpaceAround).spacing(gap)
+            for boundary in [n * gap, n * (8 + gap), n * (8 + 2 * gap)] {
+                for delta in [-1, 0, 1] {
+                    area := tui.Rect::new(1, 2, boundary + delta, 3)
+                    emit(&mut layout, area, f"0 4 {gap} 0 0", &spec)
+                }
+            }
+        }
+    }
+}
+
 fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--rules" { rule_values(); return }
+    if sys.arg_count() == 2 && sys.arg(1) == "--many-panels" { many_panels(); return }
     if sys.arg_count() == 2 && sys.arg(1) == "--minimums" { large_minimums(); return }
     if sys.arg_count() == 2 && sys.arg(1) == "--geometry" { geometry(); return }
     if sys.arg_count() == 2 && sys.arg(1) == "--limits" { limits(); return }
@@ -193,4 +242,51 @@ fn main() {
         }
     }
     mixed()
+}
+
+fn inspect_rules(rules: &[]lay.Constraint) {
+    print(f"{rules.len}")
+    mut encoded: []u8 = []
+    encoded.reserve(131072)
+    for rule in rules {
+        print(f"{rule}")
+        encoded.clear()
+        for extent in 0..65536 {
+            result := rule.apply(u16(extent))
+            encoded.push(u8(result / 256))
+            encoded.push(u8(result % 256))
+        }
+        print(bytes.hex(&encoded))
+    }
+}
+
+fn rule_values() {
+    values: []u16 = [0, 1, 3, 17, 53, 99, 100, 101, 32768, 65535]
+    pairs: [](u32,u32) = [(0,0), (1,0), (0,9), (2,3), (7,11), (16777215,16777217), (4294967294,4294967295), (4294967295,1)]
+    inspect_rules(&[lay.Constraint::default()])
+    inspect_rules(&lay.Constraint::from_lengths(&[]))
+    inspect_rules(&lay.Constraint::from_lengths(&values))
+    inspect_rules(&lay.Constraint::from_percentages(&values))
+    inspect_rules(&lay.Constraint::from_ratios(&pairs))
+    inspect_rules(&lay.Constraint::from_mins(&values))
+    inspect_rules(&lay.Constraint::from_maxes(&values))
+    inspect_rules(&lay.Constraint::from_fills(&values))
+    mut layout := lay.Layout::default()
+    mut direction := lay.Direction::default()
+    for count in [0, 3, 8] {
+        layout.set_constraints(lay.Constraint::from_ratios(&pairs[0..count]))
+        for step in 0..4 {
+            if step != 0 {
+                direction = direction.perpendicular()
+                layout.set_direction(direction)
+            }
+            for area in [tui.Rect::new(2,3,13,7), tui.Rect::new(5,1,11,11), tui.Rect::new(2,3,13,7)] {
+                view := layout.arrange(area).regions()
+                mut row: []u8 = []
+                for r in &view.areas { rect(&mut row,r) }
+                for r in &view.spacers { rect(&mut row,r) }
+                print(bytes.decode(&row).unwrap())
+            }
+        }
+    }
 }

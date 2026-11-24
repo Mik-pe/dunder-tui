@@ -1,0 +1,70 @@
+capability stdio
+import ..src.layout
+import ..src.tui
+import .frames
+import ..tests.widget_cells
+import std.array
+import std.time
+import sys
+
+struct Mixer { bands: layout.Layout, colors: [tui.Color; 4] }
+
+fn bands() -> layout.Layout {
+    width: layout.Constraint = .Length(8)
+    layout.Layout::horizontal(width.repeat(12)).flex(.SpaceAround).spacing(2)
+}
+
+fn draw(mixer: &mut Mixer, frame: &mut tui.Frame, mode: string, n: i32) {
+    view := frame.area()
+    regions := mixer.bands.arrange(view).regions()
+    shift := if mode == "scroll" { n % 12 } else { 0 }
+    mut base := tui.plain()
+    if mode == "repaint" {
+        bg: tui.Color = if n % 2 == 0 { .Black } else { .Blue }
+        base = base.background(bg)
+        frame.apply_cell_style(view, base)
+    }
+    for i in 0..regions.areas.len {
+        channel := (i + shift) % 12
+        pane := regions.areas[i]
+        height := 2 + (channel * 7) % 18
+        bar := tui.Rect::new(pane.x, view.h - 2 - height, pane.w, height)
+        frame.fill(bar, `=`, base.foreground(mixer.colors[channel % 4]))
+    }
+    marker := if mode == "cell" && n % 2 == 1 { `+` } else { `-` }
+    frame.fill(view.resize(1, 1), marker, base)
+    frame.text(tui.Rect::new(0, view.h - 1, view.w, 1), "FREQUENCY", base)
+}
+
+fn cold() {
+    mut grid := bands().cache_capacity(1)
+    mut samples: []i64 = []
+    mut sum: i64 = 0
+    for batch in 0..30 {
+        start := time.monotonic_ns()
+        for j in 0..4 {
+            area := tui.Rect::new(0, 0, 80 + (4 * batch + j) % 32, 24)
+            regions := grid.arrange(area).regions()
+            for r in &regions.areas { sum += i64(r.x + 3 * r.w) }
+            for r in &regions.spacers { sum += i64(r.x + 3 * r.w) }
+        }
+        if batch >= 5 { samples.push((time.monotonic_ns() - start) / 4) }
+    }
+    array.sort<i64>(&mut samples)
+    print(f"{samples[12]} {samples[23]} {sum}")
+}
+
+fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--cold" { cold(); return }
+    mut mixer := Mixer { bands: bands(), colors: [.Cyan,.Green,.Yellow,.Magenta] }
+    modes: []string = ["idle","cell","scroll","resize","repaint"]
+    if sys.arg_count() == 2 && sys.arg(1) == "--check" {
+        for mode in &modes { for n in 0..220 {
+            mut frame := tui.Frame::new(if mode == "resize" && n % 2 == 0 { 80 } else { 96 }, 24)
+            draw(&mut mixer, &mut frame, mode, n)
+            widget_cells.snapshot(&frame)
+        } }
+        return
+    }
+    frames.run(&mut mixer, &modes, draw)
+}

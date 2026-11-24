@@ -1,0 +1,11 @@
+enum Width { Length(u16), Fill(u16) }
+
+fn make(build: fn(u16) -> Width) -> Width { build(7) }
+
+fn main() {
+    width := make(Width.Length)
+    match width {
+        .Length(n) => { assert(n == 7) },
+        .Fill(_) => { assert(false) },
+    }
+}

@@ -956,6 +956,30 @@ struct SavedPreferences { name: string, styles: []Option<snapshot.WithoutUnderli
     assert(state.offset == 3 && frame.line(0) == "d ")
 }
 
+@test fn numeric_constraints_keep_their_order_and_rotate_in_place() {
+    sizes: []u16 = [2, 5, 3]
+    mut grid := layout.Layout::default()
+    grid.set_constraints(layout.Constraint::from_lengths(&sizes))
+    square := tui.Rect::new(1, 2, 12, 12)
+    assert(grid.arrange(square).regions().areas[1] == tui.Rect::new(1, 4, 12, 5))
+    grid.set_direction(layout.Direction::default().perpendicular())
+    assert(grid.arrange(square).regions().areas[1] == tui.Rect::new(3, 2, 5, 12))
+    ratio: layout.Constraint = .Ratio(7, 11)
+    assert(ratio.apply(9) == 5 && f"{ratio}" == "Ratio(7, 11)")
+    assert(layout.Constraint::default().apply(65535) == 65535)
+}
+
+@test fn tightly_spaced_columns_share_space_across_panel_counts() {
+    width: layout.Constraint = .Length(8)
+    for n in [10, 11] {
+        mut grid := layout.Layout::horizontal(width.repeat(n)).flex(.SpaceAround).spacing(2)
+        parts := grid.arrange(tui.Rect::new(0, 0, n * 10, 1)).regions()
+        outer := if n == 10 { 2 } else { 1 }
+        assert(parts.spacers[0].w == outer && parts.spacers[n].w == outer)
+        assert(parts.areas[0].w == 10 - 2 * outer)
+    }
+}
+
 @test fn constraint_layout_caches_sizes_and_reprojects_all_edges() {
     area := tui.Rect { x: 2, y: 3, w: 18, h: 8 }
     mut l := layout.Layout::horizontal([.Length(4), .Fill(1), .Fill(2)]).spacing(1).margin(0,1).cache_capacity(2)

@@ -104,6 +104,10 @@ name = "layout_bench"
 required-features = ["layout-cache"]
 
 [[example]]
+name = "bands"
+required-features = ["layout-cache"]
+
+[[example]]
 name = "table_bench"
 required-features = ["layout-cache"]
 

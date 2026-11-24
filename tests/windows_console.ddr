@@ -300,6 +300,12 @@ unsafe fn shadow_and_meter_screen(out: ptr, x: i32, y: i32) -> i32 {
     if unit_at(out,x+4,y+3) != 65 || unit_at(out,x+5,y+3) != 32 || unit_at(out,x+7,y+3) != 66 { return 176 }
     if term.draw(&mut layouts[1], saved_layout.paint).is_err() { return 177 }
     if unit_at(out,x+2,y+2) != 65 || unit_at(out,x+2,y+3) != 66 || unit_at(out,x+13,y+3) != 66 { return 178 }
+    mut channels := saved_layout.channels()
+    if term.draw(&mut channels,saved_layout.paint_channels).is_err() { return 203 }
+    if unit_at(out,x+2,y+2) != 65 || unit_at(out,x+13,y+2) != 76 { return 204 }
+    channels.set_direction(.Vertical)
+    if term.draw(&mut channels,saved_layout.paint_channels).is_err() { return 205 }
+    if unit_at(out,x+13,y+2) != 66 || unit_at(out,x+13,y+6) != 75 { return 206 }
     mut frames := saved_buffer.snapshots()
     if term.draw(&mut frames[0], saved_buffer.paint).is_err() || unit_at(out,x+10,y+3) != 49 { return 179 }
     if term.draw(&mut frames[1], saved_buffer.paint).is_err() || unit_at(out,x+10,y+3) != 50 { return 180 }
