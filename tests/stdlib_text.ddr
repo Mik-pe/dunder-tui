@@ -4,6 +4,18 @@ import std.bytes as bytes
 import std.bytes.utf8 as utf8
 import std.parse as parse
 import ..src.tui
+import ..src.text as rich
+
+@test fn spans_can_contract_across_a_grapheme_boundary() {
+    value := "لا"
+    mut count := 0
+    for _ in text.graphemes(value) { count += 1 }
+    run := tui.GlyphRun::new(value.clone())
+    assert(count == 2 && run.count() == count && run.width() == 2)
+    assert(run.text_width() == 1 && rich.Span::raw(value.clone()).width() == 1)
+    split := rich.Line::new([rich.Span::raw("ل"), rich.Span::raw("ا")])
+    assert(split.width() == 2)
+}
 
 @test fn equally_many_graphemes_can_take_different_terminal_widths() {
     for (value, columns) in [("😶‍🌫️", 2), ("😶‍🌫", 3), ("界", 2), ("e\u{301}", 1)] {

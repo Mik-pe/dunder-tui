@@ -17,7 +17,7 @@ pub opaque struct Span { glyphs: tui.GlyphRun, style: tui.Style }
 impl Span {
     pub fn raw(move value: string) -> Self { Span::styled(move value, tui.plain()) }
     pub fn styled(move value: string, style: tui.Style) -> Self { Self { glyphs: tui.GlyphRun::new(move value), style: style } }
-    pub fn width(&self) -> i32 { self.glyphs.width() }
+    pub fn width(&self) -> i32 { self.glyphs.text_width() }
     fn count(&self) -> i32 { self.glyphs.count() }
 }
 
@@ -388,29 +388,16 @@ impl PreparedParagraph {
 }
 
 impl Span {
-    fn draw(&self, frame: &mut tui.Frame, area: tui.Rect, skip: i32) {
-        mut left := skip
-        mut x := 0
+    fn draw(&self, frame: &mut tui.Frame, area: tui.Rect, skip: i32) -> i32 {
+        start := if skip > 0 { self.glyphs.suffix_start(self.width() - skip) } else { (0, 0) }
+        mut x := start.1
         if !self.glyphs.has_zero_width() {
-            mut first := 0
-            while left > 0 && first < self.count() {
-                cells := self.glyphs.width_at(first)
-                if left < cells { x = cells - left }
-                left = cmp.max<i32>(0, left - cells)
-                first += 1
-            }
-            self.glyphs.render(&mut frame, tui.Rect { x: area.x + x, y: area.y, w: area.w - x, h: 1 }, first, self.count(), self.style)
-            return
+            return x + self.glyphs.write(&mut frame, tui.Rect { x: area.x + x, y: area.y, w: area.w - x, h: 1 }, start.0, self.count(), self.style)
         }
         mut previous := -1
         mut prefix := ""
-        for n in 0..self.count() {
+        for n in start.0..self.count() {
             cells := self.glyphs.width_at(n)
-            if left > 0 {
-                if left < cells { x = cells - left }
-                left = cmp.max<i32>(0, left - cells)
-                continue
-            }
             if cells > area.w - x { break }
             value := self.glyphs.symbol_at(n)
             if cells == 0 {
@@ -419,15 +406,17 @@ impl Span {
                     if x < area.w { _ := frame.set_cell(area.x + x, area.y, prefix, self.style) }
                 } else {
                     old := frame.symbol_at(area.x + previous, area.y).unwrap_or("")
-                    if old != "" { _ := frame.set_cell(area.x + previous, area.y, old + value, self.style) }
+                    if old == "" { frame.split_wide_cell(area.x + previous, area.y) }
+                    _ := frame.set_cell(area.x + previous, area.y, old + value, self.style)
                 }
             } else {
                 if prefix == "" { _ := frame.set_cell(area.x + x, area.y, value, self.style) }
                 else { _ := frame.set_cell(area.x + x, area.y, prefix + value, self.style); prefix = "" }
-                previous = x
                 x += cells
+                previous = x - 1
             }
         }
+        x
     }
 
     pub fn write(&self, frame: &mut tui.Frame, bounds: tui.Rect) -> i32 {
@@ -436,7 +425,7 @@ impl Span {
 
     pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
         area := bounds.intersection(frame.area())
-        if area.w > 0 && area.h > 0 { self.draw(&mut frame, area, 0) }
+        if area.w > 0 && area.h > 0 { _ := self.draw(&mut frame, area, 0) }
     }
 }
 
@@ -476,11 +465,14 @@ impl Line {
         shift := match alignment { .Center => delta / 2, .Right => delta, _ => 0, }
         mut x := cmp.max<i32>(0, shift)
         mut skip := cmp.max<i32>(0, -shift)
+        mut drawn_until := 0
         for i in 0..self.spans.len {
             span := &self.spans[i]
             if skip >= span.width() { skip -= span.width(); continue }
             if x >= row.w { break }
-            span.draw(&mut frame, tui.Rect { x: row.x + x, y: row.y, w: row.w - x, h: 1 }, skip)
+            if x < drawn_until { frame.split_wide_cell(row.x + x, row.y) }
+            written := span.draw(&mut frame, tui.Rect { x: row.x + x, y: row.y, w: row.w - x, h: 1 }, skip)
+            drawn_until = cmp.max<i32>(drawn_until, x + written)
             x += span.width() - skip
             skip = 0
         }

@@ -1,0 +1,10 @@
+enum State { Ready, Done }
+
+fn main() {
+    mut state := State.Ready
+    match state {
+        .Ready => { state = .Done },
+        .Done => {},
+    }
+    assert(state == .Done)
+}

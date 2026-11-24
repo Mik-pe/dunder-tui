@@ -20,12 +20,17 @@ fn sample(case: i32) -> rich.Text {
 }
 
 fn snapshot(frame: &tui.Frame, area: tui.Rect, out: &mut []u8) {
+    snapshot_cells(&frame, area, &mut out, false)
+}
+
+fn snapshot_cells(frame: &tui.Frame, area: tui.Rect, out: &mut []u8, raw: bool) {
     out.clear()
     for y in area.y..(area.y + area.h) {
         for x in area.x..(area.x + area.w) {
-            symbol := frame.symbol_at(x, y).unwrap()
+            cell := frame.cell_at(x, y).unwrap()
+            symbol := if raw { cell.symbol.clone() } else { frame.symbol_at(x, y).unwrap() }
             if symbol == "" { out.push(b'~'); continue }
-            style := frame.style_at(x, y).unwrap()
+            style := if raw { cell.style } else { frame.style_at(x, y).unwrap() }
             fg := style.get_foreground().unwrap().code()
             bg := style.get_background().unwrap().code()
             out.push(u8(65 + fg + 1))
@@ -39,7 +44,8 @@ fn snapshot(frame: &tui.Frame, area: tui.Rect, out: &mut []u8) {
 }
 
 fn main() -> i32 {
-    if sys.arg_count() == 3 && sys.arg(1) == "--emoji" {
+    if sys.arg_count() == 3 && (sys.arg(1) == "--emoji" || sys.arg(1) == "--ligatures") {
+        ligatures := sys.arg(1) == "--ligatures"
         mut out: []u8 = []
         for row in words.split(sys.read(sys.arg(2)).unwrap(), "\n") {
             if row == "" { continue }
@@ -53,15 +59,23 @@ fn main() -> i32 {
             run := tui.GlyphRun::new(symbol.clone())
             span := rich.Span::styled(symbol + "!", tui.ink(.Red).bold())
             print(run.count().str() + " " + run.width().str() + " " + span.width().str())
-            mut frame := tui.Frame::new(12, 8)
+            mut frame := tui.Frame::new(12, if ligatures { 20 } else { 8 })
             frame.fill(frame.area(), `.`, tui.ink(.Cyan))
             mut y := 0
             for w in [1, 2, 3, 10] {
                 span.render(&mut frame, tui.Rect { x: 1, y: y, w: w, h: 1 })
-                frame.text(tui.Rect { x: 1, y: y + 4, w: w, h: 1 }, "K" + symbol + "!", tui.ink(.Red).bold())
+                area := tui.Rect { x: 1, y: y + 4, w: w, h: 1 }
+                if ligatures {
+                    prefix := tui.GlyphRun::new("K" + symbol + "!")
+                    _ := prefix.write(&mut frame, area, 0, prefix.count(), tui.ink(.Red).bold())
+                    for (n, alignment) in [(2, rich.Alignment.Left), (3, rich.Alignment.Center), (4, rich.Alignment.Right)] {
+                        line := rich.Line::new([rich.Span::styled(symbol.clone(), tui.ink(.Red).bold()), rich.Span::styled("!", tui.ink(.Blue))])
+                        line.render_aligned(&mut frame, tui.Rect { x: 1, y: y + 4 * n, w: w, h: 1 }, alignment)
+                    }
+                } else { frame.text(area, "K" + symbol + "!", tui.ink(.Red).bold()) }
                 y += 1
             }
-            snapshot(&frame, frame.area(), &mut out)
+            snapshot_cells(&frame, frame.area(), &mut out, ligatures)
         }
         return 0
     }

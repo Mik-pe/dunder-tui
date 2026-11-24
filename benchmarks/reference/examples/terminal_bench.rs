@@ -4,10 +4,10 @@ mod allocation;
 #[path = "../src/chart_scene.rs"]
 mod chart_scene;
 use ratatui::{
-    Terminal,
     backend::{Backend, ClearType, CrosstermBackend, WindowSize},
     buffer::Cell,
     layout::{Position, Size},
+    Terminal,
 };
 use std::io::{self, BufRead, Write};
 #[allow(dead_code)]
@@ -106,16 +106,45 @@ fn emoji_log(buf: &mut ratatui::buffer::Buffer, mode: &str, step: usize) {
 }
 
 fn main() {
+    use ratatui::style::{Color, Style, Stylize};
+    use ratatui::text::Line;
+    use ratatui::widgets::{Fill, Widget};
     ratatui::crossterm::style::force_color_output(true);
     let timed = !std::env::args().any(|a| a == "--allocations");
     let physical = std::env::args().any(|a| a == "--terminal");
-    let data =
-        (std::env::var("TUI_BENCH_SCENE").as_deref() != Ok("emoji")).then(chart_scene::Data::new);
+    let scene = std::env::var("TUI_BENCH_SCENE").unwrap_or_default();
+    let data = (!matches!(scene.as_str(), "emoji" | "ligatures")).then(chart_scene::Data::new);
     let mut chart = data.as_ref().map(chart_scene::Scene::new);
+    let scripts = (scene == "ligatures").then(|| {
+        ["لَا  لا", "א‍ל  א‍ל", "ᨕᨗ‍ᨐ  ᨕᨗ‍ᨐ", "ꓹꓼ  ꓺꓽ", "𐰲‍𐰃  𐰲‍𐰃", "ល្ង  ង", "ⵏ‍ⴾ  ⵏ‍ⴾ"].map(|sample| {
+            Line::from(vec!["Prov    ".into(), sample.red().bold(), "    ✓".into()]).centered()
+        })
+    });
     let shared = std::env::var("TUI_BENCH_DIFF_OPTIONS").as_deref() == Ok("1");
     let mut draw = |buf: &mut ratatui::buffer::Buffer, mode: &str, n| {
         if let Some(scene) = &mut chart {
             scene.draw(buf, mode, n);
+        } else if let Some(lines) = &scripts {
+            let offset = if mode == "scroll" { n as usize } else { 0 };
+            let style = if mode == "repaint" && n % 2 == 1 {
+                Style::new().fg(Color::Yellow).bg(Color::Blue)
+            } else {
+                Style::new().fg(Color::Cyan)
+            };
+            for (y, row) in buf.area.rows().take(23).enumerate() {
+                Fill::new(".").style(style).render(row, buf);
+                (&lines[(y + offset) % lines.len()]).render(row, buf);
+            }
+            buf.set_string(
+                0,
+                23,
+                if mode == "cell" && n % 2 == 1 {
+                    "+"
+                } else {
+                    "-"
+                },
+                Style::new(),
+            );
         } else {
             emoji_log(buf, mode, n as usize);
         }

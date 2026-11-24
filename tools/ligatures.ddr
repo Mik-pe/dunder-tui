@@ -1,0 +1,51 @@
+capability filesystem, stdio
+
+import std.bytes as bytes
+import std.map as maps
+import std.parse as parse
+import std.text as text
+import sys
+
+fn hex(cp: i32) -> string {
+    mut data: []u8 = []
+    if cp > 65535 { data.push(u8(cp.shr(16))) }
+    data.push(u8(cp.shr(8).bit_and(255)))
+    data.push(u8(cp.bit_and(255)))
+    bytes.hex_u8(&data)
+}
+
+fn main() -> i32 {
+    mut cases := maps.Map<string, bool>::new()
+    for row in text.split(sys.read("tests/ligatures.txt").unwrap(), "\n") {
+        if row == "" { continue }
+        mut encoded := ""
+        for field in text.split(row, " ") {
+            if encoded.len > 0 { encoded = encoded + " " }
+            encoded = encoded + hex(i32(parse.hex(field).value))
+        }
+        _ := cases.put_new(move encoded, true)
+    }
+    marks := ["034f", "0301", "fe0e", "fe0f", "200d", "200c", "00ad", "17b5", "0e0100"]
+    for seed in ["0644 0627", "05d0 200d 05dc", "1a15 1a17 200d 1a10", "17d2 1782", "a4f9 a4fd",
+            "010c32 200d 010c03", "2d37 2d7f 2d60", "2d37 200d 2d60", "016d63 016d67 016d67"] {
+        for i in 0..seed.len {
+            if seed[i] != 32 { continue }
+            for a in marks {
+                for b in marks { _ := cases.put_new(seed[0..i] + " " + a + " " + b + seed[i..seed.len], true) }
+            }
+        }
+    }
+    for a in 0x16d63..0x16d6b {
+        for b in 0x16d63..0x16d6b {
+            for c in 0x16d63..0x16d6b { _ := cases.put_new(hex(a) + " " + hex(b) + " " + hex(c), true) }
+        }
+    }
+    for lam in [0x644, 0x6b5, 0x6b6, 0x6b7, 0x6b8, 0x76a, 0x8a6, 0x8c7] {
+        for (low, end) in [(0x622, 0x628), (0x670, 0x676), (0x770, 0x776), (0x86f, 0x884)] {
+            for alef in low..end { _ := cases.put_new(hex(lam) + " " + hex(alef), true) }
+        }
+    }
+    for cp in 0x1780..0x17b0 { _ := cases.put_new("1780 17d2 " + hex(cp), true) }
+    for i in 0..cases.len() { print(cases.key_at(i)) }
+    0
+}

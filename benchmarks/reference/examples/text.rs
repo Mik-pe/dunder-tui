@@ -39,11 +39,14 @@ fn color(c: Color) -> char {
     }
 }
 fn snapshot(buf: &Buffer) -> String {
+    snapshot_cells(buf, false)
+}
+fn snapshot_cells(buf: &Buffer, raw: bool) -> String {
     let mut out = String::new();
     for y in buf.area.rows() {
         let mut covered = 0;
         for x in 0..buf.area.width {
-            if covered > 0 {
+            if !raw && covered > 0 {
                 out.push('~');
                 covered -= 1;
                 continue;
@@ -82,7 +85,9 @@ fn overflow(p: &Paragraph, w: u16) -> Option<u16> {
 }
 fn main() {
     let mut input = io::stdin().lock().lines();
-    if std::env::args().nth(1).as_deref() == Some("--emoji") {
+    let mode = std::env::args().nth(1);
+    if matches!(mode.as_deref(), Some("--emoji" | "--ligatures")) {
+        let ligatures = mode.as_deref() == Some("--ligatures");
         let corpus =
             std::fs::read_to_string(std::env::args().nth(2).expect("path to emoji corpus"))
                 .unwrap();
@@ -93,12 +98,15 @@ fn main() {
                 .split_whitespace()
                 .map(|s| char::from_u32(u32::from_str_radix(s, 16).unwrap()).unwrap())
                 .collect();
-            let glyphs = Span::raw(&symbol)
-                .styled_graphemes(Style::default())
-                .count();
+            let raw = Span::raw(&symbol);
+            let glyphs = raw.styled_graphemes(Style::default()).count();
             let span = Span::from(format!("{symbol}!")).red().bold();
-            let widths = format!("{glyphs} {} {}", symbol.cell_width(), span.width());
-            let mut buf = Buffer::empty(Rect::new(0, 0, 12, 8));
+            let cells: usize = raw
+                .styled_graphemes(Style::default())
+                .map(|g| usize::from(g.symbol.cell_width()))
+                .sum();
+            let widths = format!("{glyphs} {cells} {}", span.width());
+            let mut buf = Buffer::empty(Rect::new(0, 0, 12, if ligatures { 20 } else { 8 }));
             for cell in &mut buf.content {
                 cell.set_symbol(".").set_fg(Color::Cyan);
             }
@@ -111,15 +119,37 @@ fn main() {
                     usize::from(w),
                     span.style,
                 );
+                if ligatures {
+                    for (n, alignment) in [
+                        (2, Alignment::Left),
+                        (3, Alignment::Center),
+                        (4, Alignment::Right),
+                    ] {
+                        let line = Line::from(vec![symbol.as_str().red().bold(), "!".blue()])
+                            .alignment(alignment);
+                        line.render(Rect::new(1, y as u16 + 4 * n, w, 1), &mut buf);
+                    }
+                }
             }
             let actual = input.next().unwrap().unwrap();
             let frame = input.next().unwrap().unwrap();
-            if actual != widths || frame != snapshot(&buf) {
+            let expected = snapshot_cells(&buf, ligatures);
+            if actual != widths || frame != expected {
                 if errors < 12 {
                     eprintln!(
                         "{row}: Dunder {actual}, Ratatui {widths}, frame matches {}",
-                        frame == snapshot(&buf)
+                        frame == expected
                     );
+                    if ligatures {
+                        if let Some((i, (a, b))) = frame
+                            .split('|')
+                            .zip(expected.split('|'))
+                            .enumerate()
+                            .find(|(_, (a, b))| a != b)
+                        {
+                            eprintln!("cell ({}, {}): {a:?} vs {b:?}", i % 12, i / 12);
+                        }
+                    }
                 }
                 errors += 1;
             }
@@ -129,7 +159,7 @@ fn main() {
         assert!(input.next().is_none());
         assert_eq!(errors, 0);
         println!(
-            "{count} emoji sequences match Ratatui in width, grapheme count and styled cells at four clipping widths"
+            "{count} sequences match Ratatui in width, grapheme count and styled cells at four clipping widths"
         );
         return;
     }

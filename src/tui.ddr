@@ -642,6 +642,17 @@ impl Frame {
         if self.glyphs[i] >= WIDE { (-self.glyphs[i + 1]).shr(12) } else { 1 }
     }
 
+    pub fn split_wide_cell(&mut self, x: i32, y: i32) {
+        if !self.bounds.contains(x,y) { return }
+        at := self.index(x,y)
+        if self.glyphs[at] >= 0 { return }
+        head := self.head(at)
+        end := head + self.advance(head)
+        self.glyphs[head] = self.glyphs[head].bit_and(WIDE-1)
+        for i in head+1..end { self.glyphs[i] = 0; self.styles[i] = 0 }
+        self.overlaps = true
+    }
+
     fn erase_span(&mut self, i: i32) {
         if self.glyphs[i] >= 0 && self.glyphs[i] < WIDE { return }
         first := self.head(i)
@@ -1043,14 +1054,7 @@ impl Frame {
         }
         if other.bounds.is_empty() { return .Ok }
         for y in other.bounds.y..other.bounds.bottom() {
-            left := self.index(other.bounds.x,y)
-            if self.glyphs[left] < 0 {
-                head := self.head(left)
-                end := head+self.advance(head)
-                self.glyphs[head] = self.glyphs[head].bit_and(WIDE-1)
-                for i in head+1..end { self.glyphs[i] = 0; self.styles[i] = 0 }
-                self.overlaps = true
-            }
+            self.split_wide_cell(other.bounds.x, y)
         }
         self.copy_region(&other,other.bounds,other.bounds.x,other.bounds.y)
         .Ok
@@ -1358,7 +1362,7 @@ impl Frame {
     }
 }
 
-struct GlyphData { tokens: []i32, clusters: []string }
+struct GlyphData { tokens: []i32, clusters: []string, clipping: []i32, text_width: i32 }
 pub opaque struct GlyphRun { source: string, data: Option<GlyphData>, zero_width: bool, columns: i32 }
 
 impl GlyphRun {
@@ -1371,13 +1375,29 @@ impl GlyphRun {
         }
         mut tokens: []i32 = []
         mut clusters: []string = []
+        mut clipping: []i32 = []
         mut columns := 0
+        mut measured := 0
+        mut script := false
         mut zero_width := false
         chars := value.runes()
         mut at := 0
         mut offset := 0
         while at < chars.len {
             group := width.glyph(&chars, at)
+            mut natural := if group.span < 0 { 1 } else { group.span }
+            for i in at..group.end {
+                cp := i32(chars[i])
+                if cp == 0xff9e || cp == 0xff9f { natural -= 1 }
+                if width.script_candidate(cp) { script = true }
+            }
+            if clipping.len > 0 || natural != group.span {
+                if clipping.len == 0 {
+                    for i in 0..(tokens.len / 2) { clipping.push(tokens[i * 2 + 1]) }
+                }
+                clipping.push(if group.span < 0 { -1 } else { natural })
+            }
+            measured += natural + group.saved
             if group.span >= 0 {
                 cp := i32(chars[at])
                 symbol := if group.end == at + 1 { cp } else {
@@ -1392,12 +1412,33 @@ impl GlyphRun {
             offset += group.bytes
             at = group.end
         }
-        Self { source: "", data: .Some(GlyphData { tokens: move tokens, clusters: move clusters }), zero_width: zero_width, columns: columns }
+        if script { measured -= width.script_savings(&chars, 0, chars.len) }
+        Self { source: "", data: .Some(GlyphData { tokens: move tokens, clusters: move clusters, clipping: move clipping, text_width: measured }), zero_width: zero_width, columns: columns }
     }
 
     pub fn has_zero_width(&self) -> bool { self.zero_width }
     pub fn count(&self) -> i32 { match &self.data { .Some(d) => d.tokens.len / 2, .None => self.source.len, } }
     pub fn width(&self) -> i32 { self.columns }
+    pub fn text_width(&self) -> i32 { match &self.data { .Some(d) => d.text_width, .None => self.columns, } }
+    pub fn suffix_start(&self, available: i32) -> (i32, i32) {
+        mut remaining := cmp.max<i32>(available, 0)
+        mut first := self.count()
+        match &self.data {
+            .None => { return (cmp.max<i32>(0, first - remaining), cmp.max<i32>(0, remaining - first)) },
+            .Some(d) => {
+                mut at := if d.clipping.len > 0 { d.clipping.len } else { first }
+                while at > 0 {
+                    at -= 1
+                    cells := if d.clipping.len > 0 { d.clipping[at] } else { d.tokens[at * 2 + 1] }
+                    cost := if cells < 0 { 1 } else { cells }
+                    if cost > remaining { break }
+                    remaining -= cost
+                    if cells >= 0 { first -= 1 }
+                }
+            },
+        }
+        (first, remaining)
+    }
     pub fn width_at(&self, index: i32) -> i32 { match &self.data { .Some(d) => d.tokens[index * 2 + 1], .None => 1, } }
     pub fn space_at(&self, index: i32) -> bool {
         cp := match &self.data { .Some(d) => d.tokens[index * 2], .None => i32(self.source[index]), }

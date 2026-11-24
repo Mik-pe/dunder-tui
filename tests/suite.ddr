@@ -287,6 +287,23 @@ import ..src.tailwind
     assert(bytes.decode(&out).unwrap() == "\x1b[1;1H\x1b[1;2;5;6ma\x1b[22;25;2;5mb\x1b[22;25;6mc\x1b[0m")
 }
 
+@test fn script_ligatures_measure_spans_and_paint_graphemes() {
+    span := rich.Span::styled("لا", tui.ink(.Red))
+    assert(span.width() == 1 && rich.Text::raw("لا").width() == 1)
+    mut frame := tui.Frame::new(4, 1)
+    span.render(&mut frame, frame.area())
+    assert(frame.symbol_at(0, 0) == .Some("ل") && frame.symbol_at(1, 0) == .Some("ا"))
+    line := rich.Line::new([move span, rich.Span::styled("!", tui.ink(.Blue))])
+    assert(line.width() == 2)
+    line.render_aligned(&mut frame, frame.area(), .Right)
+    assert(frame.symbol_at(2, 0) == .Some("ل") && frame.symbol_at(3, 0) == .Some("!"))
+    assert(frame.style_at(3, 0).unwrap().get_foreground() == .Some(tui.Color.Blue))
+    split := rich.Line::new([rich.Span::raw("ل"), rich.Span::raw("ا"), rich.Span::raw("!")])
+    assert(split.width() == 3)
+    split.render_aligned(&mut frame, frame.area(), .Right)
+    assert(frame.symbol_at(1, 0) == .Some("ل") && frame.symbol_at(2, 0) == .Some("ا"))
+}
+
 @test fn unicode17_grapheme_breaks() {
     mut count := 0
     for row in words.split(cases.unicode17(), "\n") {
