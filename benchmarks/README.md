@@ -1,5 +1,31 @@
 # Rendering mot Ratatui 0.30.2
 
+## Lånad grafemläsning i 0.21.0
+
+En rad innehåller 32 spann och 248 synliga grafem. Båda programmen summerar teckenföljdens första byte, dess längd och den ärvda kursivstilen. Tiderna nedan är median / p95 i µs för att läsa hela raden. Varje värd körde tre serier. Varje serie omfattar 20 uppvärmningar och 200 mätningar om 16 hela genomläsningar. Tabellen visar medianen av seriernas p50 respektive p95. [Alla serier och kontrollsummor](results/graphemes-0.21.0.tsv) · [Dunder](graphemes.ddr) · [Ratatui](reference/examples/grapheme_bench.rs)
+
+| Värd | Dunders iterator | Dunders `visit_graphemes` | Ratatuis iterator |
+| --- | ---: | ---: | ---: |
+| macOS ARM64, Apple M5 | 17,75 / 21,38 | 2,75 / 3,13 | 3,15 / 3,77 |
+| Linux ARM64, Apple M5 | 19,72 / 20,93 | 2,97 / 3,14 | 3,35 / 3,47 |
+| Linux x64, Xeon Platinum 8573C | 261,61 / 268,76 | 20,96 / 22,79 | 8,18 / 9,11 |
+| Windows Server 2025 x64 | 425,87 / 440,91 | 81,14 / 86,26 | 7,84 / 9,01 |
+
+På alla tre Unixmål gav 100 genomläsningar med Dunders iterator 174 600 extra allokeringsanrop, varav 12 hämtade nytt minne. Besöksfunktionen gav noll extra anrop. Jämförelsen använder samma rad och drar bort kostnaden för att bygga den. Rusts räknare gav noll extra anrop på alla fyra värdar. Dunder 0.11.2 lämnar ingen allokeringsrapport på Windows. [Nativa x64-körningar](https://github.com/Mik-pe/dunder-tui/actions/runs/45323890237)
+
+```sh
+mkdir -p build
+dunder build --locked --offline benchmarks/graphemes.ddr -o build/graphemes
+build/graphemes iterator timing
+build/graphemes visitor timing
+cargo run --quiet --release --locked --offline --manifest-path benchmarks/reference/Cargo.toml --example grapheme_bench -- timing
+dunder build --runtime-profile --locked --offline benchmarks/graphemes.ddr -o build/profile-graphemes
+build/profile-graphemes visitor setup
+build/profile-graphemes visitor count
+```
+
+Samma version kördes dessutom genom riktextvyns fem arbetslaster. Alla 1 100 terminalbilder matchade referensen. De verkliga terminalutskrifterna summerade till 1 382 478 byte för Dunder och 1 624 225 för Ratatui på varje plattform. Den oförändrade bilden tog i median 14,0 / 32,6 µs på macOS ARM64, 15,3 / 39,3 på Linux ARM64, 293,4 / 80,4 på Linux x64 och 757,2 / 211,9 på Windows x64 (Dunder / Ratatui). Högsta RSS eller working set i samma ordning var 2 048 / 2 464, 444 / 2 016, 1 132 / 2 688 och 4 116 / 4 272 KiB. Dunder gjorde 7 125 allokeringsanrop med 272 färska på Unix. Ratatui gjorde 23 184–23 227 anrop över de fyra målen. [Samtliga bildtider, spridning och byte per bild](results/ligatures-0.21.0.tsv) · [Provets körkommandon](ligatures.md#upprepa-mätningen)
+
 ## Radfyllning och textspann i 0.20.1
 
 Riktextvyn ger samma 1 100 bilder i Dunder och Ratatui. Tabellen visar median / p95 i µs för en oförändrad bild i terminalen. De två Dunder-versionerna kördes på samma värd med Dunder 0.11.2. Linux körde biblioteksparet och versionsparet i två separata serier. På Windows turades alla tre program om inom samma serie. [Alla arbetslaster mot Ratatui](results/ligatures-0.20.1.tsv) · [Versionsjämförelse med spridning](results/ligatures-before-after-0.20.1.tsv) · [x64-körning, råvärden och instruktionsprofil](https://github.com/Mik-pe/dunder-tui/actions/runs/45315649743)
