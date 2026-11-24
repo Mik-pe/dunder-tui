@@ -127,3 +127,7 @@ dunder run --locked --offline tests/pty_handles.ddr
 - `for r in text.runes()` har redan en strömmande väg. En sparad `runes()`-array och en iterator över grafem fyller andra behov. [Strängsemantik](https://github.com/Mik-pe/dunder/blob/d723527/docs/memory.md)
 - Den minsta positiva skillnaden i 100 000 anrop till `std.time.monotonic_ns()` var 1 000 ns på den provade Macen. Layoutprovet mäter därför grupper om 64 delningar. Det räcker inte för att dra en slutsats om kompilatorns klockkostnad på andra system.
 - Anropet till `next_run` låg kvar efter ett namnbyte i TUI-koden. Det kunde rättas på anropsstället. De dokumenterade fallen där Ratatui ritar utanför en ruta gäller referenswidgetarnas beteende. [Beteendeproven](parity.md)
+
+## Jämförelse av lånade arrayintervall
+
+Två lånade intervall av heltal går att jämföra med `==` när de först binds till lokala namn. Skriver man båda intervallen direkt som operander föreslår Dunder 0.11.2 att lägga till ett `&` trots att det redan finns. Den namngivna varianten kördes med noll arraykloner och noll kopierade byte. [Båda fallen och föreslagen uppföljning](https://github.com/Mik-pe/dunder/blob/a08b0e3/docs/next-steps.md#jämför-två-lånade-arrayintervall-direkt)

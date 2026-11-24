@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Radfyllning i 0.19.0
+
+På samma Linux x64-maskin gick en oförändrad riktextbild från 231 till 183 µs i median när biblioteket begränsade arbetet per rad. I den separata jämförelsen mellan biblioteken tog bilden 187 µs i Dunder och 73 µs i Ratatui. [Fyra plattformar, fem arbetslaster och instruktionsprofil](cell-widgets.md)
+
 ## Nativ x86-64 i 0.18.3
 
 På Linux x86-64 tog en oförändrad riktextbild 371 µs i median med Dunder och 59 µs med Ratatui i en pseudoterminal. I en Win32-konsol tog samma bild 1 247 respektive 213 µs. [Fem arbetslaster med bildtid, utmatning och minne](ligatures.md#nativ-x86-64-i-0183)
