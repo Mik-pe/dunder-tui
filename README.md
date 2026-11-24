@@ -587,9 +587,9 @@ I 0.3 används `tui.plain()` och stilmetoderna för att ersätta gamla `Style { 
 | `arm64-linux`, `x86_64-linux` | Samma terminalgränssnitt. Appen använder Linux systemanrop direkt. |
 | `x86_64-windows` | Win32-konsol med egen skärmbuffert och tangentbordshändelser via `ReadConsoleInputW`. |
 
-Byggen, tester och prestandamätningar körs lokalt. Repot tillåter ingen CI.
+Byggen körs lokalt. Testplattformarna är macOS och Linux. Repot tillåter ingen CI.
 
-Kör `dunder test examples/motion/tests.ddr` för alla tio animationerna och `dunder test` för layout, rullning, Unicode och tangentavkodning. På macOS och Linux öppnar `dunder run tests/posix_terminal.ddr` en pseudoterminal och kontrollerar bland annat omritning, storleksändring, Ctrl+C och återställning. Windowsprovet öppnar en separat konsol och kontrollerar inmatning, skärminnehåll, färg och återgång till föregående skärm. Det kan korsbyggas med `dunder build tests/windows_console.ddr --target x86_64-windows -o console.exe` och köras med `.\console.exe` på Windows.
+Kör `dunder test examples/motion/tests.ddr` för alla tio animationerna och `dunder test` för layout, rullning, Unicode och tangentavkodning. På macOS och Linux öppnar `dunder run tests/posix_terminal.ddr` en pseudoterminal och kontrollerar bland annat omritning, storleksändring, Ctrl+C och återställning.
 
 I en pseudoterminal på en Mac med M5 skickade de tio scenerna 29,9–30,1 bilder per sekund vid 100 × 30 teckenceller och ett mål på 30. Galleriets scenbyte, paus och återställning av terminalen har provats på macOS och Linux. Windowsbinären har provats under Wine. Det separata Win32-provet har även körts på Windows Server 2025 x64 där det läser tillbaka celler, färger och markör från konsolen. [Win32-körning](https://github.com/Mik-pe/dunder-tui/actions/runs/45302071651/job/138136790534) · [Renderingsmätning mot Ratatui](benchmarks/README.md) · [Täckning och återstående arbete](docs/parity.md)
 

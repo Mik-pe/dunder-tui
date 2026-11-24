@@ -29,6 +29,10 @@ erase-oracle = ["theme-oracle", "ratatui/crossterm", "ratatui/termion"]
 macro-oracle = ["theme-oracle", "ratatui/macros", "dep:ratatui-widgets"]
 
 [[example]]
+name = "frame_output"
+required-features = ["theme-oracle", "ratatui/crossterm"]
+
+[[example]]
 name = "clear_viewport"
 required-features = ["erase-oracle"]
 

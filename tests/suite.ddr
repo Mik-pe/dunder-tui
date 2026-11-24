@@ -2340,3 +2340,39 @@ impl tui.Backend for BufferedOutput {
     assert(b.device.cursor_position() == (2,0) && b.writes == 3 && b.flushes == 2)
     b.device.assert_buffer_lines(&["AA  ","    "])
 }
+
+@test fn packed_frame_diffs_keep_style_changes_row_ends_and_cursor_only_updates() {
+    old := tui.Frame::at(tui.Rect::new(3,5,65,4))
+    mut next := old.clone()
+    mut output:[]u8 = [b'!']
+    next.ansi_cells(&old,&mut output)
+    assert(output.len == 1)
+    next.set_cursor_position(11,7)
+    next.ansi_diff(&old,&mut output)
+    assert(output.len > 1)
+    next.fill(tui.Rect::new(3,5,65,1),` `,tui.plain())
+    assert(next.diff_positions(&old).unwrap().len == 0)
+    next.fill(tui.Rect::new(67,5,1,1),`X`,tui.plain())
+    next.fill(tui.Rect::new(3,6,1,1),` `,tui.ink(.Red))
+    next.fill(tui.Rect::new(67,8,1,1),`Z`,tui.plain())
+    changes := next.diff_positions(&old).unwrap()
+    assert(changes.len == 3 && changes[0] == (67,5) && changes[1] == (3,6) && changes[2] == (67,8))
+    short := tui.Frame::at(tui.Rect::new(3,5,65,2))
+    assert(next.diff_positions(&short).unwrap().len == 2)
+    assert(next.set_diff_option(12,7,.AlwaysUpdate))
+    assert(next.diff_positions(&old).unwrap().len == 4)
+}
+
+@test fn packed_comparisons_check_each_side_of_a_block_at_different_row_widths() {
+    for width in [1,31,32,63,64,65,95,96,127,128,129] {
+        old := tui.Frame::new(width,3)
+        for x in [0,width/2,width-1] {
+            mut next := old.clone()
+            next.fill(tui.Rect::new(x,2,1,1),` `,tui.ink(.Blue))
+            positions := next.diff_positions(&old).unwrap()
+            assert(positions.len == 1 && positions[0] == (x,2))
+            next.fill(tui.Rect::new(x,2,1,1),`x`,tui.plain())
+            assert(old.diff_positions(&next).unwrap().len == 1)
+        }
+    }
+}

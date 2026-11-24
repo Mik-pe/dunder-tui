@@ -1,0 +1,13 @@
+fn same(values:&[]i64, other:&[]i64) -> bool { values == other }
+
+fn page_matches<T: Eq>(page:&T, expected:&T, values:&[]i64, other:&[]i64) -> bool {
+    page == expected && same(&values,&other)
+}
+
+fn main() {
+    a:[]i64 = [2,4]
+    b:[]i64 = [2,4]
+    c:[]i64 = [2,5]
+    assert(page_matches<i32>(&1,&1,&a,&b))
+    assert(!page_matches<i32>(&1,&1,&a,&c))
+}

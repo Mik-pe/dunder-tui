@@ -1,0 +1,92 @@
+capability stdio
+import ..src.tui
+import ..src.posix
+import std.array
+import std.json
+import std.time
+import sys
+
+fn picture(w:i32, offset:i32) -> tui.Frame {
+    mut frame := tui.Frame::new(w,24)
+    for y in 0..24 {
+        brush := if (y+offset)%3 == 0 { tui.ink(.Red) } else { tui.ink(.Cyan) }
+        frame.fill(tui.Rect::new(0,y,w,1),rune(65+(y+offset)%26),brush)
+    }
+    move frame
+}
+
+fn revised(mode:string) -> tui.Frame {
+    mut next := picture(if mode == "resize" { 80 } else { 96 },if mode == "scroll" { 1 } else { 0 })
+    match mode {
+        "cell" => { next.fill(tui.Rect::new(63,12,1,1),`+`,tui.plain()) },
+        "style" => { next.fill(tui.Rect::new(63,12,1,1),`M`,tui.ink(.Yellow)) },
+        "last" => { next.fill(tui.Rect::new(95,23,1,1),`+`,tui.plain()) },
+        "scattered" => { for y in 0..24 { next.fill(tui.Rect::new((y*37)%96,y,1,1),`#`,tui.plain()) } },
+        "full" => { next.fill(next.area(),`!`,tui.ink(.Green)) },
+        _ => {},
+    }
+    move next
+}
+
+fn cells(previous:&tui.Frame, current:&tui.Frame) {
+    print(json.to_string(&current).unwrap())
+    if previous.area().w != current.area().w {
+        for y in 0..current.area().h { for x in 0..current.area().w { print(f"{x} {y}") } }
+    } else {
+        for (x,y) in current.diff_positions(&previous).unwrap() { print(f"{x} {y}") }
+    }
+}
+
+fn measure(mode:string, physical:bool, action:string, inspect:bool) {
+    old := picture(96,0)
+    next := revised(mode)
+    if inspect {
+        print(mode)
+        cells(&old,&next)
+        cells(&next,&old)
+        return
+    }
+    mut output:[]u8 = []
+    if physical {
+        blank := tui.Frame::new(0,0)
+        old.ansi_cells(&blank,&mut output)
+        assert(posix.write_bytes(&output))
+    }
+    if action == "setup" { return }
+    if action == "once" {
+        output.clear()
+        next.ansi_cells(&old,&mut output)
+        assert(posix.write_bytes(&output))
+        return
+    }
+    clock := time.MonotonicClock.Raw
+    mut samples:[]i64 = []
+    samples.reserve(200)
+    mut total:i64 = 0
+    for n in 0..220 {
+        output.clear()
+        start := clock.now_ns()
+        if n%2 == 0 { next.ansi_cells(&old,&mut output) } else { old.ansi_cells(&next,&mut output) }
+        if physical { assert(posix.write_bytes(&output)) }
+        elapsed := clock.now_ns()-start
+        total += i64(output.len)
+        if n >= 20 { samples.push(elapsed) }
+    }
+    array.sort<i64>(&mut samples)
+    _ := sys.eprint(f"{mode} {samples[99]} {samples[189]} {total}")
+}
+
+fn main() -> i32 {
+    argc := sys.arg_count()
+    arg := if argc > 1 { sys.arg(1) } else { "" }
+    if arg != "" && arg != "--terminal" && arg != "--cells" && arg != "--memory" { return 2 }
+    action := if argc == 4 { sys.arg(3) } else { "" }
+    if argc > 4 || (action != "" && action != "setup" && !(action == "once" && arg == "--terminal")) { return 2 }
+    mut ran := false
+    for mode in ["idle","cell","style","last","scattered","scroll","resize","full"] {
+        if argc >= 3 && sys.arg(2) != mode { continue }
+        measure(mode,arg == "--terminal",action,arg == "--cells")
+        ran = true
+    }
+    if ran { 0 } else { 2 }
+}

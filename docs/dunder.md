@@ -1,5 +1,11 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Jämför heltalsarrayer från generisk kod
+
+I Dunder 0.12.1 ger en konkret funktion som jämför två `[]i64` med `==` E3004 när den anropas från `page_matches<T: Eq>`. Även `std.array.equal<i64>` ger E3004 i den konkreta funktionen. Samma prov kompilerar och ger rätt svar för lika och olika arrayer när anroparen tar `i32`. Även en explicit jämförelse via en hjälpfunktion med `T: Eq` och typargumentet `[]i64` fungerar. Ritloopen använder den formen för lånade intervall och hela arrayer. [Minimiprov](../tests/dogfood/compiler/array_equality_from_generic.ddr)
+
+Vid jämförelse av 24 rader à 96 heltal tog `std.bytes.equal_memory` 0,81 µs på macOS ARM64, 0,70 µs på Linux ARM64 och 26,91 µs på översatt Linux x64. Operativsystemets `memcmp` tog 0,43, 0,34 respektive 1,06 µs. Ett direkt råpekaresteg i biblioteket gav E4005 för ett befintligt anrop som lånar en tillfällig bild. Snabbare jämförelse bakom språkets vanliga lånade arrayoperator skulle gynna både bibliotek och appar som gör liknande läsningar. [Mätprogram](../benchmarks/language/row_equality.ddr) · [Alla körningar](../benchmarks/results/row-equality-0.12.1.tsv)
+
 ## Behåll samma typ när ett publikt namn flyttas
 
 De fem rensningslägena fanns först i testterminalen. När även den levande terminalen fick dem behövde biblioteket behålla `testing.ClearType` för befintliga appar. I Dunder 0.12.1 ger `pub type Clock = time.MonotonicClock` E2001. Med `time.MonotonicClock` direkt i parametern kompilerar provet och tar emot `.Raw`. Ett publikt typalias skulle låta båda modulvägarna använda samma enum och eliminera omvandlingen av fem varianter. [Minimiprov](../tests/dogfood/compiler/public_type_alias.ddr) · [Befintligt API](../src/testing.ddr)

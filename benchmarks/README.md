@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Skicka färdiga bildbuffertar till terminalen
+
+Åtta arbetslaster jämför Dunders `Frame.ansi_cells` med Ratatuis buffertdiff och Crossterm. En riktig terminalpanel kontrollerar vilka tecken och färger som till slut visas. [Bildtid, byte per arbetslast och minne](frame-output.md)
+
 ## Rensa en vyport vid storleksändring
 
 Fyra vyer jämför Dunder med föregående revision och Ratatuis två Unix-backends Crossterm och Termion. [Bildtider, terminalbyte, allokeringar och minne](clear-viewport.md)

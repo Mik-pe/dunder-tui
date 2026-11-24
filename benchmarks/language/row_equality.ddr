@@ -4,9 +4,16 @@ import std.bytes as bytes
 import std.time as clock
 import sys
 
-enum Comparison { Array, Operator, Memory }
+@extern("c","memcmp")
+unsafe fn compare(left:ptr, right:ptr, count:usize) -> i32
+
+enum Comparison { Array, Operator, Memory, System }
 
 fn matches(a:&[]i64,b:&[]i64,first:i32,end:i32,mode:Comparison) -> bool {
+    if first == end { return true }
+    if mode == .System {
+        unsafe { return compare(addr(&a[first]),addr(&b[first]),usize(end-first)*size_of(i64)) == 0 }
+    }
     if mode == .Memory {
         unsafe { return bytes.equal_memory(addr(&a[first]),addr(&b[first]),usize(end-first)*size_of(i64)) }
     }
@@ -19,7 +26,7 @@ fn matches(a:&[]i64,b:&[]i64,first:i32,end:i32,mode:Comparison) -> bool {
 fn main() -> i32 {
     if sys.arg_count() != 2 { return 2 }
     mode := sys.arg(1)
-    comparison := match mode { "array" => Comparison.Array, "eq" => Comparison.Operator, "memory" => Comparison.Memory, _ => { return 2 }, }
+    comparison := match mode { "array" => Comparison.Array, "eq" => Comparison.Operator, "memory" => Comparison.Memory, "system" => Comparison.System, _ => { return 2 }, }
     timer := clock.MonotonicClock.Raw
     mut a: []i64 = []
     for i in 0..2304 { a.push(i64(i)) }

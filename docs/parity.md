@@ -2,7 +2,7 @@
 
 Referensen är taggen `ratatui-v0.30.2`, inklusive de stabila tillvalen. Tabellen följer de publika områdena i den versionen. En genomförd jämförelse anges med sitt konkreta prov. [Referenskod](https://github.com/ratatui/ratatui/tree/ratatui-v0.30.2) · [Publikt API](https://docs.rs/ratatui/0.30.2/ratatui/) · [Funktionsflaggor](https://docs.rs/crate/ratatui/0.30.2/features)
 
-Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där användaren kan behålla händelser i skalets skrollhistorik. Prestanda mäts tillsammans med beteendet så att en långsammare arbetslast kan prioriteras utifrån vad användaren märker. [Fynd för Dunder-språket och standardbiblioteket](dunder.md)
+De aktiva testplattformarna är macOS och Linux. Uppgifter om Windows och Wine nedan avser tidigare körningar. Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där användaren kan behålla händelser i skalets skrollhistorik. Prestanda mäts tillsammans med beteendet så att en långsammare arbetslast kan prioriteras utifrån vad användaren märker. [Fynd för Dunder-språket och standardbiblioteket](dunder.md)
 
 | Område | Finns i Dunder | Återstår att leverera eller verifiera |
 | --- | --- | --- |
@@ -13,7 +13,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna strängar för hörn och sidor, individuella kanter, justerade titlar, utfyllnad och skuggor. För skuggor jämförs 85 050 råa celler och celldiffarnas ordning med referensen. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
 | Övriga widgets | Fristående Clear och Fill med cellvisa symboler, stil och klippning, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, månadskalender med händelser och egna datumstilar, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. Ratatuis båda logotyper och maskot med två ögonfärger. | Se beteendeproven per widget nedan. |
 | Egna widgets och tester | Frame ritar egna och inbyggda widgets med `render_widget` och `render_stateful_widget`. Tillstånd kan uppdateras vid ritning med `run_stateful`. Egna backends kan anslutas till Terminal. TestBackend har skrollhistorik, markör, fem rensningslägen och regionskrollning. | Bredare testning av specialiserade terminalbackends. |
-| Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, markörstyrning från Frame och Terminal, bildräknare, ANSI och Win32. Fast och inbäddad vyport, explicit storleksanpassning, terminalens tecken- och pixelmått, manuell cellutmatning och byte av arbetsbuffert, loggrader, fem rensningslägen med bevarad markör och regionskrollning. Marköråterställning för egna backends samt återhämtning efter skrivfel och uteblivet markörsvar. Regionskrollning och radmatningsbaserad infogning jämförs separat. | Nativ Windows x64 för de senaste ändringarna i rensning och logginfogning. |
+| Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, markörstyrning från Frame och Terminal, bildräknare, ANSI och Win32. Fast och inbäddad vyport, explicit storleksanpassning, terminalens tecken- och pixelmått, manuell cellutmatning och byte av arbetsbuffert, loggrader, fem rensningslägen med bevarad markör och regionskrollning. Marköråterställning för egna backends samt återhämtning efter skrivfel och uteblivet markörsvar. Regionskrollning och radmatningsbaserad infogning jämförs separat. | Fler jämförelser av specialiserade backends för inbäddade vyer. |
 | Stabil Rust-integration | Dunders konstruktorer jämförs med alla åtta makron för rik text, tabellrader och layout. Jämförelseprogrammen använder den låsta Rustreferensen. Dunder-appar byggs offline. | Skillnader mellan terminalbackends och exakta gränsfall för layout beskrivs nedan. |
 | Effektivitet och plattformar | Tid, minne, allokeringar och terminalbyte på macOS och Linux. Pseudoterminal på macOS ARM64, Linux ARM64 och nativ Linux x86-64. Win32-prov på Windows Server 2025 x64 och under Wine. | Fler arbetslaster med komplex layout, lägre kostnad för dynamiska färgvärden och likvärdig bildtid på x86-64. |
 
@@ -83,7 +83,7 @@ Av 1 893 indata gav båda biblioteken samma sparade värde i 1 108 fall och avvi
 
 Läs en kantmask som `block.BorderMask` för att spara även okända bitar. Anropa `edges()` när du ritar ramen. Sparad horisontell justering har tre riktningar. Använd `Option<text.Alignment>` för ett tema där riktningen kan ärvas.
 
-Samma resultat kontrollerades på macOS ARM64, Linux ARM64, översatt Linux x86-64 och Win64 under Wine. I en pseudoterminal bytte en gul etikett i övre vänstra hörnet plats till en cyan etikett nere till höger och ramen bytte till dubbel linje. Win32-provet läste tillbaka tecken och färgattribut från konsolbufferten. Nativ Windows x64 återstår för dessa prov. [Pseudoterminal](../tests/palette_json_terminal.ddr) · [Win32](../tests/windows_console.ddr)
+Samma resultat kontrollerades på macOS ARM64, Linux ARM64, översatt Linux x86-64 och Win64 under Wine. I en pseudoterminal bytte en gul etikett i övre vänstra hörnet plats till en cyan etikett nere till höger och ramen bytte till dubbel linje. Win32-provet läste tillbaka tecken och färgattribut från konsolbufferten. [Pseudoterminal](../tests/palette_json_terminal.ddr) · [Win32](../tests/windows_console.ddr)
 
 ```sh
 mkdir -p build
@@ -101,7 +101,7 @@ dunder run --locked --offline tests/palette_json_terminal.ddr
 
 1 833 indata jämförs med Ratatuis `serde` och `underline-color`. För varje godkänd stil jämförs den sparade JSON-strängen, resultatet av att kombinera två stilar och stilen i två ritade celler. Den ena cellen börjar tom, den andra har färg och attribut. Proven täcker alla 256 färgindex, äldre RGB- och indexobjekt, alla 512 kombinationer av namngivna attribut, extra attributbitar, dubbla fält, saknade värden och felaktiga tal. [Dunderprov](../tests/theme_reference.ddr) · [Ratatui-referens och indata](../benchmarks/reference/examples/themes.rs)
 
-På macOS ARM64, Linux ARM64, översatt Linux x86-64 och Win64 under Wine gav jämförelsen samma resultat för alla indata. På de tre Unix-målen laddade ett pseudoterminalprov två stilar, växlade från RGB till indexfärg efter en tangenttryckning och kontrollerade terminalens återställning. Nativ Windows x64 återstår för temaprovet. [Terminalprov](../tests/theme_terminal.ddr)
+På macOS ARM64, Linux ARM64, översatt Linux x86-64 och Win64 under Wine gav jämförelsen samma resultat för alla indata. På de tre Unix-målen laddade ett pseudoterminalprov två stilar, växlade från RGB till indexfärg efter en tangenttryckning och kontrollerade terminalens återställning. [Terminalprov](../tests/theme_terminal.ddr)
 
 ```sh
 mkdir -p build
@@ -120,7 +120,7 @@ dunder run --locked --offline tests/theme_terminal.ddr
 
 Ratatui utan `underline-color` sparar sex fält per cell. En cell i arrayform placerar attributen direkt efter bakgrunden. I objektform ignoreras nyckeln `underline_color` även om den upprepas eller innehåller ett ogiltigt färgvärde. Attributet `UNDERLINED` fungerar i båda formaten. Dunder väljer format per anrop, så att samma program kan läsa båda sorternas bilder. [Formatvalet](../src/snapshot.ddr) · [Terminalprovet](../tests/buffer_json_terminal.ddr)
 
-Referensen byggdes med `--no-default-features --features serde-backend`. Med standardvalet skulle Crossterm slå på understrykningsfärg indirekt. 1 838 färg- och stilfall, 4 538 cell-, buffert- och difffall och 424 testbackendfall gav identiska utdata på macOS ARM64, Linux ARM64 och översatt Linux x86-64. Win64 under Wine matchade samma 6 800 referenssvar och konsolprovet läste tillbaka den gröna etiketten. Nativ Windows x64 återstår för detta format. [Stilprov](../tests/theme_reference.ddr) · [Buffertprov](../tests/buffer_json.ddr) · [Backendprov](../tests/backend_json.ddr) · [Återställningstid och minne](../benchmarks/scrollback.md#json-utan-separat-understrykningsfärg)
+Referensen byggdes med `--no-default-features --features serde-backend`. Med standardvalet skulle Crossterm slå på understrykningsfärg indirekt. 1 838 färg- och stilfall, 4 538 cell-, buffert- och difffall och 424 testbackendfall gav identiska utdata på macOS ARM64, Linux ARM64 och översatt Linux x86-64. Win64 under Wine matchade samma 6 800 referenssvar och konsolprovet läste tillbaka den gröna etiketten. [Stilprov](../tests/theme_reference.ddr) · [Buffertprov](../tests/buffer_json.ddr) · [Backendprov](../tests/backend_json.ddr) · [Återställningstid och minne](../benchmarks/scrollback.md#json-utan-separat-understrykningsfärg)
 
 ```sh
 mkdir -p build
@@ -285,7 +285,7 @@ Provet jämför 1 035 JSON-indata med Ratatui 0.30.2. Var och en av de 797 gilti
 
 En rektangel med x = 65 523 och bredd 35 behåller båda värdena när den sparas igen. Vid horisontell indelning slutar panelerna vid 65 535. Vid vertikal indelning behåller de bredd 35. `with_spacing(.Space(n))` och `with_spacing(.Overlap(n))` bevarar hela det namngivna 16-bitarsvärdet, även skillnaden mellan noll mellanrum och noll överlappning. Ratatui 0.30.2 tolkar värdet som ett tecknat 16-bitarstal i lösaren. Därför ger exempelvis `Space(65535)` en cells överlappning. Vanliga `.spacing(1)` ger ett mellanrum på en cell.
 
-Alla indata gav samma resultat på macOS ARM64, Linux ARM64, översatt Linux x86-64 och Win64 under Wine. I pseudoterminal växlar en tangent från två kolumner med mellanrum till överlappande rader. Win32-provet läser cellerna direkt ur konsolbufferten efter båda ritningarna. Nativ Windows x64 återstår för den här revisionen. [Pseudoterminal](../tests/layout_json_terminal.ddr) · [Win32-konsol](../tests/windows_console.ddr)
+Alla indata gav samma resultat på macOS ARM64, Linux ARM64, översatt Linux x86-64 och Win64 under Wine. I pseudoterminal växlar en tangent från två kolumner med mellanrum till överlappande rader. Win32-provet läser cellerna direkt ur konsolbufferten efter båda ritningarna. [Pseudoterminal](../tests/layout_json_terminal.ddr) · [Win32-konsol](../tests/windows_console.ddr)
 
 ```sh
 mkdir -p build
@@ -574,11 +574,17 @@ build/cursor-pty build/cursor-app
 build/cursor-pty build/rust/release/examples/terminal --live
 ```
 
+## Terminalutdata från färdiga bilder
+
+De två riktningarna i åtta arbetslaster jämförs mot Ratatui 0.30.2. I 16 bilder stämmer samtliga 36 480 råa celler och 13 494 koordinater i utmatningsordning. Breddbytet från 96 till 80 kolumner och tillbaka innebär hel omritning. Jämförelsen omfattar också en ändring av endast förgrundsfärgen, sista cellen och en ändring per rad. Win64 under Wine matchade samma resultat. [Dunder](../benchmarks/frame_output.ddr) · [Ratatui](../benchmarks/reference/examples/frame_output.rs)
+
+På macOS ARM64, Linux ARM64 och översatt Linux x64 jämfördes hela Dunders PTY-inspelning byte för byte före och efter ändringen. Även emojiloggen och ligaturloggen gav oförändrad utdata. På Mac kontrollerades dessutom 16 paneler i tmux, en efter den första ändringen och en efter återgången för varje arbetslast. Alla 36 864 synliga tecken och förgrundsfärger stämde med både det förväntade mönstret och Crossterm. [Körinstruktioner och mätningar](../benchmarks/frame-output.md)
+
 ## Rensa från markören och inom en vyport
 
 På testbackenden matchar 452 skärmtillstånd Ratatuis tecken, stilar, diffregler och markör. Förutom 350 rensningar på färgade bokstäver ingår en startbild och 80 rensningar med breda symboler, kombinerande tecken, färgat understreck och tre diffregler. De sju vyerna omfattar helskärm, fullbredd till nederkant, rader mitt på skärmen, en smal rektangel och två tomma ytor. `clear()` återställer markören. Efter en `resize()` av en fullbred vy vid nederkanten står den i vyportens övre vänstra hörn. För fullbreda rader mitt på skärmen står den i början av den sista rensade raden. Provet jämför även nästa omritning. [Dunder](../tests/erase.ddr) · [Ratatui 0.30.2](../benchmarks/reference/examples/erase.rs)
 
-På macOS ARM64, Linux ARM64 och översatt Linux x64 körs rensningarna även i pseudoterminal. Provet svarar på appens markörfrågor och läser tillbaka vilka celler som ändrats. En inbäddad vy lämnar raderna ovanför vyn orörda. Ett prov rensar 91 000 celler över flera skrivningar och läser tillbaka båda kantkolumnerna. Win64 under Wine matchade samma 452 referensbilder. Konsolprovet läste dessutom tillbaka tecken, färgattribut och markör efter 25 partiella och fullständiga rensningar. Nativ Windows x64 återstår för den här ändringen. [Terminalprov](../tests/erase_terminal.ddr) · [Win32-konsol](../tests/windows_console.ddr) · [Tid, terminalbyte och minne](../benchmarks/clear-viewport.md)
+På macOS ARM64, Linux ARM64 och översatt Linux x64 körs rensningarna även i pseudoterminal. Provet svarar på appens markörfrågor och läser tillbaka vilka celler som ändrats. En inbäddad vy lämnar raderna ovanför vyn orörda. Ett prov rensar 91 000 celler över flera skrivningar och läser tillbaka båda kantkolumnerna. Win64 under Wine matchade samma 452 referensbilder. Konsolprovet läste dessutom tillbaka tecken, färgattribut och markör efter 25 partiella och fullständiga rensningar. [Terminalprov](../tests/erase_terminal.ddr) · [Win32-konsol](../tests/windows_console.ddr) · [Tid, terminalbyte och minne](../benchmarks/clear-viewport.md)
 
 Dunders fem rensningskommandon överensstämmer med Crossterm och Termion när ett utelämnat nollargument i CSI räknas som noll. Den låsta Termina-backenden skriver `CSI J` för `BeforeCursor`, vilket på terminalen rensar *efter* markören. Dunder skickar `CSI 1 J` och rensar före markören inklusive dess cell. Termwiz klarade helskärmsrensning och returnerade fel för samtliga fyra delrensningar. Skillnaderna kontrolleras mot de verkliga backendarnas utdata eller returvärden. [Referensprogram](../benchmarks/reference/examples/erase.rs) · [Låsta backendversioner](../benchmarks/reference/Cargo.lock)
 

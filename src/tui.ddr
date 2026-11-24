@@ -40,17 +40,32 @@ fn equivalent_spaces(glyph: i32, old: i32) -> bool {
     (glyph == 0 && old == WRITTEN_SPACE) || (old == 0 && glyph == WRITTEN_SPACE)
 }
 
-fn packed_boundary(glyphs: &[]i32, other_glyphs: &[]i32, styles: &[]i64, other_styles: &[]i64,
-                   start: i32, end: i32, find_change: bool) -> i32 {
+fn equal_values<T: Eq>(a: &T, b: &T) -> bool { a == b }
+
+fn first_packed_change(glyphs: &[]i32, other_glyphs: &[]i32, styles: &[]i64, other_styles: &[]i64, start: i32, end: i32) -> i32 {
     mut at := start
-    if find_change {
+    if target_is("arm64") {
+        while end-at >= 32 && glyphs[at] == other_glyphs[at] && styles[at] == other_styles[at] {
+            stop := at + cmp.min<i32>(end-at,64)
+            if !equal_values<[]i32>(&glyphs[at..stop],&other_glyphs[at..stop]) ||
+                !equal_values<[]i64>(&styles[at..stop],&other_styles[at..stop]) { break }
+            at = stop
+        }
         while at < end && glyphs[at] == other_glyphs[at] && styles[at] == other_styles[at] { at += 1 }
     }
     for i in at..end {
         glyph := glyphs[i]
         old := other_glyphs[i]
-        changed := styles[i] != other_styles[i] || (glyph != old && !equivalent_spaces(glyph, old))
-        if changed == find_change { return i }
+        if styles[i] != other_styles[i] || (glyph != old && !equivalent_spaces(glyph,old)) { return i }
+    }
+    end
+}
+
+fn end_packed_change(glyphs: &[]i32, other_glyphs: &[]i32, styles: &[]i64, other_styles: &[]i64, start: i32, end: i32) -> i32 {
+    for i in start..end {
+        glyph := glyphs[i]
+        old := other_glyphs[i]
+        if styles[i] == other_styles[i] && (glyph == old || equivalent_spaces(glyph,old)) { return i }
     }
     end
 }
@@ -1580,8 +1595,14 @@ impl DiffScan {
     fn new(current: &Frame, previous: &Frame) -> Self {
         full := current.bounds != previous.bounds
         precise := current.row_flags.len > 0 || previous.row_flags.len > 0
-        Self { at:0, trailing:0, force:false, start:0, end:0, cached:-1, limit:current.glyphs.len, full:full,
-            precise:precise, packed:current.packed_cells() && previous.packed_cells(),
+        packed := current.packed_cells() && previous.packed_cells()
+        mut limit := current.glyphs.len
+        if target_is("arm64") {
+            if packed && !full && limit >= 128 && current.glyphs[0] == previous.glyphs[0] && current.styles[0] == previous.styles[0] &&
+                equal_values<[]i32>(&current.glyphs,&previous.glyphs) && equal_values<[]i64>(&current.styles,&previous.styles) { limit = 0 }
+        }
+        Self { at:0, trailing:0, force:false, start:0, end:0, cached:-1, limit:limit, full:full,
+            precise:precise, packed:packed,
             floor:if full { i64(0) } else { current.shared_style_floor(&previous) } }
     }
 
@@ -1620,9 +1641,9 @@ impl DiffScan {
             }
             if !self.full && (self.packed || (flags == 0 && self.cached < 0 && i >= self.trailing &&
                 frame.packed_row_data(y) && previous.packed_row_data(y))) {
-                self.start = packed_boundary(&frame.glyphs, &previous.glyphs, &frame.styles, &previous.styles, i, limit, true)
+                self.start = first_packed_change(&frame.glyphs, &previous.glyphs, &frame.styles, &previous.styles, i, limit)
                 if self.start == limit { self.at = limit; continue }
-                self.end = packed_boundary(&frame.glyphs, &previous.glyphs, &frame.styles, &previous.styles, self.start + 1, limit, false)
+                self.end = end_packed_change(&frame.glyphs, &previous.glyphs, &frame.styles, &previous.styles, self.start + 1, limit)
                 self.at = self.end
                 return true
             }
@@ -2717,7 +2738,7 @@ impl Frame {
     fn same_row(&self, previous: &Frame, row: i32, shared_floor: i64) -> bool {
         if self.bounds.w == 0 { return false }
         end := row + self.bounds.w
-        if packed_boundary(&self.glyphs, &previous.glyphs, &self.styles, &previous.styles, row, end, true) != end { return false }
+        if first_packed_change(&self.glyphs, &previous.glyphs, &self.styles, &previous.styles, row, end) != end { return false }
         if self.cluster_ranges.len > 0 {
             offset := row/self.bounds.w*2
             for i in self.cluster_ranges[offset]..self.cluster_ranges[offset+1] {
