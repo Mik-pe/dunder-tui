@@ -371,6 +371,8 @@ cargo build --locked --offline --release --manifest-path benchmarks/reference/Ca
 build/layout --minimums | build/rust/release/examples/layout --minimums
 ```
 
+Vid upprepning kunde Ratatuis lösare stanna i `kasuari::Solver::optimize`. Därför kör jämförelseprogrammet högst 64 gränsfall i varje referensprocess. Processen lämnar ett resultat direkt efter varje avslutad jämförelse. Om en grupp tar över fem sekunder skrivs det första obesvarade fallet ut och körs igen i en ny process. Två stopp vid samma fall underkänner provet. I tio körningar på macOS ARM64 fick alla 60 480 jämförelser ett svar. Fall 2 429 behövde en ny referensprocess i en av körningarna.
+
 ## De tio animationerna i releasepaketen
 
 Varje scen ritas vid 0 och 1,75 sekunder på en canvas med 72 × 40 pixlar. Galleritestet läser de 1 440 cellerna i den andra bilden via `Frame`, kontrollerar halvblockets tecken och båda RGB-färgerna och jämför celldiffens koordinater i ritordning med de pixlar som ändrades. [Galleritest](../examples/motion/tests.ddr)

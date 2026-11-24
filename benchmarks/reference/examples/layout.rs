@@ -1,7 +1,9 @@
 #[path = "../src/layout_optimum.rs"]
 mod layout_optimum;
 use ratatui::layout::{Constraint, Direction, Flex, Layout, Margin, Rect};
-use std::io::{self, BufRead};
+use std::io::{self, BufRead, Write};
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 #[path = "../src/layout_scene.rs"]
 mod layout_scene;
 #[allow(dead_code)]
@@ -104,14 +106,161 @@ fn geometry() {
 fn coord(n: i64) -> u16 {
     u16::try_from(n).expect("invalid terminal coordinate")
 }
-fn main() {
-    if std::env::args().nth(1).as_deref() == Some("--geometry") {
-        geometry();
-        return;
+fn compare(line: &str) -> u8 {
+    let mut numbers = line
+        .split_ascii_whitespace()
+        .map(|s| s.parse::<i64>().unwrap());
+    let mut next = || numbers.next().unwrap();
+    let direction = [Direction::Horizontal, Direction::Vertical][next() as usize];
+    let flex = [
+        Flex::Start,
+        Flex::Center,
+        Flex::End,
+        Flex::SpaceBetween,
+        Flex::SpaceAround,
+        Flex::SpaceEvenly,
+        Flex::Legacy,
+    ][next() as usize];
+    let gap = i32::try_from(next()).unwrap().clamp(-32768, 32767);
+    let (mx, my) = (coord(next()), coord(next()));
+    let area = Rect {
+        x: coord(next()),
+        y: coord(next()),
+        width: coord(next()),
+        height: coord(next()),
+    };
+    let count = next() as usize;
+    let rules: Vec<_> = (0..count)
+        .map(|_| {
+            let (t, a, b) = (
+                next(),
+                u32::try_from(next()).unwrap(),
+                u32::try_from(next()).unwrap(),
+            );
+            match t {
+                0 => Constraint::Length(u16::try_from(a).unwrap()),
+                1 => Constraint::Percentage(u16::try_from(a).unwrap()),
+                2 => Constraint::Ratio(a, b),
+                3 => Constraint::Min(u16::try_from(a).unwrap()),
+                4 => Constraint::Max(u16::try_from(a).unwrap()),
+                5 => Constraint::Fill(u16::try_from(a).unwrap()),
+                _ => panic!(),
+            }
+        })
+        .collect();
+    let (parts, spacers) = Layout::new(direction, rules.clone())
+        .horizontal_margin(mx)
+        .vertical_margin(my)
+        .flex(flex)
+        .spacing(gap)
+        .split_with_spacers(area);
+    let expected = parts
+        .iter()
+        .chain(spacers.iter())
+        .copied()
+        .collect::<Vec<_>>();
+    let actual = (0..(2 * count + 1))
+        .map(|_| Rect {
+            x: coord(next()),
+            y: coord(next()),
+            width: coord(next()),
+            height: coord(next()),
+        })
+        .collect::<Vec<_>>();
+    assert!(numbers.next().is_none());
+    if actual == expected {
+        b'='
+    } else if layout_optimum::same_optimum(
+        &rules,
+        flex,
+        gap,
+        area.inner(Margin::new(mx, my)),
+        direction,
+        &expected,
+        &actual,
+    ) {
+        b'~'
+    } else {
+        eprintln!(
+            "{direction:?} {area:?} {flex:?} {gap} {mx} {my} {rules:?}\nD {actual:?}\nR {expected:?}"
+        );
+        b'!'
     }
-    if std::env::args().nth(1).as_deref() == Some("--frames") {
-        frames();
-        return;
+}
+
+fn minimums(lines: &[String]) -> Vec<u8> {
+    let executable = std::env::current_exe().unwrap();
+    let mut results = Vec::with_capacity(lines.len());
+    let mut retry = None;
+    while results.len() < lines.len() {
+        let start = results.len();
+        let end = (start + 64).min(lines.len());
+        let mut child = Command::new(&executable)
+            .arg("--minimum-batch")
+            .args(&lines[start..end])
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let timed_out = loop {
+            if child.try_wait().unwrap().is_some() {
+                break false;
+            }
+            if Instant::now() >= deadline {
+                break true;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        if timed_out && let Err(error) = child.kill() {
+            assert!(
+                child.try_wait().unwrap().is_some(),
+                "could not stop the reference: {error}"
+            );
+        }
+        let output = child.wait_with_output().unwrap();
+        assert!(
+            timed_out || output.status.success(),
+            "reference exited {} in cases {}–{}",
+            output.status,
+            start + 1,
+            end
+        );
+        assert!(output.stdout.len() <= end - start);
+        results.extend(output.stdout);
+        if timed_out && results.len() < end {
+            let index = results.len();
+            eprintln!(
+                "Ratatui layout deadline at case {}: {}",
+                index + 1,
+                lines[index]
+            );
+            assert_ne!(
+                retry,
+                Some(index),
+                "reference did not finish the same case twice"
+            );
+            retry = Some(index);
+        } else {
+            assert_eq!(results.len(), end, "missing reference results");
+        }
+    }
+    results
+}
+
+fn main() {
+    let mode = std::env::args().nth(1);
+    match mode.as_deref() {
+        Some("--geometry") => return geometry(),
+        Some("--frames") => return frames(),
+        Some("--minimum-batch") => {
+            let mut out = io::stdout().lock();
+            for line in std::env::args().skip(2) {
+                out.write_all(&[compare(&line)]).unwrap();
+                out.flush().unwrap();
+            }
+            return;
+        }
+        _ => {}
     }
     assert_eq!(
         Layout::horizontal([Constraint::Min(65535), Constraint::Length(7)])
@@ -119,98 +268,22 @@ fn main() {
             .width,
         93
     );
-    let mut matches = 0;
-    let mut differs = 0;
-    let mut ties = 0;
-    for line in io::stdin().lock().lines().map(Result::unwrap) {
-        let mut numbers = line
-            .split_ascii_whitespace()
-            .map(|s| s.parse::<i64>().unwrap());
-        let mut next = || numbers.next().unwrap();
-        let direction = [Direction::Horizontal, Direction::Vertical][next() as usize];
-        let flex = [
-            Flex::Start,
-            Flex::Center,
-            Flex::End,
-            Flex::SpaceBetween,
-            Flex::SpaceAround,
-            Flex::SpaceEvenly,
-            Flex::Legacy,
-        ][next() as usize];
-        let gap = i32::try_from(next()).unwrap().clamp(-32768, 32767);
-        let (mx, my) = (coord(next()), coord(next()));
-        let area = Rect {
-            x: coord(next()),
-            y: coord(next()),
-            width: coord(next()),
-            height: coord(next()),
-        };
-        let count = next() as usize;
-        let rules: Vec<_> = (0..count)
-            .map(|_| {
-                let (t, a, b) = (
-                    next(),
-                    u32::try_from(next()).unwrap(),
-                    u32::try_from(next()).unwrap(),
-                );
-                match t {
-                    0 => Constraint::Length(u16::try_from(a).unwrap()),
-                    1 => Constraint::Percentage(u16::try_from(a).unwrap()),
-                    2 => Constraint::Ratio(a, b),
-                    3 => Constraint::Min(u16::try_from(a).unwrap()),
-                    4 => Constraint::Max(u16::try_from(a).unwrap()),
-                    5 => Constraint::Fill(u16::try_from(a).unwrap()),
-                    _ => panic!(),
-                }
-            })
-            .collect();
-        let (parts, spacers) = Layout::new(direction, rules.clone())
-            .horizontal_margin(mx)
-            .vertical_margin(my)
-            .flex(flex)
-            .spacing(gap)
-            .split_with_spacers(area);
-        let expected = parts
-            .iter()
-            .chain(spacers.iter())
-            .copied()
-            .collect::<Vec<_>>();
-        let actual = (0..(2 * count + 1))
-            .map(|_| Rect {
-                x: coord(next()),
-                y: coord(next()),
-                width: coord(next()),
-                height: coord(next()),
-            })
-            .collect::<Vec<_>>();
-        assert!(numbers.next().is_none());
-        if actual == expected {
-            matches += 1;
-        } else if layout_optimum::same_optimum(
-            &rules,
-            flex,
-            gap,
-            area.inner(Margin::new(mx, my)),
-            direction,
-            &expected,
-            &actual,
-        ) {
-            ties += 1;
-        } else {
-            differs += 1;
-            eprintln!(
-                "{direction:?} {area:?} {flex:?} {gap} {mx} {my} {rules:?}\nD {actual:?}\nR {expected:?}"
-            );
-        }
-    }
+    let lines: Vec<_> = io::stdin().lock().lines().map(Result::unwrap).collect();
+    let expected = match mode.as_deref() {
+        Some("--limits") => 980,
+        Some("--minimums") => 6048,
+        _ => 14_096,
+    };
+    assert_eq!(lines.len(), expected);
+    let results = if mode.as_deref() == Some("--minimums") {
+        minimums(&lines)
+    } else {
+        lines.iter().map(|line| compare(line)).collect()
+    };
+    let matches = results.iter().filter(|&&v| v == b'=').count();
+    let ties = results.iter().filter(|&&v| v == b'~').count();
+    let differs = results.iter().filter(|&&v| v == b'!').count();
+    assert_eq!(matches + ties + differs, expected);
     println!("{matches} identical, {ties} verified alternate optima, {differs} unresolved");
-    assert_eq!(
-        matches + ties + differs,
-        match std::env::args().nth(1).as_deref() {
-            Some("--limits") => 980,
-            Some("--minimums") => 6048,
-            _ => 14_096,
-        }
-    );
     assert_eq!(differs, 0);
 }
