@@ -1,0 +1,21 @@
+capability process, stdio
+
+import std.process
+import std.text
+import sys
+
+fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "child" {
+        print("ok")
+        return
+    }
+    cmd := process.Command::new(sys.arg(0), ["child"])
+    if sys.arg_count() == 2 && sys.arg(1) == "spawn" {
+        mut child := cmd.spawn().unwrap()
+        status := child.wait(5000)
+        assert(status.ok && status.exited && status.code == 0)
+    } else {
+        out := cmd.exec()
+        assert(out.succeeded() && text.trim(out.stdout_text()) == "ok")
+    }
+}
