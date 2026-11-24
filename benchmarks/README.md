@@ -1,5 +1,18 @@
 # Rendering mot Ratatui 0.30.2
 
+## Riktext i 0.20.0
+
+Samma vy med 23 textrader gav 1 100 identiska bilder på varje plattform. Tabellen visar median / p95 i µs för en oförändrad bild i pseudoterminal eller Win32-konsol. Minneskolumnerna visar högsta RSS eller Windows working set i KiB från tre separata körningar. [Alla fem arbetslaster, utdata och spridning](results/ligatures-0.20.0.tsv) · [Arbetslast och körkommandon](ligatures.md#upprepa-mätningen) · [Nativa x64-körningar](https://github.com/Mik-pe/dunder-tui/actions/runs/45312061033)
+
+| Värd | Dunder µs | Ratatui µs | Dunder KiB | Ratatui KiB |
+| --- | ---: | ---: | ---: | ---: |
+| macOS ARM64, Apple M5 | 16 / 20 | 34 / 40 | 2 048 | 2 464 |
+| Linux ARM64, Apple M5 | 17 / 22 | 40 / 49 | 444 | 2 016 |
+| Linux x64, Xeon 6975P-C | 279 / 295 | 60 / 70 | 1 128 | 2 632 |
+| Windows Server 2025 x64 | 1 164 / 1 341 | 223 / 278 | 4 064 | 4 256 |
+
+Terminalerna tog emot 1 382 478 byte från Dunder och 1 624 225 från Ratatui för hela arbetslasten. På Unix rapporterade Dunder 83 025 allokeringsanrop med 272 färska allokeringar per körning. Ratatui rapporterade 23 184–23 188 anrop på Unix och 23 227 på Windows. Dunder 0.11.2 gav ingen allokeringsrapport på Windows.
+
 ## Radfyllning i 0.19.0
 
 På samma Linux x64-maskin gick en oförändrad riktextbild från 231 till 183 µs i median när biblioteket begränsade arbetet per rad. I den separata jämförelsen mellan biblioteken tog bilden 187 µs i Dunder och 73 µs i Ratatui. [Fyra plattformar, fem arbetslaster och instruktionsprofil](cell-widgets.md)
