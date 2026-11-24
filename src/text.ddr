@@ -654,7 +654,7 @@ impl Span {
     }
 
     pub fn write(&self, frame: &mut tui.Frame, bounds: tui.Rect) -> i32 {
-        self.glyphs.write(&mut frame, bounds.intersection(frame.area()), 0, self.count(), self.style)
+        self.glyphs.write_cells(&mut frame, bounds.intersection(frame.area()), 0, self.count(), self.style)
     }
 
     pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
@@ -671,7 +671,7 @@ impl Line {
         mut used := 0
         for span in &self.spans {
             if area.w <= 0 { break }
-            n := span.glyphs.write(&mut frame, area, 0, span.count(), self.style.patch(span.style))
+            n := span.glyphs.write_cells(&mut frame, area, 0, span.count(), self.style.patch(span.style))
             used += n
             area.x += n
             area.w -= n

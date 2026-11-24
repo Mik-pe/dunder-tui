@@ -98,6 +98,30 @@ Alla 766 officiella prov för grafemgränser i Unicode 17.0 och alla 1 111 999 U
 dunder run --locked --offline tools/unicode.ddr -- /sökväg/till/UCD-17 /sökväg/till/UCD-18
 ```
 
+## Symboler i staplar och mätare
+
+`Sparkline.bar_set` och `BarChart.bar_set` tar nio strängar från tom till full stapel. `Sparkline.missing_text` anger symbolen för ett saknat mätvärde. `LineGauge.set_symbols` väljer fylld och tom symbol. När en stränguppsättning är vald används den för varje cell. En etikett som börjar i andra kolumnen av ett brett tecken behåller tecknet i kolumnen till vänster.
+
+Referensprovet jämför 1 080 bildrutor med förifylld text, stilar och diffregler. Alla 70 200 råceller och ordningen på celldiffarna stämmer med Ratatui, även efter sex överlagringar. Provet innehåller bland annat tomma, breda och sammansatta symboler i sista kolumnen, saknade mätvärden, vänstervänd sparkline samt vågräta och lodräta staplar. [Dunderprov](../tests/meter_cells.ddr) · [Ratatui-prov](../benchmarks/reference/examples/meter_cells.rs) · [Interaktivt terminalprov](../tests/meter_terminal.ddr)
+
+```sh
+dunder build --locked --offline tests/meter_cells.ddr -o build/meter-cells
+cargo build --offline --locked --release --manifest-path benchmarks/reference/Cargo.toml --features style-oracle --example meter_cells --target-dir build/rust
+build/meter-cells | build/rust/release/examples/meter_cells
+```
+
+## Bredd vid delade Unicode-sekvenser
+
+För varje indatasträng jämför provet hela strängen och båda delarna vid varje Unicode-skalärgräns. Samlingen innehåller 5 244 emoji, 742 presentationsvarianter, 2 175 ligaturfall och tio korta kontrollfall. Alla 48 059 kolumnbredder och spannbredder matchar referensen. För de 13 delsträngar som innehåller kontrolltecken verifieras dessutom att `std.terminal.columns` ger `.None`. [Dunderprov](../tests/standard_columns.ddr) · [Ratatui-prov](../benchmarks/reference/examples/standard_columns.rs)
+
+```sh
+dunder run --locked --offline tools/ligatures.ddr > build/ligatures.txt
+dunder build --locked --offline tests/standard_columns.ddr -o build/columns
+cargo build --offline --locked --release --manifest-path benchmarks/reference/Cargo.toml --example standard_columns --target-dir build/rust
+set -- tests/data/emoji-18.txt tests/data/emoji-variation-18.txt build/ligatures.txt
+build/columns "$@" | build/rust/release/examples/standard_columns "$@"
+```
+
 ## Widgets i 0.5.0
 
 Bildprovet ritar på en färgad bakgrund med en kontrollkant runt widgeten. För varje cell jämförs tecken, för- och bakgrundsfärg samt de attribut som används i provet. Av 24 516 bilder är 24 485 identiska över hela bufferten. I resterande 31 bilder skriver Ratatuis stapeldiagram utanför sin tilldelade ruta. Dunder matchar alla celler inuti rutan och behåller omgivningen intakt. Provet inkluderar samtliga 36 tillstånd som används för att mäta diagramvyn. Ytterligare 50 700 kombinationer av linjetecken och sammanslagningsregler ger samma symbol som Ratatui. [Dunderprov](../tests/widget_reference.ddr) · [Ratatui-prov](../benchmarks/reference/examples/widgets.rs) · [Bildtider och terminalutdata](../benchmarks/widgets.md)
@@ -112,7 +136,7 @@ build/widget-reference | build/rust/release/examples/widgets
 build/widget-reference --merge | build/rust/release/examples/widgets --merge
 ```
 
-Blockkanter och vissa widgets tar ett enskilt tecken som symbol. `Frame.fill_symbol` tar även ett grafem med flera Unicode-skalärer. Stapeldiagrammet delar en färgsatt värdeetikett vid en hel grafemgräns och använder terminalkolumner för dess bredd.
+Blockkanter tar ett enskilt tecken som symbol. `Frame.fill_symbol` tar även ett grafem med flera Unicode-skalärer. Stapeldiagrammet delar en färgsatt värdeetikett vid en hel grafemgräns och använder terminalkolumner för dess bredd.
 
 ## Listor i 0.6.0
 

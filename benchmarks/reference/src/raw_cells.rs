@@ -1,5 +1,40 @@
 use ratatui::buffer::{Buffer, CellDiffOption};
+use ratatui::{
+    layout::Rect,
+    style::{Color, Style},
+    widgets::{Fill, Widget},
+};
 use std::fmt::Write;
+
+#[allow(dead_code)]
+pub fn seeded(a: Rect) -> Buffer {
+    let mut buf = Buffer::empty(a);
+    for y in a.top()..a.bottom() {
+        let bg = if (y - a.y) % 2 == 0 {
+            Color::Rgb(53, 90, 143)
+        } else {
+            Color::Indexed(81)
+        };
+        let style = Style::new()
+            .cyan()
+            .bg(bg)
+            .underline_color(Color::Rgb(0x73, 0x51, 0xce))
+            .bold();
+        Fill::new(".")
+            .style(style)
+            .render(Rect::new(a.x, y, a.width, 1), &mut buf);
+        buf.set_string(a.x + 1, y, "界", Style::new().red());
+        buf.set_string(a.x + 4, y, "❤️", Style::new().italic());
+        for (x, flag) in [
+            (2, CellDiffOption::Skip),
+            (4, CellDiffOption::AlwaysUpdate),
+            (7, CellDiffOption::ForcedWidth(2.try_into().unwrap())),
+        ] {
+            buf[(a.x + x, y)].set_diff_option(flag);
+        }
+    }
+    buf
+}
 
 pub fn compare(
     input: &mut impl Iterator<Item = String>,

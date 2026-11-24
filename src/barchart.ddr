@@ -27,7 +27,7 @@ impl Group {
                 n := cmp.min<i32>(row.w, label.width())
                 x := match label.get_alignment() { .Center => (row.w - n) / 2, .Right => row.w - n, _ => 0, }
                 area := tui.Rect { x: row.x + x, y: row.y, w: n, h: row.h }
-                frame.apply_style(area, style)
+                frame.apply_cell_style(area, style)
                 label.render(&mut frame, area)
             },
             _ => {},
@@ -37,7 +37,7 @@ impl Group {
 
 pub struct BarChart {
     groups: []Group, direction: Direction, bar_width: i32, bar_gap: i32, group_gap: i32, maximum: Option<u64>,
-    symbols: [rune; 9], style: tui.Style, bar_style: tui.Style, value_style: tui.Style, label_style: tui.Style, block: block.Block,
+    symbols: [rune; 9], bar_set: Option<[string;9]>, style: tui.Style, bar_style: tui.Style, value_style: tui.Style, label_style: tui.Style, block: block.Block,
 }
 
 fn value_area(bar: tui.Rect, width: i32, ticks: i32) -> tui.Rect {
@@ -48,15 +48,22 @@ fn value_area(bar: tui.Rect, width: i32, ticks: i32) -> tui.Rect {
 impl BarChart {
     pub fn grouped(move groups: []Group) -> Self {
         Self { groups: move groups, direction: .Vertical, bar_width: 1, bar_gap: 1, group_gap: 0, maximum: .None,
-            symbols: widgets.nine_levels(), style: tui.plain(), bar_style: tui.plain(), value_style: tui.plain(),
+            symbols: widgets.nine_levels(), bar_set:.None, style: tui.plain(), bar_style: tui.plain(), value_style: tui.plain(),
             label_style: tui.plain(), block: block.Block::new() }
     }
     pub fn new(move bars: []Bar) -> Self { BarChart::grouped([Group::new(move bars)]) }
 
     pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
-        frame.apply_style(bounds, self.style)
+        frame.apply_cell_style(bounds, self.style)
         area := self.block.render(&mut frame, bounds)
         if area.w <= 0 || area.h <= 0 || self.bar_width <= 0 { return }
+        match &self.bar_set {
+            .Some(set) => { self.draw(&mut frame,area,&set) },
+            .None => { self.draw(&mut frame,area,&self.symbols) },
+        }
+    }
+
+    fn draw<S: widgets.BarSymbol>(&self, frame: &mut tui.Frame, area: tui.Rect, symbols: &[S;9]) {
         mut maximum := self.maximum.unwrap_or(0)
         mut label_width := 0
         mut bar_labels := false
@@ -92,8 +99,8 @@ impl BarChart {
             for i in 0..count {
                 bar := &group.bars[i]
                 ticks := widgets.bar_ticks(bar.value, maximum, (if vertical { plot.h } else { plot.w }) * 8)
-                if vertical { self.vertical_bar(&mut frame, plot, i32(offset), &bar, ticks, bar_labels) }
-                else { self.horizontal_bar(&mut frame, plot, area.x, i32(offset), &bar, ticks) }
+                if vertical { self.vertical_bar(&mut frame, plot, i32(offset), &bar, ticks, bar_labels, &symbols) }
+                else { self.horizontal_bar(&mut frame, plot, area.x, i32(offset), &bar, ticks, &symbols) }
                 offset += step
             }
             end := i32(offset - gap)
@@ -106,15 +113,15 @@ impl BarChart {
         }
     }
 
-    fn vertical_bar(&self, frame: &mut tui.Frame, plot: tui.Rect, offset: i32, bar: &Bar, ticks: i32, labels: bool) {
+    fn vertical_bar<S: widgets.BarSymbol>(&self, frame: &mut tui.Frame, plot: tui.Rect, offset: i32, bar: &Bar, ticks: i32, labels: bool, symbols: &[S;9]) {
         area := tui.Rect { x: plot.x + offset, y: plot.y, w: self.bar_width, h: plot.h }
-        widgets.vertical_bar(&mut frame, area, ticks, &self.symbols, self.bar_style.patch(bar.style))
+        widgets.vertical_bar(&mut frame, area, ticks, &symbols, self.bar_style.patch(bar.style))
         if labels {
             match &bar.label {
                 .Some(label) => {
                     n := cmp.min<i32>(self.bar_width, label.width())
                     row := tui.Rect { x: area.x + (area.w - n) / 2, y: plot.y + plot.h, w: n, h: 1 }
-                    frame.apply_style(row, self.label_style)
+                    frame.apply_cell_style(row, self.label_style)
                     label.render(&mut frame, row)
                 },
                 _ => {},
@@ -131,7 +138,7 @@ impl BarChart {
                 style := self.value_style.patch(bar.value_style)
                 for i in 0..row.w {
                     cell := tui.Rect { x: row.x + row.w - 1 - i, y: row.y, w: 1, h: 1 }
-                    frame.fill(cell, rune(48 + i32(n % 10)), style)
+                    frame.paint_rune(cell, rune(48 + i32(n % 10)), style)
                     n /= 10
                 }
             },
@@ -142,12 +149,12 @@ impl BarChart {
         }
     }
 
-    fn horizontal_bar(&self, frame: &mut tui.Frame, plot: tui.Rect, label_x: i32, offset: i32, bar: &Bar, ticks: i32) {
+    fn horizontal_bar<S: widgets.BarSymbol>(&self, frame: &mut tui.Frame, plot: tui.Rect, label_x: i32, offset: i32, bar: &Bar, ticks: i32, symbols: &[S;9]) {
         y := plot.y + offset
         length := ticks / 8
         style := self.bar_style.patch(bar.style)
-        frame.fill(tui.Rect { x: plot.x, y: y, w: length, h: self.bar_width }, self.symbols[8], style)
-        frame.fill(tui.Rect { x: plot.x + length, y: y, w: plot.w - length, h: self.bar_width }, self.symbols[0], style)
+        symbols[8].paint_bar(&mut frame, tui.Rect { x:plot.x, y:y, w:length, h:self.bar_width }, style)
+        symbols[0].paint_bar(&mut frame, tui.Rect { x:plot.x+length, y:y, w:plot.w-length, h:self.bar_width }, style)
         row := y + self.bar_width / 2
         match &bar.label {
             .Some(label) => { _ := label.write(&mut frame, tui.Rect { x: label_x, y: row, w: plot.x - label_x, h: 1 }) },
@@ -160,8 +167,8 @@ impl BarChart {
         mut columns := 0
         while split < run.count() && columns < length { columns += run.width_at(split); split += 1 }
         area := tui.Rect { x: plot.x, y: row, w: plot.w, h: 1 }
-        run.render(&mut frame, area, 0, split, self.value_style.patch(bar.value_style))
+        _ := run.write_cells(&mut frame, area, 0, split, self.value_style.patch(bar.value_style))
         (_, rest) := area.cols(columns)
-        run.render(&mut frame, rest, split, run.count(), style)
+        _ := run.write_cells(&mut frame, rest, split, run.count(), style)
     }
 }

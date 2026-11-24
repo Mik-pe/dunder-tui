@@ -4,38 +4,9 @@ use ratatui::{
     buffer::{Buffer, CellDiffOption},
     layout::{Offset, Rect},
     style::{Color, Style},
-    widgets::{Block, CellEffect, Fill, Shadow, Widget, dimmed},
+    widgets::{Block, CellEffect, Shadow, Widget, dimmed},
 };
 use std::io::{self, BufRead};
-
-fn seeded(a: Rect) -> Buffer {
-    let mut buf = Buffer::empty(a);
-    for y in a.top()..a.bottom() {
-        let bg = if (y - a.y) % 2 == 0 {
-            Color::Rgb(53, 90, 143)
-        } else {
-            Color::Indexed(81)
-        };
-        let style = Style::new()
-            .cyan()
-            .bg(bg)
-            .underline_color(Color::Rgb(0x73, 0x51, 0xce))
-            .bold();
-        Fill::new(".")
-            .style(style)
-            .render(Rect::new(a.x, y, a.width, 1), &mut buf);
-        buf.set_string(a.x + 1, y, "界", Style::new().red());
-        buf.set_string(a.x + 4, y, "❤️", Style::new().italic());
-        for (x, flag) in [
-            (2, CellDiffOption::Skip),
-            (4, CellDiffOption::AlwaysUpdate),
-            (7, CellDiffOption::ForcedWidth(2.try_into().unwrap())),
-        ] {
-            buf[(a.x + x, y)].set_diff_option(flag);
-        }
-    }
-    buf
-}
 
 #[derive(Debug)]
 struct Mark;
@@ -77,7 +48,7 @@ fn main() {
             Rect::new(a.x + 7, a.y + 3, 4, 4),
             Rect::new(a.x + 2, a.y, 0, 3),
         ];
-        let prior = seeded(a);
+        let prior = raw_cells::seeded(a);
         for base in bases {
             for (dx, dy) in [
                 (1, 1),

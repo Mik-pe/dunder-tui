@@ -68,6 +68,8 @@ dunder run --example signal
 
 Signalen syntetiseras i appen och kräver ingen ljudenhet. [Källkod](examples/signal/main.ddr)
 
+På `main` kan du ge `LineGauge` egna symboler för fyllda och tomma celler med `gauge.set_symbols("━", "·")`. För `Sparkline` och `BarChart` anger `bar_set` nio strängar från tom till helt fylld stapel. En sparkline kan också visa saknade värden med exempelvis `spark.missing_text = .Some("◆")`. [Körbar scen med båda mätarna](tests/meter_cells.ddr)
+
 ### Kustlinjer
 
 `dunder run --example kustlinjer` visar en världskarta och ett diagram över antalet kustpunkter per fem längdgrader. Piltangenterna flyttar meridianen, Tab växlar kartans upplösning och mellanslag pausar svepet. [Exemplets källkod](examples/kustlinjer/main.ddr)

@@ -1,0 +1,40 @@
+capability filesystem, stdio
+import ..src.width
+import ..src.text as rich
+import std.bytes as bytes
+import std.parse as parse
+import std.terminal as term
+import std.text as text
+import sys
+
+fn measure(out: &mut []u8, value: string) {
+    standard := term.columns(value.as_str()).unwrap_or(-1)
+    span := rich.Span::raw(value.clone())
+    bytes.append_utf8(&mut out,f"{standard} {width.cell_columns(value)} {span.width()} ")
+}
+
+fn sample(value: string) {
+    mut out: []u8 = []
+    measure(&mut out,value)
+    mut at := 0
+    for scalar in value.runes() {
+        at += scalar.str().len
+        if at < value.len {
+            measure(&mut out,value[0..at])
+            measure(&mut out,value[at..value.len])
+        }
+    }
+    print(bytes.decode(&out).unwrap())
+}
+
+fn main() {
+    for value in ["","\t","a\nb","\r\n","لا","ﾞ","ﾟ","ｶﾞ","😶‍🌫️","😶‍🌫"] { sample(value) }
+    for n in 1..sys.arg_count() {
+        for row in text.split(sys.read(sys.arg(n)).unwrap(),"\n") {
+            if row == "" { continue }
+            mut value: []u8 = []
+            for field in text.split(row," ") { bytes.append_utf8(&mut value,rune(parse.hex(field).value).str()) }
+            sample(bytes.decode(&value).unwrap())
+        }
+    }
+}

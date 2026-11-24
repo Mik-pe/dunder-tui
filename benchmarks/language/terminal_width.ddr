@@ -1,0 +1,21 @@
+capability stdio
+import std.terminal as term
+import sys
+
+fn main() {
+    if sys.arg_count() != 2 { panic("expected each or cached") }
+    use_cached := match sys.arg(1) {
+        "each" => false,
+        "cached" => true,
+        _ => { panic("expected each or cached") },
+    }
+    values := ["é","界","لا","😶‍🌫️"]
+    mut widths := [0,0,0,0]
+    for i in 0..4 { widths[i] = term.columns(values[i].as_str()).unwrap() }
+    mut total := 0
+    for i in 0..65536 {
+        n := i.bit_and(3)
+        total += if use_cached { widths[n] } else { term.columns(values[n].as_str()).unwrap() }
+    }
+    print(total)
+}

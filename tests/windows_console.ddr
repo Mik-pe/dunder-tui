@@ -3,6 +3,7 @@ capability unsafe, stdio
 import .buffer_app
 import .cell_widgets
 import .shadow_cells
+import .meter_cells
 import ..src.tui
 import ..src.calendar as cal
 import ..src.table
@@ -266,7 +267,7 @@ unsafe fn shared_screen(out: ptr, x: i32, y: i32) -> i32 {
     0
 }
 
-unsafe fn shadow_screen(out: ptr, x: i32, y: i32) -> i32 {
+unsafe fn shadow_and_meter_screen(out: ptr, x: i32, y: i32) -> i32 {
     mut term := tui.open(.Fixed(tui.Rect::new(2,2,12,5))).unwrap()
     defer { term.backend_mut().close() }
     mut phase := 0
@@ -275,6 +276,12 @@ unsafe fn shadow_screen(out: ptr, x: i32, y: i32) -> i32 {
     phase = 1
     if term.draw(&mut phase,shadow_cells.moving).is_err() { return 165 }
     if unit_at(out,x+3,y+2) != 0x2593 || unit_at(out,x+3,y+3) != 0x2593 || unit_at(out,x+5,y+5) != 46 { return 166 }
+    phase = 0
+    if term.draw(&mut phase,meter_cells.live).is_err() { return 167 }
+    if unit_at(out,x+11,y+2) != 0x25c6 || unit_at(out,x+4,y+3) != 0x754c || unit_at(out,x+8,y+3) != 0xb7 { return 168 }
+    phase = 1
+    if term.draw(&mut phase,meter_cells.live).is_err() { return 169 }
+    if unit_at(out,x+2,y+2) != 0x25c6 || unit_at(out,x+4,y+3) != 61 || unit_at(out,x+10,y+3) != 0xb7 { return 170 }
     0
 }
 
@@ -294,7 +301,7 @@ unsafe fn embedded(out: ptr) -> i32 {
         if wide.completed().symbol_at(65534,2) != .Some("D") { return 162 }
         wide.backend_mut().close()
     }
-    shadow := shadow_screen(out,x,y)
+    shadow := shadow_and_meter_screen(out,x,y)
     if shadow != 0 { return shadow }
     shared := shared_screen(out,x,y)
     if shared != 0 { return shared }

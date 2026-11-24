@@ -14,21 +14,6 @@ pub fn moving(frame: &mut tui.Frame, phase: &mut i32) {
     frame.render_widget(&shadow,base)
 }
 
-fn seeded(a: tui.Rect) -> tui.Frame {
-    mut f := tui.Frame::at(a)
-    for y in a.y..a.bottom() {
-        bg: tui.Color = if (y-a.y)%2 == 0 { .Rgb(53,90,143) } else { .Indexed(81) }
-        style := tui.ink(.Cyan).background(bg).underline_rgb(0x7351ce).bold()
-        f.fill(tui.Rect::new(a.x,y,a.w,1),`.`,style)
-        _ := f.set_cell(a.x+1,y,"界",tui.ink(.Red))
-        _ := f.set_cell(a.x+4,y,"❤️",tui.plain().italic())
-        _ := f.set_diff_option(a.x+2,y,.Skip)
-        _ := f.set_diff_option(a.x+4,y,.AlwaysUpdate)
-        _ := f.set_diff_option(a.x+7,y,.ForcedWidth(2))
-    }
-    move f
-}
-
 fn mark(f: &mut tui.Frame, shade: tui.Rect, base: tui.Rect) {
     a := f.area()
     cell := f.cell_at(a.x,a.y).unwrap()
@@ -47,8 +32,8 @@ fn main() {
             tui.Rect::new(a.x+7,a.y+3,4,4),tui.Rect::new(a.x+2,a.y,0,3)]
         for base in bases { for (dx,dy) in [(1,1),(-1,0),(2,-2),(0,0),(8,3),(-2147483648,1),(2147483647,2147483647)] {
             for mode in 0..9 { for attached in [false,true] {
-                prior := seeded(a)
-                mut f := seeded(a)
+                prior := raw_cells.seeded(a)
+                mut f := raw_cells.seeded(a)
                 mut shadow := match mode {
                     0 => box.Shadow::new(.Overlay), 1 => box.Shadow::new(.Dimmed),
                     2 => box.Shadow::new(.Symbol(`░`)), 3 => box.Shadow::symbol(""),

@@ -54,3 +54,19 @@ cargo run --locked --release --manifest-path benchmarks/reference/Cargo.toml --t
 ```
 
 För högsta RSS, kör varje tidsmätt binär med `/usr/bin/time -l` på macOS eller `/usr/bin/time -v` på Linux. [Mätprogram](widgets.ddr) · [PTY-drivrutin](pty.ddr) · [Upprepning och sammanställning](measure.ddr)
+
+## Mätare och stapelsymboler med Dunder 0.11.3
+
+Samma 36 widgettillstånd och fem bildändringar mättes lokalt mot Ratatui 0.30.2. Tabellen visar p50 / p95 i mikrosekunder vid skrivning till en pseudoterminal på macOS ARM64. Varje värde är medianen av sju alternerade körningar efter två uppvärmningskörningar. Resultatfilen innehåller även min- och maxvärden för varje serie och motsvarande mätning utan terminalskrivning. [Alla 60 mätserier](results/widget-cells-dunder-0.11.3-local.tsv)
+
+| Ändring | Dunder | Ratatui |
+| --- | ---: | ---: |
+| Oförändrad | 27 / 71 | 40 / 87 |
+| Ett tecken | 29 / 31 | 41 / 85 |
+| Rullning | 131 / 164 | 140 / 173 |
+| Ny bredd | 163 / 216 | 187 / 254 |
+| Full omritning | 204 / 244 | 253 / 375 |
+
+I Linuxgästen på ARM64 tog en oförändrad bild 66 / 76 µs mot Ratatuis 43 / 95 µs. På översatt Linux x86-64 hade Ratatui lägre p50 och p95 för alla fem fall. Värddatorn körde också andra virtuella maskiner och intervallen mellan upprepningarna var breda. Varje körning på alla tre plattformarna skrev exakt 4 113 141 byte för Dunder och 7 939 285 för Ratatui inklusive uppvärmning.
+
+På macOS gjorde Dunder 23 858 allokeringsanrop och begärde 1 189 668 byte. Rustreferensen gjorde 31 122 anrop och begärde 1 748 420 byte. Medianen av högsta RSS över fem separata körningar var 2 128 KiB respektive 2 960 KiB.

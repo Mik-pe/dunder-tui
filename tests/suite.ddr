@@ -629,6 +629,22 @@ import ..src.tailwind
     assert(b.horizontal_space() == (65535,65535) && b.vertical_space() == (65535,65535))
 }
 
+@test fn meters_keep_symbols_in_each_raw_cell_and_labels_leave_the_left_cell_alone() {
+    mut frame := tui.Frame::new(7,2)
+    assert(frame.set_cell(0,0,"界",tui.ink(.Red)))
+    mut line := widgets.LineGauge::new(0.5)
+    line.label = .Some(rich.Line::raw("V"))
+    line.set_symbols("ab","")
+    frame.render_widget(&line,tui.Rect::new(1,0,6,1))
+    assert(frame.cell_at(0,0).unwrap().symbol == "界" && frame.cell_at(1,0).unwrap().symbol == "V")
+    assert(frame.cell_at(3,0).unwrap().symbol == "ab" && frame.cell_at(6,0).unwrap().symbol == "")
+    mut s := widgets.Sparkline::bars([widgets.Sample::missing(),widgets.Sample::new(8)])
+    s.missing_text = .Some("é")
+    s.symbols[8] = `界`
+    frame.render_widget(&s,tui.Rect::new(5,1,2,1))
+    assert(frame.cell_at(5,1).unwrap().symbol == "é" && frame.cell_at(6,1).unwrap().symbol == "界")
+}
+
 @test fn gauges_sparkline_and_scroll_state_cover_extreme_values() {
     max: u64 = 0xffffffffffffffff
     assert(widgets.bar_ticks(max - 1, max, 32768) == 32767)
@@ -1463,4 +1479,19 @@ impl tui.Backend for BufferedOutput {
     assert(one.cell_at(0,0).unwrap().symbol == "")
     one.resize(2,1)
     assert(one.cell_at(0,0).unwrap().symbol == "")
+}
+
+@test fn contextual_width_handles_truncated_emoji_controls_and_cell_overflow() {
+    value := "🏻‍🫲🏼"
+    assert(width.cell_columns(value) == 2 && rich.Span::raw(value.clone()).width() == 2)
+    assert(width.cell_columns(value + "\r\nx") == 4)
+    assert(width.cell_columns("\u{85}x\r\r\n") == 4)
+    mut raw: []u8 = []
+    for _i in 0..65536 { raw.push(97) }
+    line := bytes.decode(&raw).unwrap()
+    assert(width.cell_columns(line) == 0)
+    assert(width.cell_columns(line + "ﾞ") == 2)
+    assert(width.cell_columns(line[1..line.len] + "ﾞ") == 1)
+    assert(width.cell_columns(line[2..line.len] + "ﾞ") == 65535)
+    assert(rich.Span::raw(move line).width() == 65536)
 }

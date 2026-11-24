@@ -1,4 +1,5 @@
 import .width_data
+import std.terminal as terminal
 
 const CR: i32 = 1
 const LF: i32 = 2
@@ -238,24 +239,35 @@ pub fn glyph(chars: &[]rune, start: i32) -> Glyph {
     out
 }
 
+pub fn measured_columns(value: &str) -> i32 {
+    match terminal.columns(value) {
+        .Some(n) => { return n },
+        .None => {},
+    }
+    mut total := 0
+    mut start := 0
+    mut at := 0
+    mut previous_cr := false
+    for scalar in value.runes() {
+        cp := i32(scalar)
+        if cp < 32 || (cp >= 127 && cp < 160) {
+            if start < at { total += terminal.columns(&value[start..at]).unwrap() }
+            if cp != 10 || !previous_cr { total += 1 }
+            start = at+encoded(cp)
+        }
+        previous_cr = cp == 13
+        at += encoded(cp)
+    }
+    if start < at { total += terminal.columns(&value[start..at]).unwrap() }
+    total
+}
+
 pub fn cell_columns(value: string) -> i32 {
     if value.len == 1 { return 1 }
-    chars := value.runes()
-    mut at := 0
-    mut measured := i64(0)
+    measured := measured_columns(value.as_str())
+    if measured <= 65535 { return measured }
     mut marks := 0
-    mut script := false
-    while at < chars.len {
-        g := glyph(&chars,at)
-        measured += i64(if g.span < 0 { 1 } else { g.span }) + i64(g.saved)
-        for i in at..g.end {
-            cp := i32(chars[i])
-            if cp == 0xff9e || cp == 0xff9f { marks += 1 }
-            if script_candidate(cp) { script = true }
-        }
-        at = g.end
-    }
-    if script { measured -= i64(script_savings(&chars,0,chars.len)) }
-    columns := (measured-i64(marks)).bit_and(65535) + i64(marks.bit_and(65535))
-    if columns >= 65535 { 65535 } else { i32(columns) }
+    for cp in value.runes() { if cp == rune(0xff9e) || cp == rune(0xff9f) { marks += 1 } }
+    cells := (measured-marks).bit_and(65535) + marks.bit_and(65535)
+    if cells >= 65535 { 65535 } else { cells }
 }

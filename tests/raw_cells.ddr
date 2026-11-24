@@ -1,6 +1,21 @@
 import ..src.tui
 import std.bytes as bytes
 
+pub fn seeded(a: tui.Rect) -> tui.Frame {
+    mut f := tui.Frame::at(a)
+    for y in a.y..a.bottom() {
+        bg: tui.Color = if (y-a.y)%2 == 0 { .Rgb(53,90,143) } else { .Indexed(81) }
+        style := tui.ink(.Cyan).background(bg).underline_rgb(0x7351ce).bold()
+        f.fill(tui.Rect::new(a.x,y,a.w,1),`.`,style)
+        _ := f.set_cell(a.x+1,y,"界",tui.ink(.Red))
+        _ := f.set_cell(a.x+4,y,"❤️",tui.plain().italic())
+        _ := f.set_diff_option(a.x+2,y,.Skip)
+        _ := f.set_diff_option(a.x+4,y,.AlwaysUpdate)
+        _ := f.set_diff_option(a.x+7,y,.ForcedWidth(2))
+    }
+    move f
+}
+
 pub fn compare(frame: &tui.Frame, prior: &tui.Frame) {
     a := frame.area()
     for y in a.y..a.bottom() {
