@@ -1,0 +1,25 @@
+capability stdio
+import ...src.tui
+import std.array
+import sys
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 2 }
+    mode := sys.arg(1)
+    if mode != "clone" && mode != "fresh" { return 2 }
+    template := tui.RawCell::empty()
+    mut total := 0
+    for _ in 0..110 {
+        mut row: []tui.RawCell = []
+        row.reserve(2304)
+        if mode == "clone" { array.resize(&mut row, 2304, &template) }
+        else { for _ in 0..2304 { row.push(tui.RawCell::empty()) } }
+        for cell in &row {
+            assert(cell.symbol.is_none() && cell.modifier.bits == 0 && !cell.skip)
+            total += cell.cell_width()
+        }
+    }
+    assert(total == 253440)
+    print(total)
+    0
+}

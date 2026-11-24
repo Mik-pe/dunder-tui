@@ -1,6 +1,7 @@
 import .width_data
 import std.terminal as terminal
 
+const OTHER: i32 = 0
 const CR: i32 = 1
 const LF: i32 = 2
 const CONTROL: i32 = 3
@@ -83,16 +84,22 @@ impl CellCursor {
         cp := self.scalar
         self.cells = if cp < 32 || (cp >= 127 && cp < 160) { -1 } else { self.props.shr(7).bit_and(3) }
         self.end += encoded(cp)
-        mut state := BreakState::first(self.props)
+        if self.end == value.len { return }
+        first := self.props
+        self.scalar = scalar_at(value, self.end)
+        self.props = property(self.scalar)
+        if self.props.bit_and(15) == OTHER && first.bit_and(15) != PREPEND { return }
+        mut state := BreakState::first(first)
         mut contextual := false
-        while self.end < value.len {
-            self.scalar = scalar_at(value, self.end)
-            self.props = property(self.scalar)
+        while true {
             joined_emoji := state.emoji_join
             if !state.advance(self.props) { break }
             if self.cells >= 0 { self.cells += self.props.shr(7).bit_and(3) }
             if presentation_change(self.scalar, joined_emoji) || script_candidate(self.scalar) { contextual = true }
             self.end += encoded(self.scalar)
+            if self.end == value.len { break }
+            self.scalar = scalar_at(value, self.end)
+            self.props = property(self.scalar)
         }
         if contextual || self.cells >= 65535 { self.cells = cell_columns_view(&value[start..self.end]) }
     }

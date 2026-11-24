@@ -1,0 +1,7 @@
+const PUNCTUATION: [string; 3] = ["[", "]", ","]
+
+fn main() {
+    assert(PUNCTUATION[0] == "[")
+    assert(PUNCTUATION[1] == "]")
+    assert(PUNCTUATION[2] == ",")
+}

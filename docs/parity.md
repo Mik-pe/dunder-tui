@@ -198,12 +198,16 @@ Vid 65 537 kolumner får bufferten bredd 1, som i Ratatui 0.30.2. Vid fler än 6
 
 En `Buffer` kan skapas tom, förifylld eller från strängar, spann och rader. Celler kan lånas, ändras och återställas på plats. Provet jämför sammanslagning av kantsymboler, alla diffregler inklusive äldre `skip`, stiländringar med överlappande attribut, klippt text, oanvända celler under breda tecken, storleksändring och sammanslagning av buffertar med olika origo. Förberett och direkt skrivet innehåll provas även med 5 986 emoji- och presentationssekvenser. [Dunderprov](../tests/cell_edits.ddr) · [Ratatui-prov](../benchmarks/reference/examples/cell_edits.rs)
 
+För ASCII mitt i blandad text jämfördes ytterligare 720 buffertar med Ratatui. Testet varierar skrivposition, kolumngräns och stil för bland annat tangentemoji, kombinerande tecken, arabiskt prefixtecken och CRLF. Alla 7 920 fysiska celler och 720 slutpositioner stämde på macOS ARM64, Linux ARM64, översatt Linux x64 och Windows x64 under Wine.
+
 Med de 766 grafemtesterna för Unicode 17 stämde alla 8 149 bufferttillstånd, 71 178 fysiska celler och returnerade skrivpositioner på macOS ARM64, Linux ARM64, översatt Linux x86-64 och Win64 under Wine. Jämförelsen skiljer en oskriven cell från ett uttryckligt mellanslag. Separata prov jämförde samtliga 1 112 064 Unicode-skalärer och alla 9 216 celler i fyra rörliga bilder. Unix-pseudoterminalerna och Win32-konsolen under Wine kontrollerade att en skyddad cell bevarades medan nästa rad bytte från 茶 till 海. [Terminalprov](../tests/buffer_terminal.ddr) · [Win32-prov](../tests/windows_console.ddr) · [Bildtider](../benchmarks/cell-writes.md)
 
 ```sh
 mkdir -p build
 dunder build --locked --offline tests/cell_edits.ddr -o build/cells
 cargo build --locked --release --offline --manifest-path benchmarks/reference/Cargo.toml --features theme-oracle --example cell_edits --target-dir build/reference
+build/cells --mixed >build/mixed.out
+build/reference/release/examples/cell_edits --mixed <build/mixed.out
 build/cells --graphemes >build/graphemes.txt
 set -- tests/data/emoji-18.txt tests/data/emoji-variation-18.txt build/graphemes.txt
 build/cells "$@" >build/cells.out

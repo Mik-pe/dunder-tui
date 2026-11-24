@@ -4,23 +4,27 @@
 
 ## Mätningar
 
-Tabellen visar median / p95 i mikrosekunder per färdig buffert. För varje värde tas medianen av sju processers p50 respektive p95. [Alla 189 mätningar](results/line-input-0.12.1.tsv)
+Råbufferten skapar nu tomma celler direkt när den växer. Vid skrivning av blandad text behandlas sammanhängande utskrivbara ASCII-tecken tillsammans. Sista tecknet före en Unicode-skalär går genom grafemläsaren så att exempelvis en siffra och dess presentationsväljare hamnar i samma cell.
+
+Tabellen visar median / p95 i mikrosekunder per färdig buffert, jämfört med `d772f40` på samma maskin. Varje värde är medianen av sju processers p50 respektive p95. [Alla 189 mätningar](results/line-storage-0.12.1.tsv) · [Föregående jämförelse](results/line-input-0.12.1.tsv)
 
 | Plattform | Innehåll | Dunder före | Dunder nu | Ratatui |
 | --- | --- | ---: | ---: | ---: |
-| macOS ARM64 | ASCII | 62 / 133 | 57 / 126 | 35,8 / 61 |
-| macOS ARM64 | CJK och diakritiska tecken | 201 / 407 | 182 / 308 | 39,3 / 59,1 |
-| macOS ARM64 | Blandat med radslut | 234 / 332 | 196 / 324 | 35,2 / 49,1 |
-| Linux ARM64 | ASCII | 65,7 / 122,7 | 61,1 / 140,5 | 45,3 / 110,4 |
-| Linux ARM64 | CJK och diakritiska tecken | 207,5 / 446,8 | 190,3 / 415 | 50,6 / 75,5 |
-| Linux ARM64 | Blandat med radslut | 241,9 / 490,6 | 200,8 / 376,2 | 40 / 74,3 |
-| Översatt Linux x64 | ASCII | 943,4 / 1525,1 | 857 / 1329,5 | 65,6 / 124,1 |
-| Översatt Linux x64 | CJK och diakritiska tecken | 2261,8 / 3362,6 | 1964,8 / 3042,4 | 82,4 / 115 |
-| Översatt Linux x64 | Blandat med radslut | 2456,8 / 3574 | 1896,4 / 2674,2 | 64,8 / 104,4 |
+| macOS ARM64 | ASCII | 58 / 130 | 50 / 104 | 35,9 / 104,7 |
+| macOS ARM64 | CJK och diakritiska tecken | 188 / 443 | 138 / 304 | 42 / 112,6 |
+| macOS ARM64 | Blandat med radslut | 204 / 460 | 194 / 419 | 35,4 / 82,1 |
+| Linux ARM64 | ASCII | 59,3 / 124,3 | 48,3 / 70,6 | 45,5 / 58,8 |
+| Linux ARM64 | CJK och diakritiska tecken | 187,9 / 411,4 | 136,6 / 270,7 | 50 / 81,9 |
+| Linux ARM64 | Blandat med radslut | 199,8 / 283,5 | 182,8 / 349,3 | 39,5 / 54 |
+| Översatt Linux x64 | ASCII | 870,4 / 1 336,1 | 659,6 / 993,1 | 65 / 109,2 |
+| Översatt Linux x64 | CJK och diakritiska tecken | 1 958 / 2 996 | 1 397,7 / 2 025,7 | 81,8 / 147,1 |
+| Översatt Linux x64 | Blandat med radslut | 1 909,6 / 2 793,3 | 1 696,3 / 2 538,9 | 64,9 / 89,7 |
 
-För texten med radslut låg de sju processmedianerna på Macen inom 233–241 µs före ändringen, 196–202 µs efter ändringen och 34,8–36,5 µs för Ratatui. Nativa tider för Windows x64 och Linux x64 återstår.
+På Linux ARM64 låg de sju processmedianerna för CJK-provet inom 183–190 µs före ändringen, 135,3–138,7 µs efteråt och 49,5–51 µs i Ratatui. För texten med radslut sjönk medianen på samma plattform medan p95 ökade från 283,5 till 349,3 µs. På macOS varierade CJK-medianerna mellan 132 och 288 µs efter ändringen. Nativa tider för Windows x64 och Linux x64 återstår.
 
-Över 330 byggen begärde Dunder 3 363 975 allokeringar jämfört med 3 676 815 tidigare, inklusive 615 för uppstart och indata. Dunders räknare inkluderar återanvändning ur minnespoolen. När uppstarten drogs av begärde Rust 13 860 allokeringar. Medianen för högsta RSS över fem oprofilerade processer var 2 080 / 2 352 KiB på macOS, 384 / 1 724 KiB på Linux ARM64 och 5 700 / 4 948 KiB på översatt Linux x64, med Dunder först. [Alla resursvärden](results/line-input-resources-0.12.1.tsv)
+Över 330 buffertbyggen sjönk Dunders allokeringsanrop från 3 363 975 till 2 687 145 inklusive 615 för uppstart och indata. Dunders räknare omfattar återanvändning ur minnespoolen. Efter avdrag för uppstart gjorde Rust 13 860 anrop till sin globala allokerare. Medianen för högsta RSS över fem oprofilerade processer var 2 080 / 2 352 KiB på macOS, 384 / 1 724 KiB på Linux ARM64 och 5 704 / 5 012 KiB på översatt Linux x64, med Dunder först. [Alla resursvärden](results/line-storage-resources-0.12.1.tsv)
+
+Vid omskrivning av en befintlig buffert på macOS låg ASCII kvar på 21 µs i median. När text och stil ändrades i varje bild sjönk medianen från 109 till 106 µs, med p95 på 168 µs i båda körningarna. Ratatui tog 36,8 / 70,5 µs i det rörliga provet. [Alla 105 mätningar](results/line-storage-writes-macos-0.12.1.tsv) · [Arbetslaster och körkommandon](cell-writes.md)
 
 ## Återskapa körningen lokalt
 
@@ -37,8 +41,7 @@ build/lines --cells > build/dunder-cells
 cmp build/dunder-cells build/rust-cells
 
 baseline=$(mktemp -d)
-git archive 42c65d8fcaa4edb6cdc1ba86fbe08da81182e185 | tar -x -C "$baseline"
-cp benchmarks/line_input.ddr "$baseline/benchmarks/line_input.ddr"
+git archive d772f4072c959adc2ea2677e1ed89eb27259d695 | tar -x -C "$baseline"
 before="$PWD/build/lines-before"
 (cd "$baseline" && dunder build --locked --offline benchmarks/line_input.ddr -o "$before")
 for run in 1 2 3 4 5 6 7 8 9; do

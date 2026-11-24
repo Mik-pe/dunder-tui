@@ -96,6 +96,41 @@ fn cell_edits(record: &mut impl FnMut(&Buffer, (u16, u16))) {
     }
 }
 
+fn mixed_ascii_runs(record: &mut impl FnMut(&Buffer, (u16, u16))) {
+    for s in [
+        "abc茶XYZ",
+        "abc\u{301}XYZ",
+        "abc#️⃣XYZ",
+        "abc7︎XYZ",
+        "abc\u{600}XYZ",
+        "abc\r\nXYZ",
+        "abc\u{85}XYZ",
+        "abc\u{200d}XYZ",
+        "\u{600}aBC茶",
+        "abcक्‍कXYZ",
+        "🇸🇪abc🇩🇰",
+        "🧑🏽‍🚀abc界",
+        "abcカﾞﾟXYZ",
+        "abc  茶",
+        "abc\u{301}\u{308}  ",
+    ] {
+        for x in [3, 6] {
+            for limit in 0..12 {
+                for style in [
+                    Style::new(),
+                    Style::new()
+                        .fg(Color::Green)
+                        .remove_modifier(Modifier::ITALIC),
+                ] {
+                    let mut b = Buffer::filled(Rect::new(3, 2, 11, 1), seed());
+                    let end = b.set_stringn(x, 2, s, limit, style);
+                    record(&b, end);
+                }
+            }
+        }
+    }
+}
+
 fn write_text(record: &mut impl FnMut(&Buffer, (u16, u16))) {
     let area = Rect::new(10, 6, 7, 2);
     for &value in WORDS {
@@ -322,6 +357,14 @@ fn main() {
         states += 1;
         cells += b.content.len();
     };
+    if bench.as_deref() == Some("--mixed") {
+        mixed_ascii_runs(&mut check);
+        assert!(lines.next().is_none(), "extra states");
+        println!(
+            "{states} buffer states and returned positions, {cells} physical cells matched Ratatui"
+        );
+        return;
+    }
     cell_edits(&mut check);
     write_text(&mut check);
     line_buffers(&mut check);

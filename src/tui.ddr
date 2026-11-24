@@ -1081,7 +1081,11 @@ fn shift_strings(slots: &mut []string, first: i32, end: i32, delta: i32) {
 }
 
 impl Buffer {
-    pub fn empty(area: Rect) -> Self { Self::filled(area, &RawCell::empty()) }
+    pub fn empty(area: Rect) -> Self {
+        mut buffer := Self::default()
+        buffer.resize(area)
+        move buffer
+    }
     pub fn filled(area: Rect, cell: &RawCell) -> Self {
         Self::try_filled(area, &cell).unwrap()
     }
@@ -1146,7 +1150,8 @@ impl Buffer {
     }
     pub fn try_resize(&mut self, area: Rect) -> Result<(),string> {
         n := Self::reserve_content(&mut self.content, area)?
-        array.resize(&mut self.content, n, &RawCell::empty())
+        if n < self.content.len { self.content.truncate(n) }
+        for _ in self.content.len..n { self.content.push(RawCell::empty()) }
         self.area = area
         .Ok
     }
@@ -1209,7 +1214,7 @@ impl Buffer {
     }
     fn write_grapheme(&mut self, i: i32, view: &str, w: i32, patch: &CellStyle) {
         self.content[i].write_symbol(view)
-        patch.apply(&mut self.content[i])
+        if !patch.style.empty() { patch.apply(&mut self.content[i]) }
         for tail in i+1..i+w {
             cell := &mut self.content[tail]
             if cell.skip || cell.diff_option != .None || !cell.empty_tail() { cell.reset() }
@@ -1230,6 +1235,22 @@ impl Buffer {
         mut i := self.cell_index(x, y)
         while cursor.end < value.len && left > 0 {
             start := cursor.end
+            if cursor.scalar >= 32 && cursor.scalar < 127 {
+                stop := start + cmp.min<i32>(left, value.len-start)
+                mut end := start+1
+                while end < stop && value[end] >= 32 && value[end] < 127 { end += 1 }
+                if end < value.len && value[end] >= 128 { end -= 1 }
+                count := end-start
+                if count > 1 {
+                    _ := self.write_ascii(col, y, &value[start..end], count, &patch)
+                    col += count
+                    i += count
+                    left -= count
+                    if left == 0 || end == value.len { break }
+                    cursor = width.CellCursor::at(value,end)
+                    continue
+                }
+            }
             cursor.advance(value)
             w := cursor.cells
             if w <= 0 { continue }

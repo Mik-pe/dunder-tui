@@ -60,6 +60,23 @@ fn cell_edits() {
     }
 }
 
+fn mixed_ascii_runs() {
+    cases := ["abc茶XYZ", "abc\u{301}XYZ", "abc#️⃣XYZ", "abc7︎XYZ", "abc\u{600}XYZ",
+        "abc\r\nXYZ", "abc\u{85}XYZ", "abc\u{200d}XYZ", "\u{600}aBC茶", "abcक्‍कXYZ",
+        "🇸🇪abc🇩🇰", "🧑🏽‍🚀abc界", "abcカﾞﾟXYZ", "abc  茶", "abc\u{301}\u{308}  "]
+    for s in &cases {
+        for x in [3, 6] {
+            for limit in 0..12 {
+                for style in [tui.plain(),tui.ink(.Green).without(.Italic)] {
+                    mut b := tui.Buffer::filled(tui.Rect::new(3,2,11,1), &seed())
+                    end := b.set_stringn(x,2,s.as_str(),limit,style)
+                    record(&b,end)
+                }
+            }
+        }
+    }
+}
+
 fn write_text() {
     area := tui.Rect::new(10,6,7,2)
     cases := words()
@@ -110,6 +127,7 @@ fn line_buffers() {
 }
 
 fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--mixed" { mixed_ascii_runs(); return }
     if sys.arg_count() == 2 && sys.arg(1) == "--combining-cases" {
         bases := ["000D","0085","0065","0301","2764","FF76","05D0","0627","0644","0915","1780","2D4F","1F44B"]
         marks := ["0301","0308","0338","05B0","0651","094D","17D2","20E3","FE01","FE0E","FE0F","FF9E","1F3FB","200D"]

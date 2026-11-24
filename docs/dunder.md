@@ -1,5 +1,13 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Skapa varje nytt element när en array växer
+
+För 110 buffertar med vardera 2 304 tomma celler begärde `std.array.resize` 760 543 allokeringar. När varje ny cell konstruerades direkt sjönk antalet till 507 103 och postklonerna från 760 321 till 253 441. Båda varianterna reserverade samma kapacitet och gav summan 253 440 på macOS och Linux ARM64 med Dunder 0.12.1. Bygg med `--runtime-profile` och kör med `clone` respektive `fresh`. [Mätprogram](../benchmarks/language/fresh_cells.ddr)
+
+## Läs en hakparentes som data i en konstant strängtabell
+
+I Dunder 0.12.1 får tabellen `["[", "]", ","]` E3007. Konstantutvärderaren jämför den avkodade texten med `]` även när tokenen är en sträng. Med en separat strängkonstant för den avslutande hakparentesen fungerar tabellen och alla tre uppslagen. [Minimiprov](../tests/dogfood/compiler/constant_bracket_table.ddr)
+
 ## Flytta ägaren när en retur lämnar en radloop
 
 Buffertkonstruktorn, `Line::raw`, `Text::raw` och utskriften av spann använder nu `std.text.lines` för lånade rader. En ensam rad kan flyttas direkt in i det färdiga spannet. I Dunder 0.12.1 ger `return move source` inne i radloopen E4003 även när returgrenen redan gjort sin sista läsning av radvyn och läsaren saknar destruktor. Biblioteket avslutar lånets block före flytten. En förbättring i låneanalysen kan göra den direkta returen möjlig och fortfarande avvisa en flytt följd av en ny läsning. [Minimiprov](../tests/dogfood/compiler/return_owner_from_line_loop.ddr) · [Körbara konstruktorer](../src/text.ddr)
