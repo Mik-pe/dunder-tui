@@ -5,6 +5,7 @@ import ..src.table
 import ..src.text as rich
 import ..src.tui
 import std.json
+import sys
 
 fn marker(k:i32) -> rich.Line {
     if k == 0 { return rich.Line::raw("NORD") }
@@ -62,7 +63,50 @@ pub fn live(frame: &mut tui.Frame, phase: &mut i32) {
     span.render(&mut frame,tui.Rect::new(a.x+1,a.y+2,1,1))
 }
 
+fn document(k: i32) -> rich.Text {
+    line := rich.Line::new([
+        rich.Span::styled("A👩", tui.ink(.Red).italic()),
+        rich.Span::styled("🏽‍🚀", tui.ink(.Yellow)),
+        rich.Span::raw("e"), rich.Span::raw("\u{301}"), rich.Span::raw("لا"),
+    ])
+    tail := rich.Line::new([rich.Span::raw("カﾞ"), rich.Span::styled("❤️",tui.ink(.Indexed(81))), rich.Span::raw("終")])
+    alignment := if k == 0 { rich.Alignment.Left } else if k == 1 { rich.Alignment.Center } else { rich.Alignment.Right }
+    rich.Text::new([line.align(alignment),rich.Line::raw(""),move tail]).styled(tui.plain().underlined()).align(alignment)
+}
+
+fn composite() {
+    for k in 0..3 {
+        mut menu := list.List::new([list.Item::raw("▹"),list.Item::new(document(k)),list.Item::new(document((k+1)%3))])
+        menu.marker = rich.Line::raw("·")
+        menu.highlight = tui.plain().background(.Magenta)
+        mut first := table.Row::new([table.Cell::new(document(k)),table.Cell::new(document((k+1)%3))])
+        first.height = 3
+        mut last := table.Row::new([table.Cell::new(document((k+2)%3)).spanning(2)])
+        last.height = 3
+        mut grid := table.Table::new([move first,move last],[.Percentage(40),.Fill(1)])
+        grid.row_highlight = tui.plain().background(.Magenta)
+        for selected in [false,true] {
+            mut item := list.ListState::new()
+            mut cell := table.TableState::new()
+            if selected { item.select(.Some(1)); cell.select_cell(.Some((1,0))) }
+            for w in [1,2,4,7,12,19] {
+                for h in [1,3,6] {
+                    area := tui.Rect::new(5,3,w,h)
+                    for is_table in [false,true] {
+                        mut frame := styled_grid.seed(tui.Rect::new(4,2,21,8),true)
+                        if is_table { grid.render_stateful(&mut frame,area,&mut cell) }
+                        else { menu.render_stateful(&mut frame,area,&mut item) }
+                        print(json.to_string(&frame).unwrap())
+                        print(if is_table { json.to_string(&cell).unwrap() } else { json.to_string(&item).unwrap() })
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--composite" { composite(); return }
     for a in [tui.Rect::new(0,0,16,9),tui.Rect::new(5,3,16,9)] {
         for flags in [false,true] { for k in 0..3 { for table_first in [false,true] {
             mut frame := styled_grid.seed(a,flags)

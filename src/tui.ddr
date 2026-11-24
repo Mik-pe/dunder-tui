@@ -1118,10 +1118,13 @@ impl BufferText for string {
         self.len
     }
     fn write_buffer(&self, buffer: &mut Buffer, x: i32, y: i32, limit: i32) -> (i32,i32) {
+        room := cmp.min<i32>(buffer.area.right() - x, limit)
+        if room <= 0 || self.len == 0 { return (x, y) }
         mut col := x
+        patch := CellStyle::new(plain())
         mut rows := strings.lines(self.as_str())
-        while col - x < limit && rows.advance() {
-            (end, _) := buffer.set_stringn(col, y, rows.current(), limit - (col - x), plain())
+        while col - x < room && rows.advance() {
+            (end, _) := buffer.write_stringn(col, y, rows.current(), room - (col - x), &patch)
             col = end
         }
         (col, y)
@@ -1346,10 +1349,13 @@ impl Buffer {
         }
     }
     pub fn set_stringn(&mut self, x: i32, y: i32, value: &str, limit: i32, style: Style) -> (i32,i32) {
+        room := cmp.min<i32>(self.area.right() - x, limit)
+        if room <= 0 || value.len == 0 { return (x, y) }
+        self.write_stringn(x, y, value, room, &CellStyle::new(style))
+    }
+    fn write_stringn(&mut self, x: i32, y: i32, value: &str, room: i32, patch: &CellStyle) -> (i32,i32) {
         mut col := x
-        mut left := cmp.min<i32>(self.area.right() - x, limit)
-        if left <= 0 { return (x, y) }
-        patch := CellStyle::new(style)
+        mut left := room
         count := cmp.min<i32>(left, value.len)
         mut ascii := count == value.len || value[count] < 128
         if ascii {

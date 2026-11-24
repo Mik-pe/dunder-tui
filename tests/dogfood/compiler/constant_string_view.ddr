@@ -1,0 +1,6 @@
+const LABEL: string = "terminal"
+
+fn main() {
+    view := LABEL.as_str()
+    assert(view.len == 8 && view[3] == b'm')
+}

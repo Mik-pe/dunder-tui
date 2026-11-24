@@ -88,7 +88,39 @@ fn coordinates() {
     }
 }
 
+fn width_cases() {
+    starts := ["", "41", "0D", "0622", "0644", "05D0", "1780", "1A15", "2D4F",
+        "A4F8", "10C32", "16D63", "FF76", "2764", "0031", "1F44D", "1F1F8", "2018"]
+    middles := ["", "20", "0009", "000A", "000D 000A", "0085", "034F", "064E", "200D",
+        "FE0E", "FE0F", "FE01", "1F3FD", "17D2", "1A17 200D", "2D7F", "16D67"]
+    ends := ["", "42", "0627", "05DC", "1780", "1A10", "2D3F", "A4FC", "10C03",
+        "16D67", "16D68", "FF9E", "FF9F", "20E3", "1F1EA", "1F4BB", "FE0F", "2764"]
+    for a in &starts {
+        for b in &middles {
+            for c in &ends {
+                row := text.trim(if b.len == 0 { f"{a} {c}" } else { f"{a} {b} {c}" })
+                if row.len > 0 { print(row) }
+            }
+        }
+    }
+}
+
 fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--width-cases" { width_cases(); return }
+    if sys.arg_count() == 2 && sys.arg(1) == "--text-widths" {
+        mut widths: []u8 = []
+        widths.reserve(0x110000-2048)
+        for tail in ["","\u{fe0e}","\u{fe0f}","\u{fe01}","🏽"] {
+            widths.clear()
+            for cp in 0..0x110000 {
+                if cp >= 0xd800 && cp < 0xe000 { continue }
+                value := rune(cp).str() + tail
+                widths.push(u8(65+value.buffer_width()))
+            }
+            print(bytes.decode(&widths).unwrap())
+        }
+        return
+    }
     if sys.arg_count() == 3 && sys.arg(1) == "--outside" {
         mut rows: []string = []
         rows.reserve(65537)

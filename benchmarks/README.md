@@ -22,7 +22,7 @@ Läsarprovet jämför 48 rader färgsatt Unicode-text med direkt och förberedd 
 
 ## Bygg buffertar från text
 
-Att bygga 24 rader med blandade skriftsystem och radslut tog 194 µs i median på macOS ARM64, jämfört med 204 µs tidigare och 35,4 µs för Ratatui. [Alla arbetslaster, p95 och resursvärden](line-input.md)
+Att bygga 24 rader med blandade skriftsystem och radslut tog 121 µs i median på macOS ARM64, jämfört med 160 µs för föregående Dunder och 31,7 µs för Ratatui. [Alla arbetslaster, p95 och resursvärden](line-input.md)
 
 ## Jämför råa buffertar
 

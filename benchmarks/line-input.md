@@ -2,7 +2,27 @@
 
 `Buffer::with_lines` får 24 redan skapade strängar. Varje rad består av åtta omväxlande textstycken. ASCII- och Unicode-bilderna är 96 × 24 celler. Den tredje bilden är 64 × 24 och innehåller arabiska ligaturer, japanska ljudmärken, emoji, tabb, LF och CRLF. Tiden omfattar breddmätning, allokering, fyllning av hela bufferten och läsning av måtten och en cell. Tidtagningen slutar före frigörandet. Konstruktorn skriver noll terminalbyte. [Dunder](line_input.ddr) · [Ratatui 0.30.2](reference/examples/line_input.rs)
 
-## Mätningar
+## Radbredd och emoji i Dunder 0.12.1
+
+För vanliga skalärer summerar Dunder cellbredden när raden läses. En emoji med presentationsväljare eller hudton kan mätas som ett par. För skriftspecifika ligaturer och emoji sammanbundna med ZWJ mäts texten i sitt sammanhang. Alla fysiska celler i provets tre buffertar matchade Ratatui. [Breddberäkning](../src/width.ddr) · [Kontroll av sammansatt text](../docs/parity.md#sammansatt-text-i-buffertar-listor-och-tabeller)
+
+Tiderna är median / p95 i µs per färdig buffert. Referensen och båda Dunder-versionerna kördes i roterande ordning på samma Apple M5, med sju mätomgångar efter två uppvärmningsomgångar. Linux kördes i en lokal VM. Varje process byggde tio uppvärmningsbilder och mätte sedan 100. [Alla 189 mätningar](results/unicode-lines-0.12.1.tsv) · [Föregående revision](https://github.com/Mik-pe/dunder-tui/tree/86f7767)
+
+| Plattform | Indata | Föregående Dunder | Dunder | Ratatui 0.30.2 |
+| --- | --- | ---: | ---: | ---: |
+| macOS ARM64 | ASCII | 43 / 44 | 42 / 43 | 31,6 / 32,4 |
+| macOS ARM64 | CJK och kombinerande tecken | 111 / 116 | 77 / 81 | 35 / 35,8 |
+| macOS ARM64 | Blandat med radslut | 160 / 167 | 121 / 124 | 31,7 / 32,5 |
+| Linux ARM64 | ASCII | 42,4 / 44,1 | 44,8 / 47,9 | 40,7 / 43,9 |
+| Linux ARM64 | CJK och kombinerande tecken | 112,4 / 121,3 | 77,5 / 85,3 | 44,9 / 47,7 |
+| Linux ARM64 | Blandat med radslut | 161,3 / 168,9 | 123,7 / 130,1 | 35,5 / 38,4 |
+| Linux x64, Rosetta | ASCII | 575 / 599,1 | 582,3 / 600 | 58,9 / 65,3 |
+| Linux x64, Rosetta | CJK och kombinerande tecken | 1188 / 1214,5 | 777,1 / 799,8 | 74,6 / 80,5 |
+| Linux x64, Rosetta | Blandat med radslut | 1482 / 1511,5 | 1011,9 / 1039,4 | 57,6 / 61,3 |
+
+På Linux ARM64 ökade mediantiden för ASCII något. I samtliga tre miljöer hade Ratatui lägre mediantid för att bygga buffertarna. Över 330 byggen gjorde Dunder 2 607 330 allokeringsanrop efter avdrag för uppstart, en minskning med 79 200. Rusts globala allokerare registrerade 13 860 anrop. Dunders räknare inkluderar återanvändning av minne. [Allokeringar, begärda byte och fem RSS-prov per program](results/unicode-lines-resources-0.12.1.tsv)
+
+## Tidigare mätning av cellagringen
 
 Råbufferten skapar nu tomma celler direkt när den växer. Vid skrivning av blandad text behandlas sammanhängande utskrivbara ASCII-tecken tillsammans. Sista tecknet före en Unicode-skalär går genom grafemläsaren så att exempelvis en siffra och dess presentationsväljare hamnar i samma cell.
 
@@ -41,7 +61,7 @@ build/lines --cells > build/dunder-cells
 cmp build/dunder-cells build/rust-cells
 
 baseline=$(mktemp -d)
-git archive d772f4072c959adc2ea2677e1ed89eb27259d695 | tar -x -C "$baseline"
+git archive 86f7767 | tar -x -C "$baseline"
 before="$PWD/build/lines-before"
 (cd "$baseline" && dunder build --locked --offline benchmarks/line_input.ddr -o "$before")
 for run in 1 2 3 4 5 6 7 8 9; do

@@ -1,8 +1,8 @@
 #[path = "../src/styled_grid.rs"]
 mod styled_grid;
 use ratatui::{
-    layout::{Constraint, Rect},
-    style::{Modifier, Style, Stylize},
+    layout::{Alignment, Constraint, Rect},
+    style::{Color, Modifier, Style, Stylize},
     text::{Line, Span, Text},
     widgets::{
         Cell, HighlightSpacing, List, ListDirection, ListItem, ListState, Row, StatefulWidget,
@@ -50,7 +50,79 @@ fn grid(k: usize) -> Table<'static> {
     .column_highlight_style(Style::new().underlined())
 }
 
+fn document(k: usize) -> Text<'static> {
+    let alignment = [Alignment::Left, Alignment::Center, Alignment::Right][k];
+    let line = Line::from(vec![
+        Span::raw("A👩").red().italic(),
+        Span::raw("🏽‍🚀").yellow(),
+        Span::raw("e"),
+        Span::raw("\u{301}"),
+        Span::raw("لا"),
+    ])
+    .alignment(alignment);
+    let tail = Line::from(vec![
+        Span::raw("カﾞ"),
+        Span::styled("❤️", Color::Indexed(81)),
+        Span::raw("終"),
+    ]);
+    Text::from(vec![line, Line::raw(""), tail])
+        .underlined()
+        .alignment(alignment)
+}
+
+fn composite() {
+    for k in 0..3 {
+        let menu = List::new([
+            ListItem::from("▹"),
+            ListItem::new(document(k)),
+            ListItem::new(document((k + 1) % 3)),
+        ])
+        .highlight_symbol("·")
+        .highlight_style(Style::new().on_magenta());
+        let first =
+            Row::new([Cell::from(document(k)), Cell::from(document((k + 1) % 3))]).height(3);
+        let last = Row::new([Cell::from(document((k + 2) % 3)).column_span(2)]).height(3);
+        let grid = Table::new(
+            [first, last],
+            [Constraint::Percentage(40), Constraint::Fill(1)],
+        )
+        .row_highlight_style(Style::new().on_magenta());
+        for selected in [false, true] {
+            let mut item = ListState::default();
+            let mut cell = TableState::new();
+            if selected {
+                item.select(Some(1));
+                cell.select_cell(Some((1, 0)));
+            }
+            for w in [1, 2, 4, 7, 12, 19] {
+                for h in [1, 3, 6] {
+                    let area = Rect::new(5, 3, w, h);
+                    for is_table in [false, true] {
+                        let mut frame = styled_grid::seed(Rect::new(4, 2, 21, 8), true);
+                        if is_table {
+                            StatefulWidget::render(&grid, area, &mut frame, &mut cell);
+                        } else {
+                            StatefulWidget::render(&menu, area, &mut frame, &mut item);
+                        }
+                        println!("{}", serde_json::to_string(&frame).unwrap());
+                        let state = if is_table {
+                            serde_json::to_string(&cell)
+                        } else {
+                            serde_json::to_string(&item)
+                        };
+                        println!("{}", state.unwrap());
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--composite") {
+        composite();
+        return;
+    }
     for a in [Rect::new(0, 0, 16, 9), Rect::new(5, 3, 16, 9)] {
         for flags in [false, true] {
             for k in 0..3 {

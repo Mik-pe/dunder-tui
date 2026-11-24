@@ -24,13 +24,13 @@ fn pair(table: string, i: i32) -> i32 {
 }
 
 fn property(cp: i32) -> i32 {
-    if cp < 1024 { return pair(width_data.first_page(), cp) }
-    entry := pair(width_data.pages(), cp.shr(10))
+    if cp < 1024 { return pair(width_data.FIRST_PAGE, cp) }
+    entry := pair(width_data.PAGES, cp.shr(10))
     if entry < 2048 { return entry }
     page := entry - 2048
-    group := pair(width_data.groups(), page * 32 + cp.shr(5).bit_and(31))
-    state := i32(width_data.states()[group * 32 + cp.bit_and(31)]) - 35
-    pair(width_data.values(), state)
+    group := pair(width_data.GROUPS, page * 32 + cp.shr(5).bit_and(31))
+    state := i32(width_data.STATES[group * 32 + cp.bit_and(31)]) - 35
+    pair(width_data.VALUES, state)
 }
 
 pub fn columns(cp: i32) -> i32 {
@@ -103,7 +103,14 @@ impl CellCursor {
             self.scalar = scalar_at(value, self.end)
             self.props = property(self.scalar)
         }
-        if contextual || self.cells >= 65535 { self.cells = cell_columns_view(&value[start..self.end]) }
+        if !contextual && self.cells < 65535 { return }
+        second := start + encoded(cp)
+        next := scalar_at(value, second)
+        if second + encoded(next) == self.end {
+            paired := presentation_pair(cp, first, next)
+            if paired >= 0 { self.cells = paired; return }
+        }
+        self.cells = cell_columns_view(&value[start..self.end])
     }
 }
 
@@ -117,7 +124,7 @@ pub fn next_cell(value: &str, start: i32, cells: &mut i32) -> i32 {
 pub struct Glyph { end: i32, bytes: i32, span: i32, saved: i32 }
 
 fn joining(cp: i32) -> i32 {
-    ranges := width_data.joining()
+    ranges := width_data.JOINING
     mut low := 0
     mut high := ranges.len / 9
     while low < high {
@@ -251,6 +258,15 @@ fn presentation_change(cp: i32, joined_emoji: bool) -> bool {
 
 fn skin_tone(cp: i32) -> bool { cp >= 0x1f3fb && cp <= 0x1f3ff }
 
+fn presentation_pair(base: i32, props: i32, next: i32) -> i32 {
+    if next == 0xfe0f && props.bit_and(VARIATION_BASE) != 0 { return 2 }
+    if next == 0xfe0e && props.bit_and(VARIATION_BASE) != 0 && props.bit_and(EMOJI_PRESENTATION) != 0 &&
+            props.shr(7).bit_and(3) == 2 && (base < 0x1f200 || base > 0x1f2ff) { return 1 }
+    if skin_tone(next) && props.bit_and(MODIFIER_BASE) != 0 { return 2 }
+    if next == 0xfe01 && (base == 0x2018 || base == 0x2019 || base == 0x201c || base == 0x201d) { return 2 }
+    -1
+}
+
 fn presentation_width(chars: &[]rune, start: i32, end: i32) -> i32 {
     mut total := 0
     mut at := start
@@ -269,22 +285,12 @@ fn presentation_width(chars: &[]rune, start: i32, end: i32) -> i32 {
         mut emoji := props.bit_and(EMOJI_PRESENTATION) != 0 && cells == 2
         if at < end {
             next := i32(chars[at])
-            if next == 0xfe0f && props.bit_and(VARIATION_BASE) != 0 {
-                cells = 2
-                emoji = true
+            paired := presentation_pair(cp, props, next)
+            if paired >= 0 {
+                cells = paired
+                emoji = next == 0xfe0f || skin_tone(next)
                 at += 1
-                if at < end && i32(chars[at]) == 0x20e3 && (cp == 35 || cp == 42 || (cp >= 48 && cp <= 57)) { at += 1 }
-            } else if next == 0xfe0e && emoji && props.bit_and(VARIATION_BASE) != 0 && (cp < 0x1f200 || cp > 0x1f2ff) {
-                cells = 1
-                emoji = false
-                at += 1
-            } else if skin_tone(next) && props.bit_and(MODIFIER_BASE) != 0 {
-                cells = 2
-                emoji = true
-                at += 1
-            } else if next == 0xfe01 && (cp == 0x2018 || cp == 0x2019 || cp == 0x201c || cp == 0x201d) {
-                cells = 2
-                at += 1
+                if next == 0xfe0f && at < end && i32(chars[at]) == 0x20e3 && (cp == 35 || cp == 42 || (cp >= 48 && cp <= 57)) { at += 1 }
             }
         }
         if !joined || !emoji { total += cells }
@@ -354,12 +360,25 @@ fn halfwidth_sound_marks(value: &str) -> i32 {
 }
 
 pub fn text_columns(value: &str) -> i32 {
-    for i in 0..value.len {
-        if value[i] < 32 || value[i] >= 127 {
-            return measured_columns(value) - halfwidth_sound_marks(&value[i..value.len])
-        }
+    mut at := 0
+    mut total := 0
+    mut previous := -1
+    while at < value.len {
+        cp := scalar_at(value, at)
+        at += encoded(cp)
+        if cp < 128 {
+            if cp == 13 && at < value.len && value[at] == 10 { at += 1 }
+            total += 1
+        } else if cp == 0x200d || script_candidate(cp) {
+            return measured_columns(value) - halfwidth_sound_marks(value)
+        } else if previous >= 0 && presentation_change(cp, false) {
+            paired := presentation_pair(previous, property(previous), cp)
+            total += if paired >= 0 { paired - columns(previous) } else { columns(cp) }
+        } else if cp < 160 || cp == 0xff9e || cp == 0xff9f { total += 1 }
+        else { total += columns(cp) }
+        previous = cp
     }
-    value.len
+    total
 }
 
 pub fn cell_columns_view(value: &str) -> i32 {
@@ -371,7 +390,7 @@ pub fn cell_columns_view(value: &str) -> i32 {
         cp := scalar_at(value, end)
         props := property(cp)
         if props.bit_and(15) != EXTEND || props.shr(7).bit_and(3) != 0 ||
-            presentation_change(cp,false) || script_candidate(cp) { break }
+            presentation_change(cp, false) || script_candidate(cp) { break }
         end += encoded(cp)
     }
     if end == value.len {

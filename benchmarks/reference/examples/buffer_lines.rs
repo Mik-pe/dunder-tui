@@ -136,6 +136,16 @@ fn coordinates() {
 }
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--text-widths") {
+        for tail in ["", "\u{fe0e}", "\u{fe0f}", "\u{fe01}", "🏽"] {
+            let widths: String = (0..=0x10ffff)
+                .filter_map(char::from_u32)
+                .map(|ch| char::from(65 + Line::from(format!("{ch}{tail}")).width() as u8))
+                .collect();
+            println!("{widths}");
+        }
+        return;
+    }
     if std::env::args().nth(1).as_deref() == Some("--outside") {
         let mut rows = vec![""; 65537];
         rows[1] = " ";

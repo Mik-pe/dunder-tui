@@ -8,7 +8,7 @@ De aktiva testplattformarna är macOS och Linux. Uppgifter om Windows och Wine n
 | --- | --- | --- |
 | Buffer och Cell | Förskjutet origo, koordinater och linjära index, råa celler och stilar, celldiff och fyra diffregler. Kopiering, storleksändring och sammanslagning inom hela koordinatintervallet. | Minnesgränsen för sammanhängande Dunder-arrayer och avvikelsen i Ratatuis sammanslagning vid stora index beskrivs nedan. |
 | Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. Tailwind och Material ger 500 namngivna RGB-värden. | JSON för färger och stilar jämförs nedan. Fler konverteringar mellan backendens stilrepresentationer återstår. |
-| Text | Span, Line, Text, Paragraph, byte och omordning av rad- och spannsamlingar, inkrementell redigering, sammanslagning av dokument och läsning av stiliserade grafem, stiländringar, läsning av textens delar, utskrift, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. Cellprov för Unicode 18:s emojitest, presentationsvarianter och skriftspecifika ligaturer inom och över grafemgränser. | Fler jämförelser av sammansatta dokument i listor och tabeller. För beteendet vid fysisk högerkant, se styckeprovet nedan. |
+| Text | Span, Line, Text, Paragraph, byte och omordning av rad- och spannsamlingar, inkrementell redigering, sammanslagning av dokument och läsning av stiliserade grafem, stiländringar, läsning av textens delar, utskrift, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. Cellprov för Unicode 18:s emojitest, presentationsvarianter och skriftspecifika ligaturer inom och över grafemgränser. | Sammansatta dokument jämförs nedan i båda widgets. För beteendet vid fysisk högerkant, se styckeprovet. |
 | Layout | Rektangeloperationer, rad- och kolumniteratorer från båda ändar, radvis genomgång av cellkoordinater, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering, riktningsbyte och cache. 22 408 jämförda layouter, 2 460 rektangelprov och två vyer med vardera 1 100 bilder. Blandade regler provas med upp till 24 paneler. | Större blandade system och nativa x64-mätningar för frekvensbanden. För stora marginaler och råa rektanglar vid koordinatgränsen, se JSON-provet nedan. |
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna strängar för hörn och sidor, individuella kanter, justerade titlar, utfyllnad och skuggor. För skuggor jämförs 85 050 råa celler och celldiffarnas ordning med referensen. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
 | Övriga widgets | Fristående Clear och Fill med cellvisa symboler, stil och klippning, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, månadskalender med händelser och egna datumstilar, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. Ratatuis båda logotyper och maskot med två ögonfärger. | Se beteendeproven per widget nedan. |
@@ -338,6 +338,36 @@ done
 Provet jämför raderna i nio rektanglar med totalt 2 283 794 celler. I 90 storleksändringar jämförs även varje rå cell, stil, diffregel och ordningen på ändringarna. När en ny radgräns delar ett brett tecken bevaras symbolen i sin ursprungliga cell. Ett separat pseudoterminalprov skriver i kolumn 65 534, ändrar den med ett tangenttryck och läser av den återställda terminalen. [Buffertprov](../tests/large_buffers.ddr) · [Ratatui-referens](../benchmarks/reference/examples/large_buffers.rs) · [Terminalprov](../tests/wide_terminal.ddr)
 
 Vid sammanslagning av två rader med startkolumn 62 003 placerar den optimerade Ratatui-versionen `D` på (58 467, 65 531). Dunder bevarar källpositionen (62 003, 65 532). Jämförelsen kontrollerar båda positionerna och hela resultatet mot koordinatvis kopiering. En hel yta på 65 535 × 65 535 celler ryms fortfarande inte. Dunder 0.11.2 har högst 1 GiB per sammanhängande minnesblock och enbart stilfältet behöver åtta byte per cell. [Sammanslagningsprov](../benchmarks/reference/examples/large_buffers.rs) · [Dunders allokerare](https://github.com/Mik-pe/dunder/blob/v0.11.2/selfhost/runtime/runtime.ddr)
+
+## Sammansatt text i buffertar, listor och tabeller
+
+Ratatuis `Line::from` och Dunders radbredd för en sträng gav samma resultat för var och en av de 1 112 064 Unicode-skalärerna. Varje skalär provades även följd av U+FE0E, U+FE0F, U+FE01 och hudtonsmodifieraren U+1F3FD. Alla 5 560 320 bredder stämde. I ytterligare 5 507 kombinationer av tre textdelar jämfördes hela bufferten och testbackendens bild. Samtliga 25 158 celler stämde, inklusive oskrivet respektive uttryckligt blanksteg. [Dunder](../tests/buffer_lines.ddr) · [Ratatui](../benchmarks/reference/examples/buffer_lines.rs)
+
+I listor och tabeller ritades dokument med tre rader och oberoende stilar för dokument och spann. Proven delar en emoji och ett kombinerande tecken vid en spanngräns och varierar justering, klippning, kolumnspann och markering. De kördes vid sex bredder och tre höjder över en redan färglagd buffert med cellvisa diffregler. Alla 36 288 råa celler och alla 216 widgettillstånd matchade på macOS ARM64, Linux ARM64 och översatt Linux x64. [Dunder](../tests/collection_cells.ddr) · [Ratatui](../benchmarks/reference/examples/collection_cells.rs)
+
+På de tre Unix-målen provades också celleditering och det interaktiva animationsgalleriet i en pseudoterminal. Emojiloggens och ligaturloggens 1 100 bilder vardera gav byteidentisk terminalutdata före och efter ändringen, 2 064 494 respektive 1 382 478 byte. [Bildtider och allokeringar vid buffertbygge](../benchmarks/line-input.md)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/buffer_lines.ddr -o build/lines
+dunder build --locked --offline tests/collection_cells.ddr -o build/collections
+cargo build --locked --release --offline --manifest-path benchmarks/reference/Cargo.toml \
+    --features theme-oracle --example buffer_lines --example collection_cells --target-dir build/reference
+ref=build/reference/release/examples
+build/lines --width-cases >build/width-cases
+for mode in scalars cases; do
+    case "$mode" in
+        scalars) set -- --text-widths ;;
+        cases) set -- --unicode build/width-cases ;;
+    esac
+    build/lines "$@" >build/dunder-cells
+    "$ref/buffer_lines" "$@" >build/rust-cells
+    cmp build/dunder-cells build/rust-cells
+done
+build/collections --composite >build/dunder-cells
+"$ref/collection_cells" --composite >build/rust-cells
+cmp build/dunder-cells build/rust-cells
+```
 
 ## Text i 0.4.0
 

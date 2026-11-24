@@ -83,6 +83,13 @@ fn function(name: string, data: &[]u8) -> string {
     "pub fn " + name + "() -> string { r\"" + bytes.decode(&data).unwrap() + "\" }\n"
 }
 
+fn lookup_table(name: string, data: &[]u8) -> string {
+    symbol := text.upper(name)
+    literal := bytes.decode(&data).unwrap()
+    "pub const " + symbol + ": string = r\"" + literal + "\"\n" +
+        "pub fn " + name + "() -> string { " + symbol + " }\n"
+}
+
 fn uniform_page(table: &[]i32, start: i32) -> i32 {
     first := table[start].bit_and(4095)
     if first >= 2048 { return -1 }
@@ -122,7 +129,7 @@ fn encode(table: &[]i32) -> string {
             page.clear()
         }
     }
-    function("first_page", &first_page) + function("pages", &pages) + function("groups", &groups) + function("states", &states) + function("values", &values)
+    lookup_table("first_page", &first_page) + lookup_table("pages", &pages) + lookup_table("groups", &groups) + lookup_table("states", &states) + lookup_table("values", &values)
 }
 
 fn joining_ranges(new: string, widths: &[]i32) -> string {
@@ -153,7 +160,7 @@ fn joining_ranges(new: string, widths: &[]i32) -> string {
         }
         start = end
     }
-    function("joining", &out)
+    lookup_table("joining", &out)
 }
 
 fn main() -> i32 {

@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Låna en modulkonstants strängdata
+
+Unicode-tabellerna kan läsas direkt som strängkonstanter. I 0.12.1 ger `view := LABEL.as_str()` E4003 när `LABEL` är en modulkonstant av typen `string`. Med `owner := LABEL` följt av `view := owner.as_str()` kompilerar samma läsning och ger rätt byte. Låt lokala strängvyer låna direkt från en oföränderlig strängkonstant. [Minimiprov](../tests/dogfood/compiler/constant_string_view.ddr)
+
 ## Jämför heltalsarrayer från generisk kod
 
 I Dunder 0.12.1 ger en konkret funktion som jämför två `[]i64` med `==` E3004 när den anropas från `page_matches<T: Eq>`. Även `std.array.equal<i64>` ger E3004 i den konkreta funktionen. Samma prov kompilerar och ger rätt svar för lika och olika arrayer när anroparen tar `i32`. Även en explicit jämförelse via en hjälpfunktion med `T: Eq` och typargumentet `[]i64` fungerar. Ritloopen använder den formen för lånade intervall och hela arrayer. [Minimiprov](../tests/dogfood/compiler/array_equality_from_generic.ddr)
