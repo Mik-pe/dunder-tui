@@ -1,0 +1,9 @@
+capability stdio
+import sys
+
+const ROWS: [string; 4] = ["", "abc", "Å", "界"]
+
+fn main() {
+    row := ROWS[sys.arg_count() % 4]
+    print(row)
+}

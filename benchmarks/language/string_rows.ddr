@@ -1,0 +1,23 @@
+capability stdio
+import sys
+
+fn local(row: i32) -> i32 {
+    rows: [string; 4] = ["", "abc", "Å", "界"]
+    rows[row].len
+}
+
+fn selected(row: i32) -> i32 {
+    text := match row { 0 => "", 1 => "abc", 2 => "Å", _ => "界", }
+    text.len
+}
+
+fn main() {
+    assert(sys.arg_count() == 2)
+    table := sys.arg(1) == "local"
+    mut sum := 0
+    for i in 0..65536 {
+        row := i % 4
+        sum += if table { local(row) } else { selected(row) }
+    }
+    print(sum)
+}
