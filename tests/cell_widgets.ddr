@@ -51,7 +51,8 @@ fn snapshot(frame: &tui.Frame) {
 fn compare(curr: &tui.Frame, prev: &tui.Frame) {
     snapshot(&curr)
     mut pos: []u8 = []
-    for (x,y) in curr.diff_positions(&prev).unwrap() { bytes.append_utf8(&mut pos,f"{x},{y} ") }
+    changes := curr.diff_positions(&prev).unwrap()
+    for (x,y) in &changes { bytes.append_utf8(&mut pos,f"{x},{y} ") }
     print(bytes.decode(&pos).unwrap())
 }
 

@@ -1,0 +1,29 @@
+capability stdio
+import std.terminal as term
+import sys
+
+enum Reader { Cached, Match, Fallback }
+
+fn main() {
+    if sys.arg_count() != 2 { panic("expected cached, match or fallback") }
+    mode := match sys.arg(1) {
+        "cached" => Reader.Cached,
+        "match" => Reader.Match,
+        "fallback" => Reader.Fallback,
+        _ => { panic("expected cached, match or fallback") },
+    }
+    values := ["─","界","لا","\t"]
+    mut widths := [0,0,0,0]
+    for i in 0..4 { widths[i] = term.columns(values[i].as_str()).unwrap_or(-1) }
+    mut sum := 0
+    for i in 0..65536 {
+        n := i.bit_and(3)
+        value := values[n].as_str()
+        sum += match mode {
+            .Cached => widths[n],
+            .Match => match term.columns(value) { .Some(w) => w, .None => -1, },
+            .Fallback => term.columns(value).unwrap_or(-1),
+        }
+    }
+    print(sum)
+}

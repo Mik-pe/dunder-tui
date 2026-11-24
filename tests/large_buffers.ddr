@@ -20,7 +20,8 @@ fn extent(a: tui.Rect) {
         print(f"I {n} {x} {y}")
     }
     for y in a.y..a.bottom() { print(f"R{f.line(y)}|") }
-    for (x,y) in f.diff_positions(&blank).unwrap() {
+    changes := f.diff_positions(&blank).unwrap()
+    for (x,y) in &changes {
         c := f.cell_at(x,y).unwrap()
         assert(c.style.has(.Bold) && c.style.get_foreground() == .Some(.Yellow))
         print(f"D {x} {y} {c.symbol}")

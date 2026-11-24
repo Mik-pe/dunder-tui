@@ -1,5 +1,13 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Omprov med den publicerade 0.12.0
+
+`std.time.local_from_unix` ersätter TUI-bibliotekets sista direkta Win32-anrop för kalenderdatum. Vid 13 tidpunkter i UTC gav kalendern samma resultat före och efter bytet, inklusive 1601, dagen före Unixepoken, årsskiftet 1999/2000 och kalenderns övre gräns. Alla 48 059 breddprov stämmer även med den nya terminalbreddsfunktionen. [Datumprov](../tests/calendar_clock.ddr) · [Breddprov](../tests/standard_columns.ddr)
+
+En loop över en **temporär array av koordinatpar** kan krascha i 0.12.0. Det fristående programmet avbryts på macOS ARM64 med standardinställningarna. Det passerar med `--mir-memory=off` och med Dunder 0.11.3. Det fulla ramprovet avbröts även på Linux ARM64 och översatt Linux x86-64 när det itererade direkt över resultatet av `diff_positions().unwrap()`. Cellproven sparar nu listan i en lokal variabel och itererar över ett lån. Då matchar samma råceller och diffar referensen med 0.12.0:s standardinställningar. [Fristående kompilatorprov](../tests/dogfood/compiler/temporary_pair_loop.ddr) · [Celljämförelse](../tests/raw_cells.ddr)
+
+För 65 536 anrop till `std.terminal.columns` med vart fjärde indata ett kontrolltecken gav både `match` och `unwrap_or(-1)` 49 160 allokeringsanrop. Med fyra förberäknade bredder gav samma kontrollsumma åtta anrop. Mätt med `--runtime-profile` på macOS och Linux ARM64. [Mätprogram med lägena `match`, `fallback` och `cached`](../benchmarks/language/terminal_option.ddr)
+
 ## Omprov med 0.11.3
 
 Biblioteket använder nu `std.terminal.window_size` för Unix-terminalens cell- och pixelmått, `std.array.resize` i bildbufferten, `std.array.append_move` för ägda textrader och `std.utf16.append` i Win32-konsolen. De tidigare minimiproven för två skilda fältlån, tilldelning i en matchgren, härledd generisk mottagare, två generiska mottagartyper, direkt jämförelse av arrayvyer och uppackning av `Result<(),string>` går nu att bygga och köra på macOS. Två samtidigt levande grafem från samma iterator och två olika ägare i en lokal post ger fortfarande E4003. [Minimiproven](../tests/dogfood/compiler) · [Dunder 0.11.3](https://github.com/Mik-pe/dunder/releases/tag/v0.11.3)

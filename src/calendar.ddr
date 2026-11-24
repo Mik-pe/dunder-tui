@@ -1,5 +1,3 @@
-capability unsafe
-
 import .block
 import .text as rich
 import .tui
@@ -72,30 +70,14 @@ impl Eq for Date {
     }
 }
 
-@extern("kernel32.dll","SystemTimeToTzSpecificLocalTime")
-unsafe fn win_local(zone:ptr, utc:ptr, output:ptr) -> i32
-
 pub fn local_date(seconds: i64) -> Option<Date> {
     first := Date { year:-9999,month:1,day:1 }
     last := Date { year:9999,month:12,day:31 }
     if seconds < first.midnight()-86400 || seconds >= last.midnight()+172800 { return .None }
-    if target_is("windows") {
-        unsafe {
-            utc := time.utc_from_unix(seconds)
-            if utc.year < 1601 { return .None }
-            mut source: [u16;8] = [u16(utc.year),u16(utc.month),u16(utc.weekday),u16(utc.day),
-                u16(utc.hour),u16(utc.minute),u16(utc.second),0]
-            mut local: [u16;8] = [0;8]
-            if win_local(ptr(0),addr(&source[0]),addr(&mut local[0])) == 0 { return .None }
-            return Date::new(i32(local[0]),i32(local[1]),i32(local[3]))
-        }
-    } else {
-        match time.local_from_unix(seconds) {
-            .Some(d) => { return Date::new(d.year,d.month,d.day) },
-            .None => { return .None },
-        }
+    match time.local_from_unix(seconds) {
+        .Some(d) => Date::new(d.year,d.month,d.day),
+        .None => .None,
     }
-    .None
 }
 
 pub trait DateStyler {

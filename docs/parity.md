@@ -58,7 +58,7 @@ Med och utan skrollregioner jämförs vardera 1 440 vyportstillstånd mot Ratatu
 
 En buffrad backend provar skrivfel före och efter varje operation vid två vyhöjder och tre skrollsätt. Nästa lyckade ritning återställer vyn och markören. I pseudoterminalen sätts först en begränsad skrollregion. Sedan stängs utmatningsfilen under ett skrollanrop. Efter att filen öppnats igen provas ritning, radmatning, markörflytt, markörfråga och avslut var för sig. Ett separat prov avslutar direkt efter nio loggrader och kontrollerar var skalet får tillbaka markören. [Buffrat felprov](../tests/scroll_errors.ddr) · [Pseudoterminalprov](../tests/scroll_terminal.ddr) · [Win32-konsolprov](../tests/windows_console.ddr)
 
-Kör lokalt med Dunder 0.11.3. Rustkommandona använder referensprogrammets låsta paket från den lokala Cargo-cachen.
+Kör lokalt med Dunder 0.12.0. Rustkommandona använder referensprogrammets låsta paket från den lokala Cargo-cachen.
 
 ```sh
 mkdir -p build

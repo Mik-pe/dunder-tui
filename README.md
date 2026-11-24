@@ -8,7 +8,7 @@ Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i 
 
 På Linux använder den färdigbyggda almanackan systemets glibc (`libc.so.6`) för lokal tid. Övriga åtta Linuxappar i paketet har inga dynamiska biblioteksberoenden.
 
-Bygg `main` med Dunder 0.11.3. Biblioteket använder standardbibliotekets terminalmått, arrayoperationer och UTF-16-kodning. De färdigbyggda apparna i v0.24.0 använder Dunder 0.11.2. [Installera Dunder 0.11.3](https://github.com/Mik-pe/dunder/releases/tag/v0.11.3)
+Bygg `main` med Dunder 0.12.0. Biblioteket använder standardbibliotekets terminalbredder, lokala datum, arrayoperationer och UTF-16-kodning. De färdigbyggda apparna i v0.24.0 använder Dunder 0.11.2. [Installera Dunder 0.12.0](https://github.com/Mik-pe/dunder/releases/tag/v0.12.0)
 
 ```sh
 git clone https://github.com/Mik-pe/dunder-tui.git

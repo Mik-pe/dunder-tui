@@ -37,6 +37,7 @@ pub fn compare(frame: &tui.Frame, prior: &tui.Frame) {
         print(bytes.decode(&row).unwrap())
     }
     mut diff: []u8 = []
-    for (x,y) in frame.diff_positions(&prior).unwrap() { bytes.append_utf8(&mut diff,f"{x},{y} ") }
+    changes := frame.diff_positions(&prior).unwrap()
+    for (x,y) in &changes { bytes.append_utf8(&mut diff,f"{x},{y} ") }
     print(bytes.decode(&diff).unwrap())
 }

@@ -1,0 +1,13 @@
+fn points() -> [](i32,i32) { [(3,4)] }
+
+fn draw(width: i32, height: i32) {
+    if width < 1 || height < 1 { return }
+    mut output: []u8 = []
+    for (x,y) in points() {
+        output.push(u8(x))
+        output.push(u8(y))
+    }
+    assert(output == [u8(3),4])
+}
+
+fn main() { draw(1,1) }
