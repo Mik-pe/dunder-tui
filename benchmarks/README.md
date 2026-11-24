@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Mixer med tolv frekvensband
+
+Mixern jämför tolv trängda frekvensband med 1 100 renderade bilder. På Macen tog det 0,50 µs i median att dela upp en ny bredd, mot 5 655 µs i Dunders tidigare version. [Alla bildtider, minne och terminalbyte för mixern](bands.md)
+
 ## Avgångstavla med 128 rader
 
 Avgångstavlan ger 1 100 jämförda bilder med upprepad rik text och redigerade rader. På en Apple M5 tog skrollning i pseudoterminalen 24/35 µs i Dunder och 35/46 µs i Ratatui (median/p95). [Alla fem arbetslaster, minne och terminalutdata på macOS och Linux](manifest.md)

@@ -9,7 +9,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | Buffer och Cell | Förskjutet origo, koordinater och linjära index, råa celler och stilar, celldiff och fyra diffregler. Kopiering, storleksändring och sammanslagning inom hela koordinatintervallet. | Minnesgränsen för sammanhängande Dunder-arrayer och avvikelsen i Ratatuis sammanslagning vid stora index beskrivs nedan. |
 | Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. Tailwind och Material ger 500 namngivna RGB-värden. | JSON för färger och stilar jämförs nedan. Fler konverteringar mellan backendens stilrepresentationer återstår. |
 | Text | Span, Line, Text, Paragraph, byte och omordning av rad- och spannsamlingar, inkrementell redigering, sammanslagning av dokument och läsning av stiliserade grafem, stiländringar, läsning av textens delar, utskrift, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. Cellprov för Unicode 18:s emojitest, presentationsvarianter och skriftspecifika ligaturer inom och över grafemgränser. | Fler jämförelser av sammansatta dokument i listor och tabeller. Se de tolv gränsfallen vid fysisk högerkant nedan. |
-| Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering och cache. 21 124 jämförda layouter, 2 460 rektangelprov och 1 100 jämförda bilder. Omfattar upprepade regelbyten och upp till nio paneler i gränsprovet för minsta storlek. | Överbestämda system med fler paneler. För stora marginaler och råa rektanglar vid koordinatgränsen, se JSON-provet nedan. |
+| Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering, riktningsbyte och cache. 22 408 jämförda layouter, 2 460 rektangelprov och två vyer med vardera 1 100 bilder. Blandade regler provas med upp till 24 paneler. | Större blandade system och nativa x64-mätningar för frekvensbanden. För stora marginaler och råa rektanglar vid koordinatgränsen, se JSON-provet nedan. |
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna strängar för hörn och sidor, individuella kanter, justerade titlar, utfyllnad och skuggor. För skuggor jämförs 85 050 råa celler och celldiffarnas ordning med referensen. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
 | Övriga widgets | Fristående Clear och Fill med cellvisa symboler, stil och klippning, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, månadskalender med händelser och egna datumstilar, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. Ratatuis båda logotyper och maskot med två ögonfärger. | Se beteendeproven per widget nedan. |
 | Egna widgets och tester | Frame ritar egna och inbyggda widgets med `render_widget` och `render_stateful_widget`. Tillstånd kan uppdateras vid ritning med `run_stateful`. Egna backends kan anslutas till Terminal. TestBackend har skrollhistorik, markör, fem rensningslägen och regionskrollning. | Bredare testning av specialiserade terminalbackends. |
@@ -619,6 +619,33 @@ dunder build --locked --offline tests/text_edits.ddr -o build/text-edits
 build/text-edits >build/dunder-edits
 cargo run --release --locked --offline --manifest-path benchmarks/reference/Cargo.toml --example text_edits >build/ratatui-edits
 diff -u build/ratatui-edits build/dunder-edits
+```
+
+## Trånga layouter och riktningsbyte
+
+1 284 ytterligare fall jämför varje panel och mellanrum när 12 eller 24 regler konkurrerar om 17, 79 eller 191 celler. De omfattar båda axlarna, sju flexlägen, sex enskilda regeltyper och blandningar av dem. Fallen vid 9–12 paneler provar precis när `SpaceAround` börjar krympa sina yttre mellanrum. Med tio paneler om åtta celler på 100 kolumner blir ytteravståndet två. Med elva på 110 kolumner blir det ett. [Dunderprov](../tests/layout_reference.ddr) · [Ratatui och kontroll av alternativa lösningar](../benchmarks/reference/examples/layout.rs)
+
+På macOS ARM64 blev 1 248 uppdelningar identiska och 36 andra uppdelningar nådde samma exakta optimum. På Linux ARM64 blev motsvarande antal 1 245 och 39. Referensprogrammet fick starta om efter 17 tidsgränser och ett lösarfel på macOS samt 23 tidsgränser och två lösarfel på Linux. Alla 1 284 fall fick ett svar på båda systemen.
+
+För lika krav kan panelerna beräknas direkt från den tillgängliga bredden. I `SpaceAround` är ett inre mellanrum normalt dubbelt så brett som ett yttre. När alla panelers sammanlagda kostnad för en förlorad cell överstiger kostnaden för att göra det yttre mellanrummet mindre krymper mellanrummen tills panelerna ryms eller de inre når den begärda bredden. Den vanliga lösaren hanterar återstående kombinationer. [Implementation](../src/layout.ddr) · [Bildtid för tolv frekvensband](../benchmarks/bands.md)
+
+Ratatui 0.30.2 gav i en körning 19 tomma paneler för 24 stycken `Length(6)` på en höjd av 79 med `SpaceEvenly` och avstånd två. Det finns 29 rader kvar till panelerna när mellanrummen har fått sina 50. Provet bevarar det observerade utfallet och verifierar med rationell aritmetik att fördelningen med en eller två rader per panel når optimum. Det underkänner det omvända fallet. Om Ratatui ger den observerade typen av fördelning, rapporterar `ObjectiveUnbounded` eller stannar före sitt svar körs det större gränsfallet i en egen referensprocess med högst fyra försök. Varje godkänt fall kräver en uppdelning från Ratatui. [Sparade panelhöjder och kontrollen i båda riktningar](../benchmarks/reference/examples/layout.rs)
+
+Alla sex konstruktorerna för listor med regler, deras textrepresentation och standardregeln `Percentage(100)` provas separat. Dunder och Ratatuis publika, utfasade `Constraint::apply` ger samma 16-bitarsvärde för 59 regler vid samtliga 65 536 längder. Det omfattar nollnämnare, tal större än 2²⁴ och procentuell avrundning med enkel precision. Ytterligare 36 uppdelningar följer en layout genom riktningsbyten och återbesök på samma kvadratiska yta. På macOS ARM64, Linux ARM64, översatt Linux x86-64 och Win64 under Wine kontrollerades även de ritade frekvensbanden. Tolv bokstäver byter från kolumner till rader i pseudoterminalen och i Win32-konsolbufferten. [Regelprovet](../tests/layout_reference.ddr) · [Pseudoterminal](../tests/layout_json_terminal.ddr) · [Win32](../tests/windows_console.ddr)
+
+På macOS ARM64 gav även Dunder 0.12.1 från den lokala taggen `57e9c4d` samma 1 284 uppdelningar, alla regelvärden och samtliga 1 100 mixerbilder. Bibliotekets 100 tester, riktningsbytet i terminalen och ett fristående konsumentpaket kördes offline. Tiderna i mixerns mätning gäller 0.12.0.
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/layout_reference.ddr -o build/layout
+cargo build --release --locked --offline --manifest-path benchmarks/reference/Cargo.toml \
+  --features layout-cache --example layout --target-dir build/reference
+ref=build/reference/release/examples/layout
+build/layout --many-panels | "$ref" --many-panels
+build/layout --rules >build/dunder-rules
+"$ref" --rules >build/reference-rules
+cmp build/dunder-rules build/reference-rules
+dunder run --locked --offline tests/layout_json_terminal.ddr
 ```
 
 ## Minsta storlek över 32 767 i 0.20.2

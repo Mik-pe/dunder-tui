@@ -215,6 +215,16 @@ fn mismatch(
     {
         (true, true) => b'~',
         (false, true)
+            if flex == Flex::SpaceEvenly
+                && rules.first().is_some_and(|first| {
+                    matches!(first, Constraint::Length(_)) && rules.iter().all(|r| r == first)
+                })
+                && panels.iter().any(|r| r.is_empty())
+                && actual[..rules.len()].iter().all(|r| !r.is_empty()) =>
+        {
+            b'N'
+        }
+        (false, true)
             if flex == Flex::SpaceAround
                 && gap == 0
                 && panels.iter().enumerate().any(|(i, a)| {
@@ -307,6 +317,45 @@ fn overlapping_space_around_reference_requires_an_optimal_dunder_layout() {
     assert_eq!(classify(&observed, &observed), b'!');
 }
 
+#[test]
+fn observed_empty_panels_cannot_validate_an_unequal_dunder_split() {
+    let area = Rect::new(2, 3, 4, 79);
+    let place = |heights: &[u16]| {
+        let mut y = area.y;
+        let mut panels = Vec::new();
+        let mut spacers = Vec::new();
+        for h in heights {
+            spacers.push(Rect::new(area.x, y, area.width, 2));
+            y += 2;
+            panels.push(Rect::new(area.x, y, area.width, *h));
+            y += h;
+        }
+        spacers.push(Rect::new(area.x, y, area.width, 2));
+        assert_eq!(y + 2, area.bottom());
+        panels.extend(spacers);
+        panels
+    };
+    let observed = place(&[
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 6, 5, 6, 6,
+    ]);
+    let uniform = place(&[
+        1, 1, 2, 1, 1, 1, 1, 2, 1, 1, 1, 2, 1, 1, 1, 1, 2, 1, 1, 1, 1, 2, 1, 1,
+    ]);
+    let classify = |r: &[Rect], d: &[Rect]| {
+        mismatch(
+            &[Constraint::Length(6); 24],
+            Flex::SpaceEvenly,
+            2,
+            area,
+            Direction::Vertical,
+            r,
+            d,
+        )
+    };
+    assert_eq!(classify(&observed, &uniform), b'N');
+    assert_eq!(classify(&uniform, &observed), b'!');
+}
+
 fn checked_batches(lines: &[String], batch_size: usize, isolated_attempts: usize) -> Vec<u8> {
     let executable = std::env::current_exe().unwrap();
     let mut results = Vec::with_capacity(lines.len());
@@ -345,20 +394,20 @@ fn checked_batches(lines: &[String], batch_size: usize, isolated_attempts: usize
             end
         );
         assert!(output.stdout.len() <= end - start);
-        let unbounded = output.stdout.last() == Some(&b'U');
-        if unbounded {
+        let interruption = match output.stdout.last() {
+            Some(b'U') => Some("ObjectiveUnbounded"),
+            Some(b'N') => Some("nonoptimal equal-length split"),
+            _ => None,
+        };
+        if interruption.is_some() {
             output.stdout.pop();
         }
         results.extend(output.stdout);
-        if (timed_out || unbounded) && results.len() < end {
+        if (timed_out || interruption.is_some()) && results.len() < end {
             let index = results.len();
             eprintln!(
                 "Ratatui layout {} at case {}: {}",
-                if unbounded {
-                    "ObjectiveUnbounded"
-                } else {
-                    "deadline"
-                },
+                interruption.unwrap_or("deadline"),
                 index + 1,
                 lines[index]
             );
@@ -388,7 +437,7 @@ fn main() {
                 let verdict = compare(&line);
                 out.write_all(&[verdict]).unwrap();
                 out.flush().unwrap();
-                if verdict == b'U' {
+                if matches!(verdict, b'U' | b'N') {
                     break;
                 }
             }

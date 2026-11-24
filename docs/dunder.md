@@ -161,6 +161,10 @@ dunder test --locked --offline tests/stdlib_text.ddr
 dunder run --locked --offline tests/pty_handles.ddr
 ```
 
+## Enumvarianter som funktioner
+
+De sex konstruktorerna för listor med storleksregler återanvänder kod för att göra en regel per tal. I Dunder 0.12.0 går det att skicka `fn(n: u16) -> Constraint { .Length(n) }` som funktion, medan `Constraint.Length` på samma plats får E3003. Ett fristående prov skickar konstruktorn till en funktion som tillämpar den på sju. [Minimiprov](../tests/dogfood/compiler/variant_function.ddr) · [Förslag i Dunder](https://github.com/Mik-pe/dunder/blob/30e5c0de4b0bb9e26850cb800cb0cafb1df2f0ec/docs/next-steps.md#använd-en-enumvariant-som-funktion)
+
 ## Upprepa ett ägt värde
 
 En avgångstavla kan behöva ett antal kopior som bestäms vid körning. I 0.12.0 kräver `[värde; antal]` en konstant längd. När `std.array.resize` fyller en tom array från ett lån klonar den även den första posten. TUI-konstruktorn kan flytta in det sista exemplaret. För 4 096 arrayer med en post om 128 heltal sjönk djupa arraykloner från 4 096 till noll och klonade byte från 2 097 152 till noll. Vid fyra poster sjönk klonerna från 16 384 till 12 288. Båda varianterna gav samma kontrollsumma på macOS ARM64, Linux ARM64 och översatt Linux x86-64. [Mätprogram](../benchmarks/language/repeat_owned.ddr) · [Dunders nästa steg](https://github.com/Mik-pe/dunder/blob/main/docs/next-steps.md#upprepa-ett-ägt-värde-i-en-array)

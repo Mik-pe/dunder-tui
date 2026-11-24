@@ -287,6 +287,14 @@ paneler := inlast.split(frame.area())
 
 `json.from_str<tui.Rect>("[3,7,40,12]")` läser x, y, bredd och höjd. För position, storlek och förskjutning finns `Position`, `Size` och `Offset` i `tui.geometry`. [Dataformat och terminalprov](docs/parity.md#sparade-layouter-och-geometri)
 
+Bygg regler från data med `Constraint::from_lengths`, `from_ratios`, `from_percentages`, `from_mins`, `from_maxes` eller `from_fills`. Byt riktning på en befintlig layout med `set_direction`. Den räknar om panelernas placering även när skärmen är kvadratisk.
+
+```dunder
+andelar: []u16 = [1, 2, 1]
+mut paneler := layout.Layout::horizontal(layout.Constraint::from_fills(&andelar))
+paneler.set_direction(.Vertical)
+```
+
 ## Mätare, diagram och paneler
 
 Med `import tui.widgets as ui` kan du rita en mätare i valfri del av en bild.
