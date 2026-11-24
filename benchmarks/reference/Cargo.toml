@@ -146,3 +146,7 @@ required-features = ["style-oracle"]
 [[example]]
 name = "cell_edits"
 required-features = ["theme-oracle"]
+
+[[example]]
+name = "raw_diff"
+required-features = ["theme-oracle"]

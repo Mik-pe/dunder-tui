@@ -203,6 +203,24 @@ fn moving(timing: bool, check: bool) {
 
 fn main() {
     let bench = std::env::args().nth(1);
+    if bench.as_deref() == Some("--sequence-widths") {
+        use ratatui::buffer::CellWidth;
+        for path in std::env::args().skip(2) {
+            for row in std::fs::read_to_string(path)
+                .unwrap()
+                .lines()
+                .filter(|s| !s.is_empty())
+            {
+                let symbol: String = row
+                    .split_whitespace()
+                    .map(|cp| char::from_u32(u32::from_str_radix(cp, 16).unwrap()).unwrap())
+                    .collect();
+                let mut cell = Cell::EMPTY;
+                println!("{}", cell.set_symbol(&symbol).cell_width());
+            }
+        }
+        return;
+    }
     if bench.as_deref() == Some("--check-moving") {
         moving(false, true);
         return;

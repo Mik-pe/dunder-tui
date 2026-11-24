@@ -110,6 +110,27 @@ fn line_buffers() {
 }
 
 fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--combining-cases" {
+        bases := ["000D","0085","0065","0301","2764","FF76","05D0","0627","0644","0915","1780","2D4F","1F44B"]
+        marks := ["0301","0308","0338","05B0","0651","094D","17D2","20E3","FE01","FE0E","FE0F","FF9E","1F3FB","200D"]
+        for a in bases {
+            for b in &marks {
+                for c in &marks { print(f"{a} {b} {c}") }
+            }
+        }
+        return
+    }
+    if sys.arg_count() > 2 && sys.arg(1) == "--sequence-widths" {
+        for arg in 2..sys.arg_count() {
+            for row in text.split(sys.read(sys.arg(arg)).unwrap(),"\n") {
+                if row.len == 0 { continue }
+                mut symbol := ""
+                for cp in text.split(row," ") { symbol += rune(parse.hex(cp).value).str() }
+                print(tui.RawCell::new(move symbol).cell_width())
+            }
+        }
+        return
+    }
     if sys.arg_count() == 2 && sys.arg(1) == "--graphemes" {
         for row in text.split(grapheme_cases.unicode17(), "\n") {
             mut points := ""

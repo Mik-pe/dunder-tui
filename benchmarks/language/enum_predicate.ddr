@@ -1,0 +1,44 @@
+capability stdio
+import std.array
+import std.time
+import sys
+
+enum Color { Reset, Indexed(u8), Rgb(u8,u8,u8) }
+
+impl Color {
+    fn is_reset(&self) -> bool { match self { .Reset => true, _ => false, } }
+}
+
+fn count_method(rows: &[]Color) -> i32 {
+    mut count := 0
+    for c in &rows { if c.is_reset() { count += 1 } }
+    count
+}
+
+fn count_match(rows: &[]Color) -> i32 {
+    mut count := 0
+    for c in &rows { if match &c { .Reset => true, _ => false, } { count += 1 } }
+    count
+}
+
+fn main() {
+    mut rows: []Color = []
+    for i in 0..8192 {
+        match i%4 {
+            0 | 2 => rows.push(.Reset),
+            1 => rows.push(.Indexed(u8(i%256))),
+            _ => rows.push(.Rgb(u8(i%256),3,5)),
+        }
+    }
+    method := sys.arg(1) == "method"
+    mut samples: []i64 = []
+    mut sum := 0
+    for i in 0..110 {
+        start := time.monotonic_ns()
+        sum += if method { count_method(&rows) } else { count_match(&rows) }
+        if i >= 10 { samples.push(time.monotonic_ns()-start) }
+    }
+    array.sort<i64>(&mut samples)
+    assert(sum == 450560)
+    print(f"{sum} {samples[49]} {samples[94]}")
+}

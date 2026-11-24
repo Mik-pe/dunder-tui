@@ -203,8 +203,12 @@ impl Display for Color {
 
 impl Eq for Color {
     fn eq(&self, other: &Self) -> bool {
-        if self.is_default() { return other.is_default() }
-        self.encoded() == other.encoded()
+        match self {
+            .Default => match other { .Default => true, _ => false, },
+            .Indexed(n) => match other { .Indexed(m) => n == m, _ => false, },
+            .Rgb(r,g,b) => match other { .Rgb(rr,gg,bb) => r == rr && g == gg && b == bb, _ => false, },
+            _ => self.encoded() == other.encoded(),
+        }
     }
 }
 
@@ -751,9 +755,33 @@ impl RawCell {
 
 impl Default for RawCell { fn default() -> Self { Self::empty() } }
 
+const GENERAL_CELL: i32 = -2
+const SKIPPED_NARROW: i32 = -1
+const HAS_COLOR: i32 = 0x1000000
+
 impl RawCell {
+    // Bits 0–7 hold the glyph, 8–23 the modifiers, and 24 marks any non-default colour.
+    fn narrow_key(&self) -> i32 {
+        symbol := match &self.symbol {
+            .None => 32,
+            .Some(s) => {
+                if s.len != 1 { return GENERAL_CELL }
+                i32(s[0])
+            },
+        }
+        match &self.diff_option { .None => {}, _ => { return GENERAL_CELL }, }
+        if self.skip { return SKIPPED_NARROW }
+        key := i32(self.modifier.bits).shl(8).bit_or(symbol)
+        match &self.fg { .Default => {}, _ => { return key.bit_or(HAS_COLOR) }, }
+        match &self.bg { .Default => {}, _ => { return key.bit_or(HAS_COLOR) }, }
+        match &self.underline_color { .Default => key, _ => key.bit_or(HAS_COLOR), }
+    }
     fn same_style(&self, other: &Self) -> bool {
-        self.modifier.bits == other.modifier.bits && self.fg == other.fg && self.bg == other.bg && self.underline_color == other.underline_color
+        if self.modifier.bits != other.modifier.bits { return false }
+        self.same_colors(&other)
+    }
+    fn same_colors(&self, other: &Self) -> bool {
+        self.fg == other.fg && self.bg == other.bg && self.underline_color == other.underline_color
     }
     fn same_symbol(&self, other: &Self) -> bool {
         match &self.symbol {
@@ -854,19 +882,35 @@ impl BufferDiff {
     pub fn advance(&mut self) -> bool {
         current := &self.pair.current
         previous := &self.pair.previous
-        while self.at < self.limit {
-            i := self.at
+        mut i := self.at
+        while i < self.limit {
             a := &current.content[i]
             b := &previous.content[i]
-            if i >= self.trailing && a.symbol.is_none() && b.symbol.is_none() && a.diff_option.code() == 0 && b.diff_option.code() == 0 {
-                self.at += 1
-                if a.skip || (!b.skip && a.same_style(&b)) { continue }
-            } else if !changed_cell(&current,&previous,self.limit,false,&mut self.at,&mut self.trailing,&mut self.force) {
+            if i >= self.trailing {
+                next := a.narrow_key()
+                if next == SKIPPED_NARROW { i += 1; continue }
+                if next != GENERAL_CELL {
+                    old := b.narrow_key()
+                    if old != GENERAL_CELL {
+                        if next == old && (next.bit_and(HAS_COLOR) == 0 || a.same_colors(&b)) {
+                            i += 1
+                            continue
+                        }
+                        self.at = i+1
+                        self.index = i
+                        return true
+                    }
+                }
+            }
+            self.at = i
+            if !changed_cell(&current,&previous,self.limit,false,&mut self.at,&mut self.trailing,&mut self.force) {
+                i = self.at
                 continue
             }
             self.index = i
             return true
         }
+        self.at = self.limit
         self.index = -1
         false
     }

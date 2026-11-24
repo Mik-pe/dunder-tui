@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Testa en enumvariant via en lånad mottagare
+
+En profil av en oförändrad skärm visade många anrop till `Color.is_default()`. Ett separat prov med Dunder 0.12.1 räknar standardfärger bland 8 192 redan skapade färger. Samma `match` i metoden och direkt i loopen gav kontrollsumman 450 560 över 110 genomgångar. På macOS ARM64 tog metodanropen 9 µs per genomgång och direkt matchning 5 µs. På Linux ARM64 var tiderna 9,7 och 5,5 µs. Värdena är medianer av sju processmedianer. Bygg med `dunder build --locked --offline benchmarks/language/enum_predicate.ddr -o build/predicate` och kör med `method` respektive `match`. [Körbart prov](../benchmarks/language/enum_predicate.ddr) · [Alla mätningar](../benchmarks/results/enum-predicate-0.12.1.tsv)
+
 ## En iterator över två lånade buffertar
 
 I Dunder 0.12.1 kan en lokal post låna två oberoende ägare. Därför kan `BufferPair` ge en iterator över ändrade celler utan att kopiera buffertarna. Med `from self.pair` går det också att läsa den första cellen efter att iteratorn har lämnat nästa. En funktion som försöker lämna själva paret från två separata parametrar får däremot E4003 när returkontraktet pekar ut den ena. Ett kontrakt som omfattar båda parametrarna skulle göra det möjligt att skapa iteratorn direkt med ett metodanrop. [Lokalt par](../tests/dogfood/compiler/paired_views.ddr) · [Minimiprov för returvärdet](../tests/dogfood/compiler/return_two_owners.ddr) · [Iteratorprov](../tests/suite.ddr)

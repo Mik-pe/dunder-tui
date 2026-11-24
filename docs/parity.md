@@ -208,13 +208,17 @@ build/cells --scalars >build/scalars.out
 build/reference/release/examples/cell_edits --scalars <build/scalars.out
 build/cells --raw-widths >build/raw-widths.out
 build/reference/release/examples/cell_edits --raw-widths <build/raw-widths.out
+build/cells --combining-cases >build/marks.txt
+build/cells --sequence-widths "$@" build/marks.txt >build/cell-widths
+build/reference/release/examples/cell_edits --sequence-widths "$@" build/marks.txt >build/ref-widths
+cmp build/cell-widths build/ref-widths
 ```
 
 Med Ratatuis `serde` och `underline-color` jämförs 4 520 fall. Provet läser 536 enskilda celler, 517 attributuppsättningar, 16 diffregler och 744 buffertar. Ytterligare 2 700 bildpar jämför ordningen på de ändrade cellerna, både direkt ur en `Buffer` och genom en `Frame`. I sju prov ritar båda biblioteken färgad text, sparar bilden, läser tillbaka den och skriver på nästa rad. Båda bilderna jämförs byte för byte i JSON. [Dunderprov](../tests/buffer_json.ddr) · [Ratatui och indata](../benchmarks/reference/examples/buffer_json.rs)
 
-Ytterligare 3 396 buffertpar per JSON-format jämför varje ändrad koordinat och hela den lånade cellen med både `Buffer::diff_iter` och `Buffer::diff` i Ratatui. Proven omfattar olika höjder, breda symboler över radgränser, kvarvarande celler, äldre `skip`, explicita diffregler och råa arkiv med avvikande antal celler. För sådana arkiv stannar iteratorn vid den kortare cellarrayens slut. Det fullständiga provet för cellbredd använder även `RawCell::cell_width` direkt för alla 1 112 064 Unicode-skalärer, inklusive kontrolltecknen. [Cellbreddsprov](../tests/cell_edits.ddr) · [Bildtider](../benchmarks/raw-diff.md)
+Ytterligare 4 996 buffertpar per JSON-format jämför varje ändrad koordinat och hela den lånade cellen med både `Buffer::diff_iter` och `Buffer::diff` i Ratatui. Proven omfattar olika höjder, breda symboler över radgränser, kvarvarande celler, äldre `skip`, explicita diffregler och råa arkiv med avvikande antal celler. I 1 600 av paren isoleras enskilda färger, höga attributbitar, äldre `skip` och tomma celler. För arkiv med olika cellantal stannar iteratorn vid den kortare cellarrayens slut. Det fullständiga provet för cellbredd använder även `RawCell::cell_width` direkt för alla 1 112 064 Unicode-skalärer, inklusive kontrolltecknen. För hela symbolsträngar matchade alla 9 300 bredder, inklusive 2 548 kombinationer av bastecken, diakritiska tecken, variationsväljare och sammanfogningstecken. [Cellbreddsprov](../tests/cell_edits.ddr) · [Bildtider](../benchmarks/raw-diff.md)
 
-Alla 7 916 svar med understrykningsfält och 7 934 utan fältet var byteidentiska med referensen på macOS ARM64, Linux ARM64, översatt Linux x86-64 och Win64 under Wine. I terminalprovet applicerar en app de lånade cellerna på den tidigare bilden. Siffran växlar till 2 medan den skyddade bokstaven E står kvar.
+Alla 9 516 svar med understrykningsfält och 9 534 utan fältet var byteidentiska med referensen på macOS ARM64, Linux ARM64, översatt Linux x86-64 och Win64 under Wine. I terminalprovet applicerar en app de lånade cellerna på den tidigare bilden. Siffran växlar till 2 medan den skyddade bokstaven E står kvar.
 
 En orörd cell, ett explicit mellanslag och en tom sträng behåller var sitt JSON-värde. Orörda celler och mellanslag med samma stil och diffregel är lika vid omritning. Proven täcker också 16-bitars attributmasker, färgade understreck, celler bakom breda symboler, `ForcedWidth` och det äldre fältet `skip`. `tui.Buffer` kan läsa en rå bild med avvikande cellantal. För att bli en ritbar `Frame` måste antalet stämma med ytan och koordinaterna rymmas i terminalen. Även formatet med sex cellfält har jämförts. [JSON utan separat understrykningsfärg](#json-utan-separat-understrykningsfärg)
 

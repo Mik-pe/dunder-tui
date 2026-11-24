@@ -340,7 +340,15 @@ pub fn cell_columns_view(value: &str) -> i32 {
     if value.len == 0 { return 0 }
     if value.len == 1 { return 1 }
     first := scalar_at(value, 0)
-    if encoded(first) == value.len {
+    mut end := encoded(first)
+    while end < value.len && value[end] >= 128 {
+        cp := scalar_at(value, end)
+        props := property(cp)
+        if props.bit_and(15) != EXTEND || props.shr(7).bit_and(3) != 0 ||
+            presentation_change(cp,false) || script_candidate(cp) { break }
+        end += encoded(cp)
+    }
+    if end == value.len {
         w := columns(first)
         return if w < 0 { 1 } else { w }
     }

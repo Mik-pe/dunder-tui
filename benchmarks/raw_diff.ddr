@@ -1,11 +1,24 @@
 capability stdio
 import ..src.tui
 import std.array
+import std.json
+import std.text
 import std.time
 import sys
 
-fn picture(height:i32, offset:i32) -> tui.Buffer {
+fn picture(height:i32, offset:i32, dense:bool) -> tui.Buffer {
     mut image := tui.Buffer::empty(tui.Rect::new(3,5,96,height))
+    if dense {
+        tiles := ["AB茶é....XYZ","CD海ä::::UVZ"]
+        inks := [tui.ink(.Indexed(45)).bold(), tui.plain().foreground_rgb(0xff8844).background_rgb(0x192a37).underline_rgb(0x55ffaa).italic().underlined()]
+        for y in 0..height {
+            for x in 0..8 {
+                tile := (x+y+offset)%2
+                image.set_string(3+x*12,5+y,tiles[tile].as_str(),inks[tile])
+            }
+        }
+        return move image
+    }
     labels := ["│ 水 é", "│ 火 é", "│ 木 é", "│ 金 é"]
     for y in 0..height {
         image.set_string(3,5+y,labels[(y+offset)%4].as_str(),tui.ink(.Green))
@@ -14,15 +27,26 @@ fn picture(height:i32, offset:i32) -> tui.Buffer {
     move image
 }
 
-fn measure(mode:string, timed:bool, count:i32) {
-    old := picture(if mode == "resize" { 20 } else { 24 },0)
-    mut next := picture(24,if mode == "scroll" { 1 } else { 0 })
-    if mode == "one" || mode == "resize" { _ := next.get_mut(97,24).set_char(`!`) }
-    if mode == "repaint" {
+fn measure(mode:string, timed:bool, count:i32, check:bool) {
+    dense := text.starts_with(mode,"dense-")
+    old := picture(if mode == "resize" { 20 } else { 24 },0,dense)
+    mut next := picture(24,if mode == "scroll" || mode == "dense-scroll" { 1 } else { 0 },dense)
+    if mode == "one" || mode == "resize" || mode == "dense-one" { _ := next.get_mut(97,24).set_char(`!`) }
+    if mode == "repaint" || mode == "dense-repaint" {
         area := next.area
         next.set_style(area,tui.ink(.Yellow).background(.Blue))
     }
     pair := tui.BufferPair { previous:&old, current:&next }
+    if check {
+        print(mode)
+        print(json.to_string(&old).unwrap())
+        print(json.to_string(&next).unwrap())
+        mut changes := pair.diff_iter()
+        while changes.advance() {
+            print(f"{changes.x()} {changes.y()} {json.to_string(changes.cell()).unwrap()}")
+        }
+        return
+    }
     mut samples: []i64 = []
     mut sum: i64 = 0
     mut emitted := 0
@@ -47,5 +71,6 @@ fn measure(mode:string, timed:bool, count:i32) {
 fn main() {
     timed := sys.arg_count() == 1
     count := if !timed && sys.arg(1) == "--setup" { 0 } else { 110 }
-    for mode in ["idle","one","scroll","resize","repaint"] { measure(mode,timed,count) }
+    check := !timed && sys.arg(1) == "--cells"
+    for mode in ["idle","one","scroll","resize","repaint","dense-idle","dense-one","dense-scroll","dense-repaint"] { measure(mode,timed,count,check) }
 }

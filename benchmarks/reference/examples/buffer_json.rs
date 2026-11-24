@@ -219,6 +219,53 @@ fn raw_cases() {
         }
     }
     let changed = to_value(Cell::from('!')).unwrap();
+    let mut narrow = Vec::new();
+    for symbol in [
+        Value::Null,
+        json!(" "),
+        json!("A"),
+        json!("B"),
+        json!("\u{1b}"),
+    ] {
+        let plain = Style::new();
+        let named = plain
+            .fg(Color::Red)
+            .bg(Color::Blue)
+            .add_modifier(Modifier::BOLD);
+        let rgb = named.fg(Color::Rgb(1, 2, 3)).bg(Color::Rgb(4, 5, 6));
+        for (style, ul, skip) in [
+            (plain, Color::Reset, false),
+            (
+                plain.add_modifier(Modifier::from_bits_retain(0x8000)),
+                Color::Reset,
+                false,
+            ),
+            (plain, Color::Reset, true),
+            (named, Color::Cyan, false),
+            (named.fg(Color::Indexed(1)), Color::Cyan, false),
+            (named.bg(Color::Indexed(4)), Color::Cyan, false),
+            (named, Color::Indexed(6), false),
+            (rgb, Color::Rgb(7, 8, 9), false),
+        ] {
+            let mut c = Cell::EMPTY;
+            c.set_style(style);
+            #[allow(deprecated)]
+            c.set_skip(skip);
+            let mut value = to_value(c).unwrap();
+            if value.get("underline_color").is_some() {
+                value["underline_color"] = to_value(ul).unwrap();
+            }
+            value["symbol"] = symbol.clone();
+            narrow.push(value);
+        }
+    }
+    for a in &narrow {
+        for b in &narrow {
+            let old = buffer(4, 2, 2, 1, &[a.clone(), b.clone()]);
+            let new = buffer(4, 2, 2, 1, &[b.clone(), a.clone()]);
+            println!("D\t{}", json!([old, new]));
+        }
+    }
     for (x, y, w) in [(0, 0, 3), (65534, 65535, 3), (65535, 65534, 1)] {
         for a in 0..7 {
             for b in 0..7 {
