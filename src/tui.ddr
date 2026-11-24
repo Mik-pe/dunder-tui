@@ -1595,32 +1595,40 @@ impl GlyphRun {
     }
 
     pub fn write(&self, frame: &mut Frame, bounds: Rect, first: i32, end: i32, style: Style) -> i32 {
-        self.write_run(&mut frame,bounds,first,end,style,false)
-    }
-
-    pub fn render_cells(&self, frame: &mut Frame, bounds: Rect, first: i32, end: i32, style: Style) {
-        _ := self.write_run(&mut frame,bounds,first,end,style,true)
-    }
-
-    fn write_run(&self, frame: &mut Frame, bounds: Rect, first: i32, end: i32, style: Style, individual: bool) -> i32 {
         if bounds.w <= 0 || bounds.h <= 0 || bounds.y < frame.bounds.y || bounds.y >= frame.bounds.y+frame.bounds.h { return 0 }
-        start := clamp(first, self.count())
-        finish := clamp(end, self.count())
+        count := self.count()
+        start := clamp(first, count)
+        finish := clamp(end, count)
         if start >= finish { return 0 }
         brush := frame.encode(style)
         match &self.data {
-            .Some(data) => data.write(&mut frame, bounds, start, finish, brush, style, individual),
+            .Some(data) => data.write(&mut frame, bounds, start, finish, brush, style),
             .None => {
-                if individual { frame.split_wide_cell(bounds.x,bounds.y) }
                 frame.ascii_slice(i64(bounds.x), i64(bounds.y), bounds.w, self.source, start, finish, brush, &style)
                 cmp.max<i32>(0, i32(cmp.min<i64>(i64(finish - start), cmp.min<i64>(i64(bounds.w), i64(frame.bounds.x+frame.bounds.w) - i64(bounds.x)))))
             },
         }
     }
+
+    pub fn render_cells(&self, frame: &mut Frame, bounds: Rect, first: i32, end: i32, style: Style) {
+        if bounds.w <= 0 || bounds.h <= 0 || bounds.y < frame.bounds.y || bounds.y >= frame.bounds.bottom() { return }
+        count := self.count()
+        start := clamp(first,count)
+        finish := clamp(end,count)
+        if start >= finish { return }
+        brush := frame.encode(style)
+        match &self.data {
+            .None => {
+                frame.split_wide_cell(cmp.max<i32>(bounds.x,frame.bounds.x),bounds.y)
+                frame.ascii_slice(i64(bounds.x), i64(bounds.y), bounds.w, self.source, start, finish, brush, &style)
+            },
+            .Some(data) => data.render_cells(&mut frame,bounds,start,finish,brush,style),
+        }
+    }
 }
 
 impl GlyphData {
-    fn write(&self, frame: &mut Frame, bounds: Rect, start: i32, finish: i32, brush: i64, style: Style, individual: bool) -> i32 {
+    fn write(&self, frame: &mut Frame, bounds: Rect, start: i32, finish: i32, brush: i64, style: Style) -> i32 {
         mut x := i64(bounds.x)
         right := cmp.min<i64>(i64(frame.bounds.x+frame.bounds.w), x + i64(bounds.w))
         left := frame.bounds.x
@@ -1632,23 +1640,48 @@ impl GlyphData {
             cp := self.tokens[i * 2]
             cells := self.tokens[i * 2 + 1]
             if cells == 0 { continue }
-            if x >= right || (!individual && x + i64(cells) > right) { break }
+            if x + i64(cells) > right { break }
             if x >= i64(left) {
                 index := base + (i32(x) - left)
-                if individual && frame.glyphs[index] < 0 { frame.split_wide_cell(i32(x),bounds.y) }
-                storage := if individual && cells > 1 { frame.cell_storage_width(index,frame.bounds.right()-i32(x),cells) } else { cells }
-                if storage != cells { frame.overlaps = true }
                 old := frame.styles[index]
                 if old != last {
                     last = old
                     combined = if old == 0 || old == brush { brush } else { frame.composite(old, &style) }
                 }
-                if cp >= 0 { frame.put_at(index, cp, storage, combined) }
-                else { frame.put_cluster_at(index, row, self.clusters[-1 - cp].clone(), storage, combined) }
+                if cp >= 0 { frame.put_at(index, cp, cells, combined) }
+                else { frame.put_cluster_at(index, row, self.clusters[-1 - cp].clone(), cells, combined) }
             }
             x += i64(cells)
         }
         i32(x - i64(bounds.x))
+    }
+
+    fn render_cells(&self, frame: &mut Frame, bounds: Rect, start: i32, finish: i32, brush: i64, style: Style) {
+        mut x := i64(bounds.x)
+        right := cmp.min<i64>(i64(frame.bounds.right()),x+i64(bounds.w))
+        row := bounds.y-frame.bounds.y
+        mut last := i64(0)
+        mut combined := brush
+        for i in start..finish {
+            cells := self.tokens[i * 2 + 1]
+            if cells == 0 { continue }
+            if x >= right { break }
+            if x >= i64(frame.bounds.x) {
+                index := frame.index(i32(x),bounds.y)
+                if frame.glyphs[index] < 0 { frame.split_wide_cell(i32(x),bounds.y) }
+                storage := if cells > 1 { frame.cell_storage_width(index,frame.bounds.right()-i32(x),cells) } else { cells }
+                if storage != cells { frame.overlaps = true }
+                old := frame.styles[index]
+                if old != last {
+                    last = old
+                    combined = if old == 0 || old == brush { brush } else { frame.composite(old,&style) }
+                }
+                cp := self.tokens[i * 2]
+                if cp >= 0 { frame.put_at(index,cp,storage,combined) }
+                else { frame.put_cluster_at(index,row,self.clusters[-1-cp].clone(),storage,combined) }
+            }
+            x += i64(cells)
+        }
     }
 }
 

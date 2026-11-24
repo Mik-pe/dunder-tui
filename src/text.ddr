@@ -703,12 +703,13 @@ impl Line {
         mut drawn_until := 0
         for i in 0..self.spans.len {
             span := &self.spans[i]
-            if skip >= span.width() { skip -= span.width(); continue }
+            span_columns := span.width()
+            if skip >= span_columns { skip -= span_columns; continue }
             if x >= row.w { break }
             if x < drawn_until { frame.split_wide_cell(row.x + x, row.y) }
             written := span.draw(&mut frame, tui.Rect { x: row.x + x, y: row.y, w: row.w - x, h: 1 }, skip)
             drawn_until = cmp.max<i32>(drawn_until, x + written)
-            x += span.width() - skip
+            x += span_columns - skip
             skip = 0
         }
     }
