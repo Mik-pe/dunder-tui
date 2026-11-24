@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Ligaturer och textjustering i 0.18.2
+
+I en vy med centrerade, färgsatta textrader tog skrollning i en pseudoterminal på macOS ARM64 29 µs i median med Dunder och 38 µs med Ratatui. På översatt Linux x86-64 tog samma arbete 234 respektive 63 µs. [Mätvärden för fem arbetslaster](ligatures.md)
+
 ## Loggvy i 0.18.1
 
 Loggvyn mäter ritning och omritning av blandad text med sammansatta emoji. På macOS ARM64 tog skrollning 85 µs i median med Dunder och 92 µs med Ratatui. På översatt Linux x86-64 var motsvarande tider 772 och 139 µs. [Alla fem arbetslaster med bildtid, terminalbyte, minne och allokeringar](emoji.md)
