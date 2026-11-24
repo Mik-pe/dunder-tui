@@ -163,6 +163,7 @@ Samma ritfunktion går att prova utan en ansluten terminal.
 ```dunder
 import tui
 import tui.testing as testing
+import std.json
 
 fn draw(frame: &mut tui.Frame, text: &mut string) {
     frame.label(frame.area(),text)
@@ -177,6 +178,15 @@ fn main() {
     assert(terminal.backend().cursor_visible())
     assert(terminal.backend().cursor_position() == (2,0))
 }
+```
+
+Med `std.json` kan ett integrationstest spara skärm, skrollhistorik och markör och fortsätta rita från samma tillstånd. `testing.TestBackend::with_lines` bygger en testskärm från färdiga textrader. [Körbart exempel](tests/saved_backend.ddr)
+
+```dunder
+saved := json.to_string(&terminal.backend()).unwrap()
+device := json.from_str<testing.TestBackend>(saved).unwrap()
+mut replay := tui.Terminal<testing.TestBackend>::new(move device)
+assert(replay.draw(&mut text,draw).is_ok())
 ```
 
 Implementera `tui.Backend` med `size` och `present` för att ansluta en egen utmatning. `present` får aktuell och föregående bild. `frame.ansi_diff(&previous,&mut output)` skriver ändrade celler och markörkommandon till en bytebuffert. Med `try_draw` kan ritfunktionen returnera ett fel före utmatningen. Om backenden rapporterar ett skrivfel får den en hel bild nästa gång. `completed()` ger den senast lyckade bilden. Anropa `invalidate()` för att tvinga fram en hel omritning efter externa ändringar. [Backend med felprov](tests/suite.ddr) · [Testterminalens skrollhistorik](src/testing.ddr)

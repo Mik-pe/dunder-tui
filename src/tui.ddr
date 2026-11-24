@@ -632,6 +632,32 @@ fn cell_rule(code: i32, skip: bool) -> i32 { if skip { LEGACY_SKIP + code + 2 } 
 
 pub opaque struct Frame { bounds: Rect, cursor_x: i32, cursor_y: i32, cursor_changed: bool, number: u64, glyphs: []i32, styles: []i64, decorations: []i64, clusters: []string, cluster_cells: []i32, cluster_ranges: []i32, options: []i32, row_flags: []u8, has_options: bool, overlaps: bool }
 
+unsafe fn shift_numbers(base: ptr, count: i32, delta: i32, stride: usize) {
+    distance := if delta < 0 { -delta } else { delta }
+    vacant := usize(distance)*stride
+    kept := usize(count-distance)*stride
+    shifted := ptr(usize(base)+vacant)
+    if delta < 0 {
+        if kept > 0 { bytes.copy_memory(base,shifted,kept) }
+        bytes.zero_memory(ptr(usize(base)+kept),vacant)
+    } else {
+        if kept > 0 { bytes.copy_memory(shifted,base,kept) }
+        bytes.zero_memory(base,vacant)
+    }
+}
+
+fn shift_strings(slots: &mut []string, first: i32, end: i32, delta: i32) {
+    if slots.len == 0 { return }
+    if delta < 0 {
+        for i in first..end+delta { slots.swap(i,i-delta) }
+        for i in end+delta..end { slots[i] = "" }
+    } else {
+        mut i := end
+        while i > first+delta { i -= 1; slots.swap(i,i-delta) }
+        for i in first..first+delta { slots[i] = "" }
+    }
+}
+
 impl Buffer {
     pub fn to_frame(&self) -> Result<Frame,string> {
         if self.area != Rect::new(self.area.x,self.area.y,self.area.w,self.area.h) {
@@ -884,6 +910,37 @@ impl Frame {
             if self.glyphs[i] != 0 || self.styles[i] != 0 || self.stored_option(i) != 0 { return false }
         }
         true
+    }
+
+    pub fn scroll_rows(&mut self, first: i32, end: i32, delta: i32) {
+        top := cmp.clamp<i32>(first,self.bounds.y,self.bounds.bottom())-self.bounds.y
+        bottom := cmp.clamp<i32>(end,self.bounds.y+top,self.bounds.bottom())-self.bounds.y
+        rows := cmp.clamp<i32>(delta,top-bottom,bottom-top)
+        if rows == 0 || self.bounds.w == 0 { return }
+        start := top*self.bounds.w
+        finish := bottom*self.bounds.w
+        offset := rows*self.bounds.w
+        unsafe {
+            shift_numbers(addr(&mut self.glyphs[start]),finish-start,offset,size_of(i32))
+            shift_numbers(addr(&mut self.styles[start]),finish-start,offset,size_of(i64))
+            if self.options.len > 0 { shift_numbers(addr(&mut self.options[start]),finish-start,offset,size_of(i32)) }
+            if self.row_flags.len > 0 { shift_numbers(addr(&mut self.row_flags[top]),bottom-top,rows,size_of(u8)) }
+        }
+        shift_strings(&mut self.clusters,start,finish,offset)
+        if self.cluster_cells.len == 0 { return }
+        self.cluster_ranges.clear()
+        mut kept := 0
+        for j in 0..self.cluster_cells.len {
+            mut i := self.cluster_cells[j]
+            if i >= start && i < finish {
+                if (offset < 0 && i < start-offset) || (offset > 0 && i >= finish-offset) { continue }
+                i += offset
+            }
+            self.cluster_cells[kept] = i
+            self.include_cluster(i,i/self.bounds.w)
+            kept += 1
+        }
+        self.cluster_cells.truncate(kept)
     }
 
     fn index(&self, x: i32, y: i32) -> i32 { (y-self.bounds.y)*self.bounds.w + (x-self.bounds.x) }

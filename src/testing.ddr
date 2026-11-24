@@ -231,12 +231,7 @@ impl TestBackend {
             for y in 0..shift { self.history.push_row(&self.screen,y) }
             self.history.push_empty(count-shift)
         }
-        if shift == 0 { return }
-        mut retained := tui.Frame::new(area.w,bottom-top-shift)
-        start := if up { top+shift } else { top }
-        retained.copy_region(&self.screen,tui.Rect { x:0,y:start,w:area.w,h:retained.area().h },0,0)
-        self.screen.erase(tui.Rect { x:0,y:top,w:area.w,h:bottom-top })
-        self.screen.copy_region(&retained,retained.area(),0,if up { top } else { top+shift })
+        self.screen.scroll_rows(top,bottom,if up { -shift } else { shift })
     }
 
     pub fn append_lines(&mut self, rows: i32) {

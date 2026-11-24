@@ -1,0 +1,12 @@
+import std.json
+
+fn main() {
+    pos := (u16(20),u16(4))
+    wire := json.to_string(&pos).unwrap()
+    assert(wire == "[20,4]")
+    restored := json.from_str<(u16,u16)>(wire).unwrap()
+    assert(restored == pos)
+    assert(json.from_str<(u16,u16)>("[20]").is_err())
+    assert(json.from_str<(u16,u16)>("[20,4,1]").is_err())
+    assert(json.from_str<(u16,u16)>("[20,65536]").is_err())
+}

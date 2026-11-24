@@ -56,6 +56,27 @@ import ..src.tailwind
     assert(device.buffer().raw_cell_at(3,0).unwrap().symbol.is_none())
 }
 
+@test fn scrolling_an_offset_frame_moves_cluster_styles_and_diff_rules_together() {
+    mut frame := tui.Frame::at(tui.Rect::new(4,6,5,4))
+    _ := frame.set_cell(4,6,"A",tui.ink(.Cyan))
+    _ := frame.set_cell(5,7,"👩‍🚀",tui.ink(.Red))
+    _ := frame.set_diff_option(5,7,.AlwaysUpdate)
+    _ := frame.set_cell(4,8,"é",tui.ink(.Blue))
+    _ := frame.set_cell(4,9,"Z",tui.plain())
+    frame.scroll_rows(7,10,1)
+    assert(frame.raw_cell_at(5,7).unwrap().symbol.is_none())
+    assert(frame.cell_at(5,8).unwrap().symbol == "👩‍🚀" && frame.diff_option_at(5,8).unwrap() == .AlwaysUpdate)
+    assert(frame.cell_at(4,9).unwrap().symbol == "é" && frame.cell_at(4,6).unwrap().symbol == "A")
+    frame.scroll_rows(7,10,-1)
+    assert(frame.raw_cell_at(5,7).unwrap().fg == .Red)
+    assert(frame.raw_cell_at(4,8).unwrap().fg == .Blue)
+    frame.resize(6,5)
+    saved := json.from_str<tui.Frame>(json.to_string(&frame).unwrap()).unwrap()
+    assert(frame.diff_positions(&saved).unwrap().len == 1)
+    frame.scroll_rows(-100,100,-2147483648)
+    for y in 6..11 { assert(frame.row_is_blank(y)) }
+}
+
 @test fn inserted_rows_are_flushed_in_order_and_the_viewport_recovers_after_each_backend_error() {
     scroll_errors.regions()
 }

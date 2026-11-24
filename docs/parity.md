@@ -26,7 +26,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | `layout-cache` | `Layout.cache_capacity` styr antal sparade uppdelningar. Layoutproven återanvänder tidigare storlekar efter regelbyten. |
 | `scrolling-regions` | Backendens regionskrollning och reservvägen med radmatning jämförs genom skrollhistorik och terminalutdata. |
 | `macros` | Konstruktorer för spann, rader, text och layout finns. Jämförelse per dokumenterad makroform återstår. |
-| `serde` | Färger, stilar, attribut, celler, diffregler, buffertar, layouter och geometri läses och skrivs med `std.json`. List-, tabell- och skrolltillstånd samt deras riktningsval stöds. Bland annat testbackend, paletter och justering återstår. Referensens `Span`, `Line` och `Text` saknar Serde-format. |
+| `serde` | Färger, stilar, attribut, celler, diffregler, buffertar, layouter och geometri läses och skrivs med `std.json`. Testbackenden, list-, tabell- och skrolltillstånd samt deras riktningsval stöds. Bland annat paletter och justering återstår. Referensens `Span`, `Line` och `Text` saknar Serde-format. |
 | `crossterm`, `crossterm_0_28`, `crossterm_0_29`, `termina`, `termion`, `termwiz` | Dunder använder POSIX och Win32 direkt. Den låsta Crossterm-referensen och de faktiska terminalproven täcker bland annat ritning, markör och återställning. Skillnader mellan referensens övriga backendval är öppna. |
 | `std`, `portable-atomic`, `default` | Dunder bygger offline med sitt standardbibliotek. `portable-atomic` gäller referensens mål utan atomära typer. `default` väljer kalender, Crossterm, layoutcache, makron och understrykningsfärg. |
 
@@ -69,6 +69,24 @@ ref=build/rust/release/examples/themes
 build/themes build/theme-input >build/actual
 diff -u build/expected build/actual
 dunder run --locked --offline tests/theme_terminal.ddr
+```
+
+### Återställ testterminalen
+
+`testing.TestBackend` läser och skriver Ratatuis skärmbuffert, skrollhistorik, markörens synlighet och dess två 16-bitarskoordinater. `testing.SavedBackend` kan även läsa en rå ögonblicksbild med avvikande geometri. För att använda den som terminal med `to_backend()` måste båda buffertarna börja i origo, ha rätt cellantal och samma radbredd. Markören kan ligga utanför skärmen. [Dunder-API](../src/testing.ddr) · [Ratatuis implementation](https://github.com/ratatui/ratatui/blob/ratatui-v0.30.2/ratatui-core/src/backend/test.rs)
+
+418 fall jämför två påföljande ritningar, markörflyttning, fem rensningslägen, skrollning i båda riktningar och storleksändring. Bland fallen ingår ogiltiga indata, färgade textrader, emoji och delvis rensade breda tecken. Totalt jämförs 2 336 fullständiga tillstånd och 1 296 utvalda rader vid historikens gräns på 65 535 rader, sammanlagt 56 616 celler. Alla utdata matchade på macOS ARM64, Linux ARM64, översatt Linux x86-64 och Win64 under Wine. I Unix-pseudoterminalen flyttar nedåtpilen nästa sparade rad till historiken. Win32-provet läser de två bilderna ur konsolbufferten. [Dunderprov](../tests/backend_json.ddr) · [Referens och indata](../benchmarks/reference/examples/backend_json.rs) · [Pseudoterminal](../tests/backend_json_terminal.ddr) · [Prestanda](../benchmarks/scrollback.md)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/backend_json.ddr -o build/backend-json
+cargo build --locked --offline --release --manifest-path benchmarks/reference/Cargo.toml --features backend-oracle --example backend_json --target-dir build/rust
+ref=build/rust/release/examples/backend_json
+"$ref" --cases > build/backend-cases
+"$ref" < build/backend-cases > build/backend-expected
+build/backend-json build/backend-cases > build/backend-actual
+cmp build/backend-expected build/backend-actual
+dunder run --locked --offline tests/backend_json_terminal.ddr
 ```
 
 ### Sparade markeringar och skrollpositioner
