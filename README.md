@@ -410,7 +410,7 @@ fn visa(view:&mut plot.Plot, frame:&mut tui.Frame, area:tui.Rect) {
 
 För en kurva kan du skicka hela följden av koordinatpar till `p.polyline(&points,.Cyan)`. Använd `p.filled_polyline(&points,0.0,.Blue)` för att fylla ned till y = 0. En ensam punkt syns också. Om du vill lägga en widget mellan två grupper av former kan du skriva den första gruppen med `p.finish(&mut frame)`, rita widgeten och sedan fortsätta med samma koordinatsystem.
 
-Med `tui.chart` delar flera dataserier samma axlar. Varje serie kan ritas som punkter, linje, staplar eller fylld yta. För en interaktiv app kan du spara diagrammet i tillståndet och ändra `graph.datasets[0].data` eller axelgränserna före nästa ritning.
+Med `tui.chart` delar flera dataserier samma axlar. Varje serie kan ritas som punkter, linje, staplar eller fylld yta. För en interaktiv app kan du spara diagrammet i tillståndet och ändra `graph.datasets[0].data` eller axelgränserna före nästa ritning. En högerjusterad första x-etikett kan börja en kolumn till vänster om diagrammet, som i Ratatui. Sätt `graph.clip_to_area = true` när etiketter och teckenförklaring ska rymmas inom panelen.
 
 ```dunder
 import tui

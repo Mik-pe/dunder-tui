@@ -147,8 +147,6 @@ fn main() {
         return;
     }
     let mut count = 0;
-    let mut clipped = 0;
-    let mut errors = 0;
     for k in 0..15 {
         for series in 0..4 {
             for legend in 0..9 {
@@ -167,47 +165,16 @@ fn main() {
                     let mut buf = widget_cells::seeded(area);
                     (&chart).render(area, &mut buf);
                     let actual = input.next().unwrap();
-                    let expected = widget_cells::snapshot(&buf);
-                    if actual != expected {
-                        let mut guard = widget_cells::seeded(area);
-                        if guard
-                            .area
-                            .positions()
-                            .any(|p| !area.contains(p) && guard[p] != buf[p])
-                        {
-                            let mut inner = ratatui::buffer::Buffer::empty(area);
-                            for p in area.positions() {
-                                inner[p] = guard[p].clone();
-                            }
-                            (&chart).render(area, &mut inner);
-                            for p in area.positions() {
-                                guard[p] = inner[p].clone();
-                            }
-                            if actual == widget_cells::snapshot(&guard) {
-                                clipped += 1;
-                                count += 1;
-                                continue;
-                            }
-                        }
-                        if errors < 30 {
-                            let (i, (a, b)) = actual
-                                .split('|')
-                                .zip(expected.split('|'))
-                                .enumerate()
-                                .find(|(_, (a, b))| a != b)
-                                .unwrap();
-                            eprintln!(
-                                "config {k} series {series} legend {legend} {w}x{h} diff {i} {a} / {b}"
-                            );
-                        }
-                        errors += 1;
-                    }
+                    assert_eq!(
+                        actual,
+                        widget_cells::snapshot(&buf),
+                        "chart {k}, series {series}, legend {legend}, {w}x{h}"
+                    );
                     count += 1;
                 }
             }
         }
     }
     assert!(input.next().is_none());
-    println!("{count} chart frames, {clipped} clipped at the widget edge, {errors} unresolved");
-    assert_eq!(errors, 0);
+    println!("{count} chart frames match");
 }

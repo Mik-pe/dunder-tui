@@ -1,6 +1,7 @@
 capability unsafe, stdio
 
 import .buffer_app
+import .chart_cells
 import .cell_widgets
 import .shadow_cells
 import .border_cells
@@ -122,6 +123,7 @@ fn draw(frame: &mut tui.Frame, probe: &Probe) {
     diagram.x_axis = graphs.Axis::new([0.0,1.0]); diagram.y_axis = graphs.Axis::new([0.0,1.0])
     frame.render_widget(&mut diagram,tui.Rect {x:3,y:6,w:3,h:2})
     cell_widgets.swatch(&mut frame,12,2)
+    chart_cells.axis_edge(&mut frame,9,5,probe.step == 1)
 }
 
 fn update(probe: &mut Probe, key: tui.Key) -> bool {
@@ -166,6 +168,10 @@ fn update(probe: &mut Probe, key: tui.Key) -> bool {
         if read_text(out,addr(&mut meter[0]),1,plot_row,addr(&mut n)) == 0 || meter[0] != 0x2580 { probe.failure = 41; return false }
         if read_attr(out,addr(&mut attr),1,plot_row,addr(&mut n)) == 0 || attr.bit_and(255) != 27 { probe.failure = 42; return false }
         if read_text(out,addr(&mut meter[0]),1,plot_row+5,addr(&mut n)) == 0 || meter[0] != 42 { probe.failure = 43; return false }
+        edge := if probe.step == 1 { "..ABCD..XY." } else { ".ABCDE..XY." }
+        for i in 0..edge.len {
+            if unit_at(out,i32(bounds[5])+7+i,i32(bounds[6])+7) != i32(edge[i]) { probe.failure = 96; return false }
+        }
         for i in 0..5 {
             if unit_at(out,i32(bounds[5])+12+i,i32(bounds[6])+2) != i32("xy  #"[i]) { probe.failure = 118; return false }
         }

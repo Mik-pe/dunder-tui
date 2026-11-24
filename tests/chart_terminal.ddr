@@ -1,0 +1,34 @@
+capability unsafe, process, stdio
+import ..src.tui
+import .chart_cells
+import .terminal_driver as driver
+import sys
+
+fn draw(frame:&mut tui.Frame, clipped:&bool) { chart_cells.axis_edge(&mut frame,3,1,clipped) }
+
+fn update(clipped:&mut bool, key:tui.Key) -> bool {
+    match key {
+        .Char(c) if c == `q` => { return false },
+        .Char(c) if c == `c` => { clipped = !clipped },
+        _ => {},
+    }
+    true
+}
+
+fn exercise(master:i32, slave:i32, screen:&mut driver.Screen) -> bool {
+    unsafe {
+        if !driver.wait_for(master,&mut screen,3,".ABCDE..XY.","\x1b[?1049h") { return false }
+        if !driver.send(master,"c") || !driver.wait_for(master,&mut screen,3,"..ABCD..XY.","") { return false }
+        if !driver.send(master,"c") || !driver.wait_for(master,&mut screen,3,".ABCDE..XY.","") { return false }
+        return driver.send(master,"q") && driver.wait_for(master,&mut screen,0,"","\x1b[?1049l")
+    }
+}
+
+fn main() -> i32 {
+    if sys.arg_count() > 1 {
+        mut clipped := false
+        return if tui.run(&mut clipped,draw,update).is_ok() { 0 } else { 1 }
+    }
+    unsafe { if driver.test_with_args(sys.arg(0),["draw"],18,6,exercise) { print("Chart labels and shell restoration OK"); return 0 } }
+    1
+}

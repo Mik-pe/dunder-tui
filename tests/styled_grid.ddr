@@ -1,0 +1,18 @@
+import ..src.tui
+
+pub fn seed(a: tui.Rect, flags: bool) -> tui.Frame {
+    mut tile := tui.RawCell::from_char(`.`)
+    _ := tile.set_style(tui.ink(.Green).background(.Blue).underline_rgb(0x040506).bold())
+    mut buffer := tui.Buffer::filled(a,&tile)
+    for y in a.y..a.bottom() {
+        buffer.set_string(a.x+1,y,"界",tui.ink(.Red))
+        buffer.set_string(a.x+4,y,"🦀",tui.plain().italic())
+        if flags {
+            _ := buffer.get_mut(a.x+2,y).set_skip(true)
+            _ := buffer.get_mut(a.x+3,y).set_diff_option(.Skip)
+            _ := buffer.get_mut(a.x+4,y).set_diff_option(.AlwaysUpdate)
+            _ := buffer.get_mut(a.x+6,y).set_diff_option(.ForcedWidth(2))
+        }
+    }
+    buffer.to_frame().unwrap()
+}

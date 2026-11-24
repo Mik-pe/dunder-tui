@@ -1,7 +1,8 @@
+#[path = "../src/styled_grid.rs"]
+mod styled_grid;
 use ratatui::{
-    buffer::{Buffer, Cell, CellDiffOption},
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::Color,
     symbols::Marker,
     text::Line as TextLine,
     widgets::{
@@ -20,35 +21,6 @@ impl Shape for Beacon {
         Line::new(self.longitude, 0., self.longitude, 2., Color::Indexed(49)).draw(p);
         Points::new(&[(6., 2.)], Color::Red).draw(p);
     }
-}
-
-fn seed(a: Rect, flags: bool) -> Buffer {
-    let mut tile = Cell::new(".");
-    tile.set_style(
-        Style::new()
-            .fg(Color::Green)
-            .bg(Color::Blue)
-            .underline_color(Color::Rgb(4, 5, 6))
-            .add_modifier(Modifier::BOLD),
-    );
-    let mut buf = Buffer::filled(a, tile);
-    for y in a.top()..a.bottom() {
-        buf.set_string(a.x + 1, y, "界", Color::Red);
-        buf.set_string(
-            a.x + 4,
-            y,
-            "🦀",
-            Style::new().add_modifier(Modifier::ITALIC),
-        );
-        if flags {
-            #[allow(deprecated)]
-            buf[(a.x + 2, y)].set_skip(true);
-            buf[(a.x + 3, y)].set_diff_option(CellDiffOption::Skip);
-            buf[(a.x + 4, y)].set_diff_option(CellDiffOption::AlwaysUpdate);
-            buf[(a.x + 6, y)].set_diff_option(CellDiffOption::ForcedWidth(2.try_into().unwrap()));
-        }
-    }
-    buf
 }
 
 fn main() {
@@ -77,7 +49,7 @@ fn main() {
                 Marker::Custom('\t'),
                 Marker::Custom('\0'),
             ] {
-                let mut buf = seed(a, flags);
+                let mut buf = styled_grid::seed(a, flags);
                 let calls = Counter::new(0);
                 for phase in 0..4 {
                     let bg = if phase % 2 == 0 {

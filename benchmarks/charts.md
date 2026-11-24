@@ -2,27 +2,27 @@
 
 Tre serier med 96 punkter ritas som fylld yta med sextanter, linje med braille och punktdiagram. Även y-axel, etiketter, teckenförklaring och statusrad ingår. Båda programmen förbereder data vid start, återanvänder diagrammet och ger samma celler och stilar i samtliga 1 100 bilder. [Dundervy](chart_scene.ddr) · [Rustvy](reference/src/chart_scene.rs) · [Jämförelseprov](../tests/chart_reference.ddr)
 
-## Dunder 0.12.1 med cellvis ritning
+## Axelgränser och cellstilar i Dunder 0.12.1
 
-Den 24 november 2026 kördes samma 1 100 bilder mot Ratatui 0.30.2 på Apple M5, macOS 27.2.1, och i lokala Linuxgäster. Tabellen visar medianen av sju körningars p50 / p95 i µs vid skrivning till en pseudoterminal. Två omgångar värmde upp systemen och programmen växlade startordning. I TSV-filen finns även tider utan terminal och min–max mellan körningarna. [Samtliga mätvärden](results/chart-shapes-0.12.1.tsv)
+Den 24 november 2026 kördes samma 1 100 bilder mot Ratatui 0.30.2 på Apple M5 med macOS 27.2.1 och i lokala Linuxgäster. Tabellen visar medianen av sju körningars p50 / p95 i µs med skrivning till en pseudoterminal. Två omgångar värmde upp systemen och programmen växlade startordning. TSV-filen innehåller även tider utan terminal och min–max mellan körningar. [Samtliga mätvärden](results/chart-edges-0.12.1.tsv) · [Föregående mätning](results/chart-shapes-0.12.1.tsv)
 
 | Ändring | macOS ARM64 Dunder | Ratatui | Linux ARM64 Dunder | Ratatui | Linux x64 översatt Dunder | Ratatui |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Oförändrad | 90 / 190 | 105 / 204 | 89 / 150 | 109 / 223 | 703 / 1015 | 197 / 426 |
-| En cell | 92 / 190 | 102 / 159 | 92 / 150 | 108 / 175 | 707 / 1249 | 198 / 396 |
-| Skrollning | 143 / 291 | 181 / 322 | 120 / 184 | 171 / 256 | 973 / 1408 | 284 / 501 |
-| Ny bredd | 140 / 280 | 165 / 293 | 114 / 222 | 163 / 294 | 972 / 1497 | 265 / 531 |
-| Hel omritning | 151 / 287 | 203 / 370 | 121 / 202 | 193 / 365 | 1020 / 1509 | 320 / 684 |
+| Oförändrad | 90 / 148 | 106 / 180 | 93 / 196 | 111 / 218 | 703 / 1104 | 201 / 365 |
+| En cell | 91 / 192 | 106 / 213 | 96 / 205 | 110 / 218 | 705 / 1136 | 205 / 460 |
+| Skrollning | 147 / 287 | 183 / 312 | 124 / 261 | 177 / 328 | 974 / 1542 | 293 / 585 |
+| Ny bredd | 145 / 286 | 169 / 305 | 117 / 183 | 166 / 300 | 977 / 1472 | 289 / 579 |
+| Hel omritning | 150 / 255 | 208 / 357 | 127 / 267 | 198 / 349 | 1026 / 1554 | 333 / 688 |
 
-Medianbildtiden var lägre för Dunder på båda ARM64-systemen i alla fem fall. Vid ändring av en cell på macOS var p95 högre för Dunder, och intervallen för p95 överlappade. På Linux x64 med CPU-översättning var Ratatui snabbare i alla fem fall. För hela sekvensen lästes 4 829 492 byte från Dunders terminal och 8 084 900 från Ratatuis på alla tre plattformar.
+På macOS och Linux ARM64 hade Dunder lägre medianbildtid och lägre median av p95 i de fem fallen. På översatt Linux x64 var Ratatui snabbare i samtliga. För hela sekvensen lästes 4 829 492 byte från Dunders terminal och 8 084 900 från Ratatuis på alla tre plattformar.
 
 | Plattform | Allokeringsanrop Dunder / Ratatui | Begärda byte Dunder / Ratatui | Högsta RSS Dunder / Ratatui, KiB |
 | --- | ---: | ---: | ---: |
-| macOS ARM64 | 27 444 / 25 820 | 1 425 346 / 129 245 345 | 1 936 / 2 944 |
-| Linux ARM64 | 27 444 / 25 816 | 1 425 346 / 129 245 152 | 384 / 2 060 |
-| Linux x64, översatt | 27 444 / 25 814 | 1 425 346 / 129 244 840 | 5 944 / 5 652 |
+| macOS ARM64 | 18 643 / 25 820 | 932 530 / 129 245 345 | 1 936 / 3 200 |
+| Linux ARM64 | 18 643 / 25 816 | 932 530 / 129 245 152 | 384 / 2 048 |
+| Linux x64, översatt | 18 643 / 25 814 | 932 530 / 129 244 840 | 5 944 / 5 656 |
 
-Dunders räknare omfattar 516 nya allokeringar och 26 928 anrop som återanvände poolminne. RSS är medianen av tre separata processkörningar. Kommandona längre ned bygger och kör samma mätprogram.
+Med samma Dunderkod för cellritningen minskade antalet allokeringsanrop från 27 443 till 18 643 när axelgränserna kopierades till befintlig lagring. Antalet arraykloner sjönk från 4 405 till fem. Dunders slutmätning omfattar 516 nya allokeringar och 18 127 anrop som återanvände poolminne. RSS är medianen av tre separata körningar. [Fristående prov med fasta arrayfält](language/fixed_bounds.ddr)
 
 ## Bildtid och terminalutdata i dunder-tui 0.9.0
 

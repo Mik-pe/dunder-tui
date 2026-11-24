@@ -62,7 +62,7 @@ Fler körbara prov täcker ändrade bildrader, delade SGR-återställningar, öv
 | `constraint!`, `constraints!` | `Constraint` med `Length`, `Min`, `Max`, `Percentage`, `Ratio` och `Fill`, arrayer eller `regel.repeat(antal)` |
 | `horizontal!`, `vertical!` | `Layout::horizontal` och `Layout::vertical` med samma regler |
 
-Provet jämför 740 bilder med 81 992 råa celler över fem ytstorlekar. Det kontrollerar också textbredder, formatering, rad- och kolumnindelning samt mellanrum. Upprepade rader och celler redigeras efter konstruktion. Raderna före och efter en tom tabellrad synliggör skillnaden i höjd. [Dunder](../tests/constructor_reference.ddr) · [Ratatuis åtta makron](../benchmarks/reference/examples/constructors.rs) · [Avgångstavla med 1 100 jämförda bilder](../benchmarks/manifest.md)
+Provet jämför 740 bilder med 81 992 råa celler över fem ytstorlekar. Det kontrollerar också textbredder, formatering, rad- och kolumnindelning samt mellanrum. Upprepade rader och celler redigeras efter konstruktion. Raderna före och efter en tom tabellrad synliggör skillnaden i höjd. [Dunder](../tests/constructor_reference.ddr) · [Ratatuis åtta makron](../benchmarks/reference/examples/constructors.rs) · [Avgångstavla med 1 100 jämförda bilder](../benchmarks/manifest.md) Med `--layered-text` jämförs även 180 ritningar av text och rader över redan fyllda celler, inklusive färg under breda tecken.
 
 ```sh
 mkdir -p build
@@ -478,7 +478,18 @@ cargo run --release --locked --offline --no-default-features --features theme-or
 cmp build/shape-cells.expected build/shape-cells.actual
 ```
 
-Diagramprovet omfattar 4 320 bilder med fyra graftyper, båda axlarna, rubriker, justering, tomma dataserier och samtliga åtta legendpositioner. I 4 104 bilder matchar hela bufferten direkt. I 216 bilder börjar Ratatuis första högerjusterade x-etikett utanför diagrammet. Där verifieras att referensen faktiskt ändrade en kontrollcell. Därefter ritas samma diagram med Ratatui i en buffert med diagrammets gränser och hela bilden jämförs på nytt. Dunder håller även en centrerad, fullhög teckenförklaring inom diagrammet när dess vänsterkant har förskjutits. Alla 1 100 bilder i prestandaprovet matchar cell för cell. [Diagramprov](../tests/chart_reference.ddr) · [Ratatui-prov](../benchmarks/reference/examples/charts.rs) · [Mätningar](../benchmarks/charts.md)
+Alla 4 320 diagrambilder matchar vid direkt jämförelse med Ratatui, inklusive omgivningen. Provet täcker fyra graftyper, båda axlarna, rubriker, justering, tomma dataserier och åtta legendpositioner. Standardplaceringen låter den första högerjusterade x-etiketten börja en kolumn till vänster om rutan. En centrerad, fullhög teckenförklaring kan också nå raden under diagrammet. Med `clip_to_area = true` hålls båda inom rutan. Alla 1 100 bilder i prestandaprovet matchar också. [Diagramprov](../tests/chart_reference.ddr) · [Ratatui-prov](../benchmarks/reference/examples/charts.rs) · [Mätningar](../benchmarks/charts.md)
+
+I 520 buffertar jämförs dessutom varje fysisk cell efter två ritningar över befintliga breda tecken. Bland de 47 320 cellerna ingår tidigare gömda bakgrunder, understrykningsfärg, modifierare och diffregler. I klipplägets axelprov ritar Ratatui i en buffert med panelens gränser. Terminalprovet växlar läge med en tangent och läser tillbaka etiketten. [Råa celler i Dunder](../tests/chart_cells.ddr) · [Ratatuis råa celler](../benchmarks/reference/examples/chart_cells.rs) · [Terminalprov](../tests/chart_terminal.ddr)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/chart_cells.ddr -o build/chart-cells
+build/chart-cells >build/chart.actual
+cargo run --locked --offline --release --no-default-features --features theme-oracle --manifest-path benchmarks/reference/Cargo.toml --example chart_cells >build/chart.expected
+cmp build/chart.expected build/chart.actual
+dunder run --locked --offline tests/chart_terminal.ddr
+```
 
 Proven använder Dunders publika API. Win32-provet läser tillbaka halvblockets båda färger och en ritad diagramlinje. Unixprovet startar den färdigbyggda kartappen, byter longitud och detaljgrad, pausar och återupptar svepet, ändrar terminalstorlek och kontrollerar återställning. [Terminalprov](../tests/coast_terminal.ddr) · [Konsolprov](../tests/windows_console.ddr)
 

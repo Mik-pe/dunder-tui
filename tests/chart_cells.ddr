@@ -1,0 +1,70 @@
+capability stdio
+import ..src.tui
+import ..src.chart
+import ..src.text as rich
+import .styled_grid
+import std.json
+import sys
+
+pub fn axis_edge(frame:&mut tui.Frame, x:i32, y:i32, clipped:bool) {
+    area := tui.Rect::new(x,y,8,3)
+    frame.fill(tui.Rect::new(x-2,y+2,11,1),`.`,tui.plain())
+    mut c := chart.Chart::new([])
+    c.clip_to_area = clipped
+    c.x_axis.alignment = .Right
+    c.x_axis.labels = [rich.Line::raw("ABCDE").styled(tui.ink(.LightCyan)),rich.Line::raw("XY")]
+    frame.render_widget(&mut c,area)
+}
+
+fn view(k:i32) -> chart.Chart {
+    mut series := chart.Dataset::default()
+    series.name = .Some(rich.Line::raw("A界").styled(tui.ink(.Cyan)))
+    series.style = tui.ink(.Yellow).without(.Bold)
+    series.data = [(0.0,0.0),(1.0,1.0)]
+    series.graph_type = chart.GraphType::parse("Line").unwrap()
+    series.marker = .Custom(`界`)
+    mut c := if k == 11 { chart.Chart::default() } else { chart.Chart::new([move series]) }
+    c.x_axis.bounds = [0.0,1.0]
+    c.y_axis.bounds = [0.0,1.0]
+    c.x_axis.style = tui.ink(.Red).underline_color(.Indexed(13))
+    c.y_axis.style = tui.ink(.Blue).italic()
+    if k%4 < 2 {
+        c.x_axis.labels = [rich.Line::raw("A界z").styled(tui.ink(.Yellow)),rich.Line::raw("0")]
+        c.x_axis.alignment = .Right
+    }
+    if k%3 == 0 {
+        c.y_axis.labels = [rich.Line::raw("界"),rich.Line::raw("top").styled(tui.ink(.Green))]
+        c.y_axis.alignment = .Center
+    }
+    if k%4 == 2 { c.y_axis.title = .Some(rich.Line::raw("界Y").styled(tui.ink(.Cyan))) }
+    if k%4 == 1 { c.x_axis.title = .Some(rich.Line::raw("X").styled(tui.ink(.Red))) }
+    if k%3 == 1 { c.style = tui.plain().background(.Black).italic() }
+    if k >= 4 { c.legend_position = .Some(.Top) }
+    if k >= 8 { c.set_legend_constraints(.Fill(1),.Fill(1)) }
+    move c
+}
+
+fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--types" {
+        print(chart.GraphType::default().str())
+        for name in ["Scatter","Line","Bar","Area","scatter","line","BAR"," Area","Area ",""] {
+            match chart.GraphType::parse(name) { .Some(t) => print(t.str()), .None => print("-"), }
+        }
+        return
+    }
+    for a in [tui.Rect::new(0,0,13,7),tui.Rect::new(7,4,13,7)] {
+        for area in [a,tui.Rect::new(a.x+2,a.y+1,8,5),tui.Rect::new(a.x+5,a.y+2,5,3),
+                tui.Rect::new(a.x+1,a.y,1,2),tui.Rect::new(a.x+2,a.y+1,0,2)] {
+            for flags in [false,true] { for k in 0..13 {
+                mut frame := styled_grid.seed(a,flags)
+                mut c := view(if k == 12 { 1 } else { k })
+                if k == 12 { c.legend_position = .None; c.clip_to_area = true }
+                for phase in 0..2 {
+                    if phase == 1 { c.datasets.clear(); c.x_axis = chart.Axis::default() }
+                    frame.render_widget(&mut c,area)
+                    print(json.to_string(&frame.to_buffer()).unwrap())
+                }
+            } }
+        }
+    }
+}

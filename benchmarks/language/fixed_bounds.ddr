@@ -1,0 +1,31 @@
+capability stdio
+import sys
+
+struct Axis { bounds: [f64;2] }
+
+fn copy(dst:&mut Axis, src:&Axis, replace:bool) {
+    if replace { dst.bounds = src.bounds.clone() }
+    else { for i in 0..2 { dst.bounds[i] = src.bounds[i] } }
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 2 }
+    mode := sys.arg(1)
+    if mode != "clone" && mode != "reuse" { return 2 }
+    mut src := Axis { bounds:[0.0,1.0] }
+    mut dst := Axis { bounds:[0.0,0.0] }
+    copy(&mut dst,&src,mode == "clone")
+    saved := dst.bounds.clone()
+    mut sum := i64(0)
+    for n in 0..10000 {
+        src.bounds[0] = f64(n)
+        src.bounds[1] = f64(n+7)
+        copy(&mut dst,&src,mode == "clone")
+        src.bounds[0] = -1.0
+        assert(dst.bounds[0] == f64(n))
+        sum += i64(dst.bounds[0]+dst.bounds[1])
+    }
+    assert(sum == 100060000 && saved[0] == 0.0 && saved[1] == 1.0)
+    print(sum)
+    0
+}

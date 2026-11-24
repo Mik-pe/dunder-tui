@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Kopiera fasta axelgränser till befintlig lagring
+
+I Dunder 0.12.1 krävde 10 001 kopieringar av två `f64` med `dst.bounds = src.bounds.clone()` 20 011 allokeringsanrop inklusive uppstart. Att skriva de två elementen på plats gav nio. Källan kunde ändras efter kopian och ett tidigare sparat värde behöll båda gränserna. I diagrammet försvann 4 400 arraykloner över 1 100 bilder när de fyra gränsparen uppdaterades på plats. [Minimiprov](../benchmarks/language/fixed_bounds.ddr) · [Diagramprovet](../benchmarks/charts.md)
+
 ## Låna en vy i en synkron callback
 
 En form som lånar en koordinatlista fungerar som argument till `draw(&shape)`. I Dunder 0.12.1 får en synkron closure med `fn[&shape]` E4003 om formen innehåller samma lån. Det räcker med en post med ett lånat arrayfält för att återskapa felet. Ritscenen kan i dag fånga koordinatlistan och konstruera formen inne i callbacken. [Minimiprov](../tests/dogfood/compiler/capture_borrowed_shape.ddr) · [Körbar ritscen](../tests/shape_cells.ddr)

@@ -1,3 +1,6 @@
+#[path = "../src/styled_grid.rs"]
+mod styled_grid;
+
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
@@ -126,7 +129,32 @@ fn emit(key: String, shape: String, area: Rect, bounds: Rect, widget: impl Widge
     println!("{key}\t{shape}\t{}", to_string(&buf).unwrap());
 }
 
+fn layered_text() {
+    let bounds = Rect::new(3, 2, 11, 4);
+    for area in [bounds, Rect::new(5, 2, 7, 3), Rect::new(8, 3, 1, 2)] {
+        for flags in [false, true] {
+            for n in [0, 3, 8] {
+                for kind in 0..5 {
+                    let mut buf = styled_grid::seed(bounds, flags);
+                    document(kind, n)
+                        .style(Style::new().underline_color(Color::Indexed(7)))
+                        .render(area, &mut buf);
+                    println!("{}", to_string(&buf).unwrap());
+                    line_for(kind, n)
+                        .style(Style::new().red())
+                        .render(area, &mut buf);
+                    println!("{}", to_string(&buf).unwrap());
+                }
+            }
+        }
+    }
+}
+
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--layered-text") {
+        layered_text();
+        return;
+    }
     for n in [0, 1, 3, 8] {
         for (w, h) in [(0, 0), (1, 2), (6, 4), (19, 7), (33, 5)] {
             let area = Rect::new(2, 1, w, h);

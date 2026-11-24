@@ -135,8 +135,10 @@ impl Painter {
         self.clear_drawing()
         self.labels.clear()
         self.area = area
-        self.xs = xs.clone()
-        self.ys = ys.clone()
+        for i in 0..2 {
+            self.xs[i] = xs[i]
+            self.ys[i] = ys[i]
+        }
         self.use_marker(marker)
         n := i32(area.cell_count())
         if self.mask.len < n {

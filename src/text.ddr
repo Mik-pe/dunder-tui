@@ -717,7 +717,7 @@ impl Span {
             x = offset
         }
         if !self.glyphs.has_zero_width() {
-            return x + self.glyphs.write(&mut frame, tui.Rect { x: area.x + x, y: area.y, w: area.w - x, h: 1 }, first, self.count(), self.style)
+            return x + self.glyphs.write_cells(&mut frame, tui.Rect { x: area.x + x, y: area.y, w: area.w - x, h: 1 }, first, self.count(), self.style)
         }
         mut previous := -1
         mut prefix := ""
@@ -786,7 +786,7 @@ impl Line {
         columns := self.width()
         if columns <= 0 || area.w <= 0 || area.h <= 0 { return }
         row := tui.Rect { x: area.x, y: area.y, w: area.w, h: 1 }
-        frame.apply_style(row, style)
+        frame.apply_cell_style(row, style)
         delta := row.w - columns
         shift := match alignment { .Center => delta / 2, .Right => delta, _ => 0, }
         mut x := cmp.max<i32>(0, shift)
@@ -814,7 +814,7 @@ impl Text {
     pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
         area := bounds.intersection(frame.area())
         if area.w <= 0 || area.h <= 0 { return }
-        frame.apply_style(area, self.style)
+        frame.apply_cell_style(area, self.style)
         for i in 0..cmp.min<i32>(area.h, self.lines.len) {
             row := tui.Rect { x: area.x, y: area.y + i, w: area.w, h: 1 }
             self.lines[i].draw(&mut frame, row, self.alignment)

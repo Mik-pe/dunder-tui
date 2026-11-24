@@ -5,13 +5,31 @@ import .plot
 import .layout
 import std.cmp as cmp
 
+@derive(Eq, Hash)
 pub enum GraphType { Scatter, Line, Bar, Area }
+@derive(Eq)
 pub enum LegendPosition { Top, TopRight, TopLeft, Left, Right, Bottom, BottomRight, BottomLeft }
+
+impl Default for GraphType { fn default() -> Self { .Scatter } }
+impl Display for GraphType {
+    fn str(&self) -> string {
+        match self { .Scatter => "Scatter", .Line => "Line", .Bar => "Bar", .Area => "Area", }
+    }
+}
+impl GraphType {
+    pub fn parse(name: string) -> Option<Self> {
+        match name { "Scatter" => .Some(.Scatter), "Line" => .Some(.Line), "Bar" => .Some(.Bar), "Area" => .Some(.Area), _ => .None, }
+    }
+}
+
+impl Default for LegendPosition { fn default() -> Self { .TopRight } }
 
 pub struct Axis {
     bounds: [f64;2], title: Option<rich.Line>, labels: []rich.Line,
     style: tui.Style, alignment: rich.Alignment,
 }
+
+impl Default for Axis { fn default() -> Self { Axis::new([0.0,0.0]) } }
 
 impl Axis {
     pub fn new(bounds: [f64;2]) -> Self {
@@ -23,6 +41,8 @@ pub struct Dataset {
     data: [](f64,f64), name: Option<rich.Line>, marker: plot.Marker, graph_type: GraphType,
     style: tui.Style, fill_to_y: f64,
 }
+
+impl Default for Dataset { fn default() -> Self { Dataset::new([]) } }
 
 impl Dataset {
     pub fn new(move data: [](f64,f64)) -> Self {
@@ -50,16 +70,24 @@ pub opaque struct Legend {
 
 pub struct Chart {
     datasets: []Dataset, x_axis: Axis, y_axis: Axis, style: tui.Style, block: block.Block,
-    legend_position: Option<LegendPosition>, legend: Legend, surface: plot.Plot,
+    legend_position: Option<LegendPosition>, clip_to_area: bool, legend: Legend, surface: plot.Plot,
 }
 
 struct Axes { graph: tui.Rect, x_line: bool, y_line: bool, x_labels: bool }
 
+impl Default for Chart {
+    fn default() -> Self { Chart::create([], .None, layout.Constraint::default()) }
+}
+
 impl Chart {
     pub fn new(move datasets: []Dataset) -> Self {
-        Self { datasets: move datasets, x_axis: Axis::new([0.0,0.0]), y_axis: Axis::new([0.0,0.0]),
-            style: tui.plain(), block: block.Block::new(), legend_position: .Some(.TopRight),
-            legend: Legend { width: layout.Layout::horizontal([.Ratio(1,4)]), height: layout.Layout::vertical([.Ratio(1,4)]), border: block.Block::bordered() },
+        Chart::create(move datasets,.Some(LegendPosition::default()),.Ratio(1,4))
+    }
+
+    fn create(move datasets: []Dataset, position: Option<LegendPosition>, limit: layout.Constraint) -> Self {
+        Self { datasets: move datasets, x_axis: Axis::default(), y_axis: Axis::default(),
+            style: tui.plain(), block: block.Block::new(), legend_position: move position, clip_to_area:false,
+            legend: Legend { width: layout.Layout::horizontal([limit]), height: layout.Layout::vertical([limit]), border: block.Block::bordered() },
             surface: plot.Plot::new([0.0,0.0],[0.0,0.0]) }
     }
 
@@ -99,7 +127,7 @@ impl Chart {
             first := labels[0].width()
             (left,right,align) := match self.x_axis.alignment {
                 .Center => (area.x,g.x+cmp.min<i32>(step,first),rich.Alignment.Center),
-                .Right => (cmp.max<i32>(area.x,g.x-1),g.x+step,rich.Alignment.Left),
+                .Right => (cmp.max<i32>(if self.clip_to_area { area.x } else { 0 },g.x-1),g.x+step,rich.Alignment.Left),
                 _ => (area.x,g.x,rich.Alignment.Right),
             }
             labels[0].render_aligned(&mut frame,row(left,y,right-left),align)
@@ -114,9 +142,9 @@ impl Chart {
                 self.y_axis.labels[i].render_aligned(&mut frame,row(area.x,g.bottom()-1-offset,g.x-area.x-1),self.y_axis.alignment)
             }
         }
-        if axes.x_line { frame.fill(row(g.x,g.bottom(),g.w),`─`,self.x_axis.style) }
-        if axes.y_line { frame.fill(tui.Rect { x:g.x-1,y:g.y,w:1,h:g.h },`│`,self.y_axis.style) }
-        if axes.x_line && axes.y_line { frame.fill(row(g.x-1,g.bottom(),1),`└`,self.x_axis.style) }
+        if axes.x_line { frame.paint_rune(row(g.x,g.bottom(),g.w),`─`,self.x_axis.style) }
+        if axes.y_line { frame.paint_rune(tui.Rect { x:g.x-1,y:g.y,w:1,h:g.h },`│`,self.y_axis.style) }
+        if axes.x_line && axes.y_line { frame.paint_rune(row(g.x-1,g.bottom(),1),`└`,self.x_axis.style) }
     }
 
     fn draw_legend(&mut self, frame: &mut tui.Frame, g: tui.Rect, xt: i32, yt: i32, original: tui.Style) {
@@ -144,8 +172,9 @@ impl Chart {
             .BottomRight => g.bottom()-h-(if xt > 0 { 1 } else { 0 }),
             .Bottom => g.bottom()-h-(if x+w > g.right()-xt { 1 } else { 0 }),
         }
-        bounds := tui.Rect { x:x, y:cmp.clamp<i32>(y,g.y,g.bottom()-h), w:w, h:h }
-        frame.apply_style(bounds,original)
+        top := if self.clip_to_area { cmp.clamp<i32>(y,g.y,g.bottom()-h) } else { y }
+        bounds := tui.Rect { x:x, y:top, w:w, h:h }
+        frame.apply_cell_style(bounds,original)
         _ := self.legend.border.render(&mut frame,bounds)
         mut line := bounds.y+1
         for ds in &self.datasets {
@@ -158,15 +187,17 @@ impl Chart {
 
     pub fn render(&mut self, frame: &mut tui.Frame, bounds: tui.Rect) {
         outer := bounds.intersection(frame.area())
-        frame.apply_style(outer,self.style)
+        frame.apply_cell_style(outer,self.style)
         area := self.block.render(&mut frame,outer)
         if area.is_empty() { return }
-        original := frame.style_at(outer.x,outer.y).unwrap()
+        original := frame.raw_style_at(outer.x,outer.y).unwrap()
         axes := self.axes(area)
         self.draw_axes(&mut frame,area,&axes)
         g := axes.graph
-        self.surface.x_bounds = self.x_axis.bounds.clone()
-        self.surface.y_bounds = self.y_axis.bounds.clone()
+        for i in 0..2 {
+            self.surface.x_bounds[i] = self.x_axis.bounds[i]
+            self.surface.y_bounds[i] = self.y_axis.bounds[i]
+        }
         self.surface.background = self.style.get_background().unwrap_or(tui.Color.Default)
         p := self.surface.begin(&mut frame,g)
         for dataset in &self.datasets {
@@ -191,6 +222,6 @@ impl Chart {
 
 fn row(x: i32, y: i32, w: i32) -> tui.Rect { tui.Rect { x:x,y:y,w:cmp.max<i32>(0,w),h:1 } }
 fn draw_title(frame: &mut tui.Frame, area: tui.Rect, line: &rich.Line, style: tui.Style) {
-    frame.apply_style(area,style)
+    frame.apply_cell_style(area,style)
     _ := line.write(&mut frame,area)
 }

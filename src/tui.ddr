@@ -1372,10 +1372,18 @@ impl Buffer {
 }
 
 impl Frame {
+    fn raw_style(&self, i: i32) -> Style {
+        self.resolved(if self.glyphs[i] < 0 { i64(0) } else { self.styles[i] })
+    }
+
+    pub fn raw_style_at(&self, x: i32, y: i32) -> Option<Style> {
+        if !self.bounds.contains(x,y) { return .None }
+        .Some(self.raw_style(self.index(x,y)))
+    }
+
     fn raw_cell(&self, i: i32) -> RawCell {
         glyph := self.glyphs[i]
-        key := if glyph < 0 { i64(0) } else { self.styles[i] }
-        resolved := self.resolved(key)
+        resolved := self.raw_style(i)
         mut symbol: Option<string> = .None
         if glyph > 0 {
             symbol = .Some(self.symbol_value(i,self.normalized_symbol(i)))

@@ -1,5 +1,7 @@
 capability stdio
 import std.json
+import sys
+import .styled_grid
 import ..src.tui
 import .constructor_scene as scene
 
@@ -7,7 +9,23 @@ fn emit(key: string, shape: string, frame: &tui.Frame) {
     print(key+"\t"+shape+"\t"+json.to_string(&frame).unwrap())
 }
 
+fn layered_text() {
+    bounds := tui.Rect::new(3,2,11,4)
+    for area in [bounds,tui.Rect::new(5,2,7,3),tui.Rect::new(8,3,1,2)] {
+        for flags in [false,true] { for n in [0,3,8] { for kind in 0..5 {
+            mut frame := styled_grid.seed(bounds,flags)
+            doc := scene.document(kind,n).styled(tui.plain().underline_color(.Indexed(7)))
+            frame.render_widget(&doc,area)
+            print(json.to_string(&frame).unwrap())
+            line := scene.line(kind,n).styled(tui.ink(.Red))
+            frame.render_widget(&line,area)
+            print(json.to_string(&frame).unwrap())
+        } } }
+    }
+}
+
 fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--layered-text" { layered_text(); return }
     for n in [0,1,3,8] {
         for size in [(0,0),(1,2),(6,4),(19,7),(33,5)] {
             area := tui.Rect::new(2,1,size.0,size.1)
