@@ -91,6 +91,8 @@ fn main() {
 fn benchmark<S>(move scene: S) {
     timed := sys.arg_count() < 2 || sys.arg(1) != "--allocations"
     physical := sys.arg_count() == 2 && sys.arg(1) == "--terminal"
+    console := sys.arg_count() == 2 && sys.arg(1) == "--win-console"
+    mut written := i64(0)
     mut state := State<S> { scene: move scene, mode: "", step: 0, shared:proc.env("TUI_BENCH_DIFF_OPTIONS") == .Some("1") }
     if sys.arg_count() == 2 && sys.arg(1) == "--verify" {
         for mode in ["idle","cell","scroll","resize","repaint"] {
@@ -119,7 +121,8 @@ fn benchmark<S>(move scene: S) {
             t.backend_mut().data.clear()
             assert(t.draw(&mut state,render<S>).is_ok())
             batch := &t.backend().data
-            if physical { assert(posix.write_bytes(&batch)) }
+            if physical || console { assert(posix.write_bytes(&batch)) }
+            if console { written += i64(batch.len) }
             if step >= 20 {
                 if timed { samples.push(clock.monotonic_ns()-start) }
                 total += i64(batch.len)
@@ -130,4 +133,5 @@ fn benchmark<S>(move scene: S) {
             _ := sys.eprint(f"{mode} {samples[99]} {samples[189]} {total/200}")
         } else { _ := sys.eprint(f"{total}") }
     }
+    if console { _ := sys.eprint(f"written {written}") }
 }

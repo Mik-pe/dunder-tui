@@ -1,0 +1,106 @@
+capability unsafe, stdio
+
+import std.sys.windows as wide
+import sys
+
+@extern("kernel32", "GetStdHandle") unsafe fn handle(stream: i32) -> ptr
+@extern("kernel32", "SetStdHandle") unsafe fn set_handle(stream: i32, h: ptr) -> i32
+@extern("kernel32", "CreateFileW") unsafe fn open_file(name: ptr, access: u32, share: u32, attrs: ptr, how: u32, flags: u32, template: ptr) -> ptr
+@extern("kernel32", "AllocConsole") unsafe fn allocate() -> i32
+@extern("kernel32", "FreeConsole") unsafe fn detach() -> i32
+@extern("kernel32", "GetConsoleOutputCP") unsafe fn output_page() -> u32
+@extern("kernel32", "SetConsoleOutputCP") unsafe fn set_page(page: u32) -> i32
+@extern("kernel32", "CreateConsoleScreenBuffer") unsafe fn create_screen(access: u32, share: u32, security: ptr, kind: u32, data: ptr) -> ptr
+@extern("kernel32", "GetConsoleScreenBufferInfo") unsafe fn info(h: ptr, data: ptr) -> i32
+@extern("kernel32", "SetConsoleScreenBufferSize") unsafe fn set_size(h: ptr, size: u32) -> i32
+@extern("kernel32", "SetConsoleWindowInfo") unsafe fn window(h: ptr, absolute: i32, bounds: ptr) -> i32
+@extern("kernel32", "SetConsoleMode") unsafe fn mode(h: ptr, flags: u32) -> i32
+@extern("kernel32", "SetConsoleActiveScreenBuffer") unsafe fn activate(h: ptr) -> i32
+@extern("kernel32", "ReadConsoleOutputCharacterW") unsafe fn read_cell(h: ptr, cell: ptr, n: u32, at: u32, got: ptr) -> i32
+@extern("kernel32", "GetCurrentProcess") unsafe fn this_process() -> ptr
+@extern("kernel32", "DuplicateHandle") unsafe fn duplicate(source: ptr, h: ptr, dest: ptr, copy: ptr, access: u32, inherit: i32, options: u32) -> i32
+@extern("kernel32", "CreateProcessW") unsafe fn launch(path: ptr, command: ptr, process_attrs: ptr, thread_attrs: ptr, inherit: i32, flags: u32, env: ptr, cwd: ptr, startup: ptr, result: ptr) -> i32
+@extern("kernel32", "CloseHandle") unsafe fn close(h: ptr) -> i32
+@extern("kernel32", "WaitForSingleObject") unsafe fn wait(h: ptr, timeout: u32) -> u32
+@extern("kernel32", "GetExitCodeProcess") unsafe fn exit_code(h: ptr, code: ptr) -> i32
+@extern("kernel32", "TerminateProcess") unsafe fn terminate(h: ptr, code: u32) -> i32
+@extern("kernel32", "K32GetProcessMemoryInfo") unsafe fn memory(h: ptr, counters: ptr, size: u32) -> i32
+
+unsafe fn inheritable(h: ptr) -> ptr {
+    mut copy := ptr(0)
+    assert(duplicate(this_process(), h, this_process(), addr(&mut copy), 0, 1, 2) != 0)
+    copy
+}
+
+unsafe fn measure(program: string, rss: bool) -> i32 {
+    // Keep the caller's redirected streams across AllocConsole.
+    err := inheritable(handle(-12))
+    defer { _ := close(err) }
+    out := inheritable(handle(-11))
+    defer { _ := close(out) }
+    _ := detach()
+    if allocate() == 0 { return 1 }
+    defer { _ := detach() }
+    if set_handle(-11,out) == 0 || set_handle(-12,err) == 0 { return 1 }
+    page := output_page()
+    if set_page(65001) == 0 { return 2 }
+    defer { _ := set_page(page) }
+    raw := create_screen(0xc0000000,3,ptr(0),1,ptr(0))
+    if i64(usize(raw)) == -1 { return 3 }
+    defer { _ := close(raw) }
+    mut data: [i16;11] = [0;11]
+    if info(raw,addr(&mut data[0])) == 0 { return 4 }
+    w := if data[0] >= 96 { u32(data[0]) } else { u32(96) }
+    h := if data[1] >= 24 { u32(data[1]) } else { u32(24) }
+    mut bounds: [i16;4] = [0,0,95,23]
+    if set_size(raw,w.bit_or(h.shl(16))) == 0 || window(raw,1,addr(&mut bounds[0])) == 0 || mode(raw,5) == 0 || activate(raw) == 0 { return 5 }
+    screen := inheritable(raw)
+    defer { _ := close(screen) }
+    nul := wide.path("NUL")
+    input := open_file(addr(&nul[0]),2147483648,3,ptr(0),3,128,ptr(0))
+    if i64(usize(input)) == -1 { return 6 }
+    defer { _ := close(input) }
+    stdin := inheritable(input)
+    defer { _ := close(stdin) }
+    app := wide.path(program)
+    extra := if rss { "" } else { " --win-console" }
+    mut command := wide.path("\"" + program + "\"" + extra)
+    mut startup: [u64;13] = [0;13]
+    startup[0] = 104
+    store_u32(ptr(usize(addr(&mut startup[0])) + 60),256)
+    startup[10] = u64(usize(stdin)); startup[11] = u64(usize(screen)); startup[12] = u64(usize(err))
+    mut process: [u64;3] = [0;3]
+    if launch(addr(&app[0]),addr(&mut command[0]),ptr(0),ptr(0),1,0,ptr(0),ptr(0),addr(&startup[0]),addr(&mut process[0])) == 0 { return 6 }
+    child := ptr(usize(process[0]))
+    defer { _ := close(child) }
+    _ := close(ptr(usize(process[1])))
+    mut peak := u64(0)
+    if rss {
+        mut counters: [u64;9] = [0;9]
+        counters[0] = 72
+        for _ in 0..90000 {
+            if memory(child,addr(&mut counters[0]),72) != 0 && counters[1] > peak { peak = counters[1] }
+            if wait(child,1) != 258 { break }
+        }
+        if memory(child,addr(&mut counters[0]),72) != 0 && counters[1] > peak { peak = counters[1] }
+    }
+    if wait(child,90000) != 0 { _ := terminate(child,124); _ := wait(child,5000); return 7 }
+    mut code := u32(0)
+    if exit_code(child,addr(&mut code)) == 0 || code != 0 { return 8 }
+    if rss {
+        if peak == 0 { return 9 }
+        print(peak)
+    } else {
+        mut cell := u16(0); mut got := u32(0)
+        if read_cell(raw,addr(&mut cell),1,u32(23).shl(16),addr(&mut got)) == 0 || got != 1 || cell != 45 { return 10 }
+    }
+    0
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 && sys.arg_count() != 3 { return 1 }
+    if target_is("windows") {
+        unsafe { return measure(sys.arg(1), sys.arg_count() == 3 && sys.arg(2) == "--rss") }
+    }
+    1
+}

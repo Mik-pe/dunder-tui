@@ -82,6 +82,19 @@ jobs:
           build/dunder$EXT build --locked --offline "tests/$PROBE.ddr" -o "build/console$EXT"
           build/console$EXT
           echo "$PROBE passed on $RUNNER_OS $RUNNER_ARCH"
+      - name: Check native child process startup
+        if: runner.os == 'Windows'
+        run: |
+          cd "$SOURCE_ROOT"
+          build/dunder.exe build --locked --offline tests/dogfood/compiler/windows_child.ddr -o build/child.exe
+          for arg in exec spawn; do
+            if build/child.exe "$arg"; then echo "$arg passed"
+            else
+              code=$?
+              test "$code" = 101 || exit "$code"
+              echo "::warning::Dunder 0.11.2 std.process $arg exited 101 during child startup on Windows."
+            fi
+          done
       - name: Compare cursor lifetime, text cells and completed frames
         run: |
           cd "$SOURCE_ROOT"
@@ -105,13 +118,44 @@ jobs:
           cd "$SOURCE_ROOT"
           ref=build/rust/release/examples/terminal_bench$EXT
           build/dunder$EXT build --locked --offline benchmarks/measure.ddr -o "build/measure$EXT"
-          driver=()
           if [[ "$RUNNER_OS" == Linux ]]; then
             build/dunder build --locked --offline benchmarks/pty.ddr -o build/pty
-            driver=(build/pty)
             lscpu | grep -E '^(Architecture|Model name|Hypervisor vendor):'
+            build/measure build/benchmark "$ref" build/pty
+            for round in {1..3}; do
+              for program in build/benchmark "$ref"; do
+                /usr/bin/time -f "$program peak-rss-kib %M" "$program" >/dev/null
+              done
+            done
+          else
+            build/dunder.exe build --locked --offline benchmarks/console.ddr -o build/conhost-bench.exe
+            mkdir -p build/samples
+            names=(dunder ratatui)
+            programs=(build/benchmark.exe "$ref")
+            for mode in memory console; do
+              for round in {0..8}; do
+                for pos in 0 1; do
+                  i=$(((round+pos)%2))
+                  sample=build/samples/$mode-${names[i]}-$round
+                  cmd=("${programs[i]}")
+                  if [[ "$mode" == console ]]; then cmd=(build/conhost-bench.exe "${programs[i]}"); fi
+                  "${cmd[@]}" >"$sample.out" 2>"$sample.raw" || { code=$?; cat "$sample.raw"; echo "${cmd[*]} exited $code"; exit "$code"; }
+                  tr -d '\r' <"$sample.raw" | grep -v '^written ' >"$sample.stats"
+                  if [[ "$mode" == console ]]; then
+                    tr -d '\r' <"$sample.raw" | sed -n 's/^written \([0-9][0-9]*\)$/\1/p' >"$sample.bytes"
+                    test -s "$sample.bytes"
+                  fi
+                done
+              done
+            done
+            build/measure.exe --recorded build/samples console
+            for round in {1..3}; do
+              for program in "${programs[@]}"; do
+                build/conhost-bench.exe "$program" --rss >build/peak.txt
+                echo "$program peak-working-set-bytes $(cat build/peak.txt)"
+              done
+            done
           fi
-          build/measure$EXT "build/benchmark$EXT" "$ref" "${driver[@]}"
           build/dunder$EXT build --locked --offline --runtime-profile benchmarks/terminal.ddr -o "build/profile$EXT"
           build/profile$EXT --allocations
           cargo build --release --locked --offline --manifest-path benchmarks/reference/Cargo.toml --features layout-cache,allocation-counts --example terminal_bench --target-dir build/rust

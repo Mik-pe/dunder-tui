@@ -1,4 +1,4 @@
-capability process, stdio
+capability filesystem, process, stdio
 import std.array as array
 import std.parse as parse
 import std.process as proc
@@ -35,8 +35,10 @@ fn main() -> i32 {
     args := sys.arg_count()
     labeled := args >= 6 && sys.arg(args-3) == "--labels"
     positional := if labeled { args-3 } else { args }
+    recorded := args >= 3 && sys.arg(1) == "--recorded"
     if positional != 3 && positional != 4 {
         _ := sys.eprint("Usage: measure FIRST SECOND [PTY_DRIVER] [--labels FIRST_NAME SECOND_NAME]")
+        _ := sys.eprint("       measure --recorded DIRECTORY [console]")
         return 1
     }
     programs := [sys.arg(1), sys.arg(2)]
@@ -44,12 +46,22 @@ fn main() -> i32 {
     modes := if positional == 4 { 2 } else { 1 }
     mut cases: []string = []
     for mode in 0..modes {
-        label := if mode == 0 { "memory" } else { "pty" }
+        label := if mode == 0 { "memory" } else if recorded { "console" } else { "pty" }
         mut rows: [ []Samples; 2 ] = [[], []]
         mut physical: [i64; 2] = [-1, -1]
         for run in 0..9 {
             for pos in 0..2 {
                 which := (run + pos) % 2
+                if recorded {
+                    path := f"{sys.arg(2)}/{label}-{names[which]}-{run}"
+                    record(&mut rows[which], &mut cases, sys.read(path + ".stats").unwrap(), run >= 2)
+                    if mode == 1 {
+                        size := parse.integer(text.trim(sys.read(path + ".bytes").unwrap()))
+                        assert(size.ok && size.value > 0 && (physical[which] < 0 || size.value == physical[which]))
+                        physical[which] = size.value
+                    }
+                    continue
+                }
                 program := programs[which].clone()
                 command := if mode == 1 { proc.Command::new(sys.arg(3), [program.clone()]) }
                                   else { proc.Command::new(program.clone(), []) }
@@ -75,7 +87,7 @@ fn main() -> i32 {
                 array.sort<i64>(&mut row.p95)
                 print(f"{label} {names[which]} {cases[i]} {row.p50[3]} {row.p95[3]} {row.bytes} {row.p50[0]} {row.p50[6]} {row.p95[0]} {row.p95[6]}")
             }
-            if mode == 1 { _ := sys.eprint(f"{names[which]} PTY bytes {physical[which]}") }
+            if mode == 1 { _ := sys.eprint(f"{names[which]} {label} bytes {physical[which]}") }
         }
     }
     0
