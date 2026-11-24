@@ -91,6 +91,20 @@ fn limits() {
     }
 }
 
+fn geometry_case(a:tui.Rect, b:tui.Rect, dx:i32, dy:i32, mx:i32, my:i32, ix:i32, pos:i64) {
+    mut line := f"{dx} {dy} {mx} {my} {ix} {pos}".bytes()
+    for r in [a, b, a.inner(mx, my), a.outer(mx, my), a.offset(dx, dy), a.resize(b.w, b.h), a.union(b), a.intersection(b), a.clamp_to(b)] {
+        rect(&mut line, r)
+    }
+    for part in [a.row_at(ix), a.column_at(ix)] {
+        match part { .Some(r) => { rect(&mut line, r) }, .None => { bytes.append_utf8(&mut line, " -1 -1 -1 -1") }, }
+    }
+    (x, y) := a.position_at(pos).unwrap_or((-1, -1))
+    bytes.append_utf8(&mut line, f" {x} {y} {a.right()} {a.bottom()} {a.cell_count()}")
+    for flag in [a.is_empty(), a.intersects(b), a.contains(b.x, b.y)] { bytes.append_utf8(&mut line, if flag { " 1" } else { " 0" }) }
+    print(bytes.decode(&line).unwrap())
+}
+
 fn geometry() {
     mut seed: i64 = 53
     for _ in 0..1200 {
@@ -100,18 +114,17 @@ fn geometry() {
         mx := random(&mut seed, 7); my := random(&mut seed, 7)
         ix := random(&mut seed, 64)
         pos := i64(random(&mut seed, 3700))
-        mut line := f"{dx} {dy} {mx} {my} {ix} {pos}".bytes()
-        for r in [a, b, a.inner(mx, my), a.outer(mx, my), a.offset(dx, dy), a.resize(b.w, b.h), a.union(b), a.intersection(b), a.clamp_to(b)] {
-            rect(&mut line, r)
-        }
-        for part in [a.row_at(ix), a.column_at(ix)] {
-            match part { .Some(r) => { rect(&mut line, r) }, .None => { bytes.append_utf8(&mut line, " -1 -1 -1 -1") }, }
-        }
-        (x, y) := a.position_at(pos).unwrap_or((-1, -1))
-        bytes.append_utf8(&mut line, f" {x} {y} {a.right()} {a.bottom()} {a.cell_count()}")
-        for flag in [a.is_empty(), a.intersects(b), a.contains(b.x, b.y)] { bytes.append_utf8(&mut line, if flag { " 1" } else { " 0" }) }
-        print(bytes.decode(&line).unwrap())
+        geometry_case(a,b,dx,dy,mx,my,ix,pos)
     }
+    areas := [tui.Rect::new(0,0,65535,65535),tui.Rect::new(65527,65530,8,5),tui.Rect::new(65534,65534,2,3),
+        tui.Rect::new(65535,0,8,7),tui.Rect::new(0,65535,3,7),tui.Rect::new(30000,40900,45789,32000)]
+    for a in areas { for b in areas {
+        for d in [-2147483648,-65535,-1,0,1,65535,2147483647] {
+            for m in [0,1,32767,32768,65535] {
+                geometry_case(a,b,d,d/2,m,65535-m,3,17)
+            }
+        }
+    } }
 }
 
 fn large_minimums() {

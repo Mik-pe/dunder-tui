@@ -252,24 +252,25 @@ impl Rect {
     }
 
     pub fn resize(self, width: i32, height: i32) -> Rect {
-        Rect { x: self.x, y: self.y, w: i32(cmp.clamp<i64>(i64(width), 0, 2147483647-i64(self.x))),
-            h: i32(cmp.clamp<i64>(i64(height), 0, 2147483647-i64(self.y))) }
+        x := cmp.min<i32>(self.x, 65535)
+        y := cmp.min<i32>(self.y, 65535)
+        Rect { x:x, y:y, w:clamp(width,65535-cmp.max<i32>(0,x)), h:clamp(height,65535-cmp.max<i32>(0,y)) }
     }
 
     pub fn offset(self, dx: i32, dy: i32) -> Rect {
-        w := cmp.max<i32>(0, self.w)
-        h := cmp.max<i32>(0, self.h)
-        Rect { x: i32(cmp.clamp<i64>(i64(self.x)+i64(dx), 0, 2147483647-i64(w))),
-            y: i32(cmp.clamp<i64>(i64(self.y)+i64(dy), 0, 2147483647-i64(h))), w: w, h: h }
+        w := clamp(self.w, 65535)
+        h := clamp(self.h, 65535)
+        Rect { x: i32(cmp.clamp<i64>(i64(self.x)+i64(dx), 0, 65535-i64(w))),
+            y: i32(cmp.clamp<i64>(i64(self.y)+i64(dy), 0, 65535-i64(h))), w: w, h: h }
     }
 
     pub fn outer(self, horizontal: i32, vertical: i32) -> Rect {
-        h := i64(cmp.max<i32>(0, horizontal))
-        v := i64(cmp.max<i32>(0, vertical))
-        x := cmp.max<i64>(0, i64(self.x)-h)
-        y := cmp.max<i64>(0, i64(self.y)-v)
-        r := cmp.clamp<i64>(i64(self.right())+h, x, 2147483647)
-        b := cmp.clamp<i64>(i64(self.bottom())+v, y, 2147483647)
+        h := i64(clamp(horizontal, 65535))
+        v := i64(clamp(vertical, 65535))
+        x := cmp.clamp<i64>(i64(self.x)-h, 0, 65535)
+        y := cmp.clamp<i64>(i64(self.y)-v, 0, 65535)
+        r := cmp.clamp<i64>(i64(self.right())+h, x, 65535)
+        b := cmp.clamp<i64>(i64(self.bottom())+v, y, 65535)
         Rect { x: i32(x), y: i32(y), w: i32(r-x), h: i32(b-y) }
     }
 
@@ -306,14 +307,14 @@ impl Rect {
     }
 
     pub fn inner(self, horizontal: i32, vertical: i32) -> Rect {
-        h := cmp.max<i32>(0, horizontal)
-        v := cmp.max<i32>(0, vertical)
-        if i64(self.w) < 2*i64(h) || i64(self.h) < 2*i64(v) { return Rect { x: 0, y: 0, w: 0, h: 0 } }
-        x := i32(cmp.min<i64>(2147483647, i64(self.x)+i64(h)))
-        y := i32(cmp.min<i64>(2147483647, i64(self.y)+i64(v)))
-        w := i32(cmp.min<i64>(i64(self.w-2*h), 2147483647-i64(x)))
-        height := i32(cmp.min<i64>(i64(self.h-2*v), 2147483647-i64(y)))
-        Rect { x: x, y: y, w: w, h: height }
+        h := clamp(horizontal, 65535)
+        v := clamp(vertical, 65535)
+        dw := clamp(2*h, 65535)
+        dh := clamp(2*v, 65535)
+        if self.w < dw || self.h < dh { return Rect::new(0, 0, 0, 0) }
+        x := i32(cmp.min<i64>(65535, i64(self.x)+i64(h)))
+        y := i32(cmp.min<i64>(65535, i64(self.y)+i64(v)))
+        Rect { x:x, y:y, w:clamp(self.w-dw,65535-cmp.max<i32>(0,x)), h:clamp(self.h-dh,65535-cmp.max<i32>(0,y)) }
     }
 
     pub fn intersection(self, other: Rect) -> Rect {
@@ -659,16 +660,44 @@ impl Frame {
         if overlay.empty() { return }
         clipped := area.intersection(self.bounds)
         if clipped.is_empty() { return }
-        if self.row_flags.len > 0 {
-            for y in clipped.y..clipped.bottom() {
-                if self.row_flags[y-self.bounds.y].bit_and(2) == 0 { continue }
-                self.split_wide_cell(clipped.x,y)
-                for x in clipped.x..clipped.right() {
-                    if self.glyphs[self.index(x,y)] >= WIDE { self.split_wide_cell(x+1,y) }
-                }
+        self.detach_cell_styles(clipped)
+        self.style_range(clipped,&overlay,true)
+    }
+
+    fn detach_cell_styles(&mut self, area: Rect) {
+        if self.row_flags.len == 0 { return }
+        for y in area.y..area.bottom() {
+            if self.row_flags[y-self.bounds.y].bit_and(2) == 0 { continue }
+            self.split_wide_cell(area.x,y)
+            for x in area.x..area.right() {
+                if self.glyphs[self.index(x,y)] >= WIDE { self.split_wide_cell(x+1,y) }
             }
         }
-        self.style_range(clipped,&overlay,true)
+    }
+
+    pub fn dim_cells(&mut self, bounds: Rect, overlay: Style) {
+        area := bounds.intersection(self.bounds)
+        if area.is_empty() { return }
+        self.detach_cell_styles(area)
+        mut previous := self.styles[self.index(area.x,area.y)]
+        mut dimmed := self.dimmed_style(previous,&overlay)
+        for y in area.y..area.bottom() {
+            start := self.index(area.x,y)
+            for i in start..(start+area.w) {
+                old := self.styles[i]
+                if old != previous { previous = old; dimmed = self.dimmed_style(old,&overlay) }
+                self.styles[i] = dimmed
+            }
+        }
+    }
+
+    fn dimmed_style(&mut self, key: i64, style: &Style) -> i64 {
+        mut patch := style.dim()
+        background := if patch.bg == INHERIT { self.resolved(key).bg } else { patch.bg }
+        patch.bg = if background >= 0x1000000 {
+            packed_rgb(u32(background).shr(1).bit_and(0x7f7f7f))
+        } else { 0 }
+        self.composite(key,&patch)
     }
 
     pub fn style_glyphs(&mut self, area: Rect, overlay: Style) {

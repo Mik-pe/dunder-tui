@@ -126,6 +126,8 @@ fn main() -> i32 {
 
 En egen widget kan ha metoden `render(&self, frame: &mut tui.Frame, area: tui.Rect)`. Rita den med `frame.render_widget(&widget, area)`. För en widget som uppdaterar sin cache kan du skicka `&mut widget`. Håller appen exempelvis listans markering separat tar `frame.render_stateful_widget(&list, area, &mut selection)` med det tillståndet till `render_stateful`. [Exempel med eget och inbyggt tillstånd](tests/suite.ddr)
 
+En skugga kan dämpa bakgrundsfärgen eller rita ett eget tecken i varje skuggcell. Med `import tui.block as box` kan du lägga `panel.shadow = .Some(box.Shadow::symbol("░"))` på ett block. För att tona ned en valfri yta direkt kan du använda `frame.dim_cells(area, tui.plain())`. [Skuggor med färg, förskjutning och egna effekter](tests/shadow_cells.ddr)
+
 ## Dela terminalyta med en annan ritare
 
 Sätt en cellregel efter att du ritat innehållet. Med `.Skip` kan exempelvis en bildvisare behålla sina pixlar i terminalen. `.AlwaysUpdate` ritar tillbaka appens tecken även när föregående bild innehöll samma tecken. När en cell återgår till `.None` skriver biblioteket åter dess aktuella innehåll.

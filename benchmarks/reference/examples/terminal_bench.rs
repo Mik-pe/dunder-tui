@@ -5,6 +5,8 @@ mod allocation;
 mod chart_scene;
 #[path = "../src/collection_scene.rs"]
 mod collection_scene;
+#[path = "../src/shadow_scene.rs"]
+mod shadow_scene;
 use ratatui::{
     Terminal,
     backend::{Backend, ClearType, CrosstermBackend, WindowSize},
@@ -199,7 +201,7 @@ fn main() {
     let scene = std::env::var("TUI_BENCH_SCENE").unwrap_or_default();
     let data = (!matches!(
         scene.as_str(),
-        "emoji" | "ligatures" | "artwork" | "collections"
+        "emoji" | "ligatures" | "artwork" | "collections" | "shadows"
     ))
     .then(chart_scene::Data::new);
     let mut chart = data.as_ref().map(chart_scene::Scene::new);
@@ -209,6 +211,7 @@ fn main() {
         })
     });
     let mut program = (scene == "collections").then(collection_scene::Program::new);
+    let panels = (scene == "shadows").then(shadow_scene::Panels::new);
     let shared = std::env::var("TUI_BENCH_DIFF_OPTIONS").as_deref() == Ok("1");
     let mut draw = |buf: &mut ratatui::buffer::Buffer, mode: &str, n| {
         if let Some(scene) = &mut chart {
@@ -235,6 +238,8 @@ fn main() {
                 Style::new(),
             );
         } else if let Some(p) = &mut program {
+            p.draw(buf, mode, n as usize);
+        } else if let Some(p) = &panels {
             p.draw(buf, mode, n as usize);
         } else if scene == "artwork" {
             poster(buf, mode, n as usize);

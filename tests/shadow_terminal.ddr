@@ -1,0 +1,34 @@
+capability unsafe, stdio, process
+import .terminal_driver as driver
+import ..src.tui
+import .shadow_cells
+import sys
+
+fn app() -> i32 {
+    mut term := tui.open(.Fullscreen).unwrap()
+    for i in 0..2 {
+        mut phase := i
+        if term.draw(&mut phase,shadow_cells.moving).is_err() { return 1 }
+        match term.backend_mut().next(3000) { .Press(_) => {}, _ => { return 1 }, }
+    }
+    0
+}
+
+fn exercise(master:i32, slave:i32, screen:&mut driver.Screen) -> bool {
+    unsafe {
+        if !driver.wait_for(master,&mut screen,3,"...░░░░░....","38;5;201") || !screen.contains(2,"..=====░....") { return false }
+        if !driver.send(master,"n") || !driver.wait_for(master,&mut screen,0,".▓▓▓▓▓......","") { return false }
+        if !screen.contains(1,".▓=====.....") || !screen.contains(3,"............") { return false }
+        return driver.send(master,"q") && driver.wait_for(master,&mut screen,0,"","\x1b[?1049l")
+    }
+    false
+}
+
+fn main() -> i32 {
+    if sys.arg_count() == 2 { return app() }
+    unsafe { if driver.test_with_args(sys.arg(0),["draw"],12,5,exercise) {
+        print("Moved both shadow edges and restored the terminal")
+        return 0
+    } }
+    1
+}

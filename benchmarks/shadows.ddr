@@ -1,0 +1,31 @@
+import .terminal
+import ..src.tui
+import ..src.block as box
+
+struct Panels { shades: []box.Shadow }
+
+impl Panels {
+    pub fn draw(&mut self, frame: &mut tui.Frame, mode: string, step: i32) {
+        a := frame.area()
+        alternate := mode == "repaint" && step%2 == 1
+        dx := if mode == "scroll" { step%5-2 } else { 0 }
+        background := tui.plain().background(if alternate { .BrightWhite } else { .Black })
+        frame.fill(a,`.`,background)
+        for i in 0..self.shades.len {
+            area := a.inner(4+6*i,2+2*i).offset(dx,0)
+            surface := if alternate { tui.plain().background(.Yellow) } else { tui.plain().background_rgb(0x355a8f) }
+            frame.fill(area,` `,surface)
+            frame.render_widget(&self.shades[i],area)
+        }
+        frame.label(tui.Rect::new(0,23,1,1),if mode == "cell" && step%2 == 1 { "+" } else { "-" })
+    }
+}
+
+fn main() {
+    mut overlay := box.Shadow::new(.Overlay)
+    overlay.style = tui.ink(.Cyan).background(.Blue)
+    mut dots := box.Shadow::symbol("░")
+    dots.style = tui.ink(.Magenta)
+    dots.dx = 2
+    terminal.benchmark(Panels { shades:[move overlay,move dots,box.Shadow::new(.Dimmed)] })
+}

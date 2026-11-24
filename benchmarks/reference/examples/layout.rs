@@ -55,12 +55,12 @@ fn geometry() {
             if a == [-1; 4] {
                 None
             } else {
-                Some(Rect::new(
-                    coord(a[0]),
-                    coord(a[1]),
-                    coord(a[2]),
-                    coord(a[3]),
-                ))
+                Some(Rect {
+                    x: coord(a[0]),
+                    y: coord(a[1]),
+                    width: coord(a[2]),
+                    height: coord(a[3]),
+                })
             }
         };
         let (a, b) = (rect().unwrap(), rect().unwrap());
@@ -99,7 +99,7 @@ fn geometry() {
         );
         count += 1;
     }
-    assert_eq!(count, 1200);
+    assert_eq!(count, 2460);
     println!("{count} rectangle cases identical");
 }
 

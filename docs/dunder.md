@@ -8,6 +8,8 @@ Kalendern använder även `std.time.local_from_unix` på macOS och Linux. Åtta 
 
 Ett bildrutnät med 24 rader om 96 heltal jämförs med `==`, `std.array.equal` och `std.bytes.equal_memory`. Varannan bild skiljer sig i en rads sista kolumn. På macOS ARM64 tog jämförelserna 9,85, 9,91 och 1,53 µs per bild. På Linux ARM64 i lokal VM tog de 8,43, 10,12 och 1,14 µs. Tiderna är medianer av sex processmedianer med växlande ordning. Varje process kontrollerar summan 330 880. Därför använder renderaren fortfarande bytejämförelse för de tätt lagrade heltalen. [Körbart prov med lägena `eq`, `array` och `memory`](../benchmarks/language/row_equality.ddr)
 
+Med Dunder 0.11.3 gav 65 536 palettuppslag samma summa på macOS och Linux ARM64. Både lånad och direkt skickad färg gav 259 allokeringsanrop för hela programmet. En färg i `Some` gav 65 795. Skuggritaren räknar nu ut dämpningen en gång för en följd av celler med samma stil. [Isolerat färgprov](../benchmarks/language/colors.ddr) · [Mätning av tre skugglager](../benchmarks/shadows.md)
+
 ## Arraykrympning och bildtid
 
 När en bildbuffert blir mindre kan biblioteket kapa arrayerna med `truncate`. På Linux ARM64 tog krympning från 65 536 till 16 heltal 0,32 µs i median. `std.array.resize` tog 136 µs för samma innehåll. Provet kontrollerar prefix, kapacitet och att det går att lägga till ett nytt värde. [Körbart prov](../benchmarks/language/shrink_arrays.ddr) · [Förslag i Dunder](https://github.com/Mik-pe/dunder/blob/e896509250e36d5f275c18b71713790228a18edd/docs/next-steps.md#krymp-arrayer-med-truncate-i-stdarrayresize)

@@ -1,0 +1,73 @@
+capability stdio
+import ..src.tui
+import ..src.block as box
+import .raw_cells
+
+pub fn moving(frame: &mut tui.Frame, phase: &mut i32) {
+    frame.fill(frame.area(),`.`,tui.plain())
+    a := frame.area()
+    base := tui.Rect::new(a.x+2,a.y+1,5,2)
+    frame.fill(base,`=`,tui.ink(.Green))
+    mut shadow := box.Shadow::symbol(if phase == 0 { "░" } else { "▓" })
+    shadow.style = tui.ink(.Indexed(201))
+    if phase == 1 { shadow.dx = -1; shadow.dy = -1 }
+    frame.render_widget(&shadow,base)
+}
+
+fn seeded(a: tui.Rect) -> tui.Frame {
+    mut f := tui.Frame::at(a)
+    for y in a.y..a.bottom() {
+        bg: tui.Color = if (y-a.y)%2 == 0 { .Rgb(53,90,143) } else { .Indexed(81) }
+        style := tui.ink(.Cyan).background(bg).underline_rgb(0x7351ce).bold()
+        f.fill(tui.Rect::new(a.x,y,a.w,1),`.`,style)
+        _ := f.set_cell(a.x+1,y,"界",tui.ink(.Red))
+        _ := f.set_cell(a.x+4,y,"❤️",tui.plain().italic())
+        _ := f.set_diff_option(a.x+2,y,.Skip)
+        _ := f.set_diff_option(a.x+4,y,.AlwaysUpdate)
+        _ := f.set_diff_option(a.x+7,y,.ForcedWidth(2))
+    }
+    move f
+}
+
+fn mark(f: &mut tui.Frame, shade: tui.Rect, base: tui.Rect) {
+    a := f.area()
+    cell := f.cell_at(a.x,a.y).unwrap()
+    mut styled := 0
+    for y in a.y..a.bottom() { for x in a.x..a.right() {
+        if f.style_at(x,y).unwrap().get_foreground() == .Some(.Yellow) { styled += 1 }
+    } }
+    mark := f"{cell.symbol}/{styled}/{shade.x},{shade.y},{shade.w},{shade.h}/{base.x},{base.y},{base.w},{base.h}"
+    f.paint_cells(tui.Rect::new(a.x,a.y,1,1),mark,tui.plain())
+    _ := f.set_diff_option(a.x,a.y,.ForcedWidth(1))
+}
+
+fn main() {
+    for a in [tui.Rect::new(0,0,9,5),tui.Rect::new(5,3,9,5),tui.Rect::new(65526,65530,9,5)] {
+        bases := [a,tui.Rect::new(a.x,a.y,2,2),tui.Rect::new(a.x+3,a.y+1,3,2),
+            tui.Rect::new(a.x+7,a.y+3,4,4),tui.Rect::new(a.x+2,a.y,0,3)]
+        for base in bases { for (dx,dy) in [(1,1),(-1,0),(2,-2),(0,0),(8,3),(-2147483648,1),(2147483647,2147483647)] {
+            for mode in 0..9 { for attached in [false,true] {
+                prior := seeded(a)
+                mut f := seeded(a)
+                mut shadow := match mode {
+                    0 => box.Shadow::new(.Overlay), 1 => box.Shadow::new(.Dimmed),
+                    2 => box.Shadow::new(.Symbol(`░`)), 3 => box.Shadow::symbol(""),
+                    4 => box.Shadow::symbol("界"), 5 => box.Shadow::symbol("ab"),
+                    6 => box.Shadow::symbol("é"), 7 => box.Shadow::symbol("😶‍🌫️"),
+                    _ => box.Shadow::new(.Custom(mark)),
+                }
+                shadow.style = tui.ink(.Yellow).underline_index(13).without(.Bold)
+                if dx == 2 { shadow.style = shadow.style.background_rgb(0xeffefd).without(.Dim) }
+                if dx == -1 { shadow.style = shadow.style.background(.Indexed(17)) }
+                shadow.dx = dx
+                shadow.dy = dy
+                if attached {
+                    mut b := box.Block::new()
+                    b.shadow = .Some(move shadow)
+                    _ := b.render(&mut f,base)
+                } else { f.render_widget(&shadow,base) }
+                raw_cells.compare(&f,&prior)
+            } }
+        } }
+    }
+}

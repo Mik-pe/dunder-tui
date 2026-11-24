@@ -40,33 +40,33 @@ impl Padding {
     pub fn axes(horizontal: i32, vertical: i32) -> Self { Self { left: horizontal, right: horizontal, top: vertical, bottom: vertical } }
 }
 
-pub enum ShadowEffect { Overlay, Symbol(rune), Dimmed, Custom(fn(&mut tui.Frame, tui.Rect, tui.Rect)) }
+pub enum ShadowEffect { Overlay, Symbol(rune), Text(string), Dimmed, Custom(fn(&mut tui.Frame, tui.Rect, tui.Rect)) }
 pub struct Shadow { effect: ShadowEffect, style: tui.Style, dx: i32, dy: i32 }
 impl Shadow {
-    pub fn new(effect: ShadowEffect) -> Self { Self { effect: effect, style: tui.plain(), dx: 1, dy: 1 } }
+    pub fn new(move effect: ShadowEffect) -> Self { Self { effect: move effect, style: tui.plain(), dx: 1, dy: 1 } }
+
+    pub fn symbol(move value: string) -> Self { Shadow::new(.Text(move value)) }
+
+    fn paint(&self, frame: &mut tui.Frame, area: tui.Rect) {
+        if area.is_empty() { return }
+        match self.effect {
+            .Symbol(ch) => { frame.paint_cells(area, ch.str(), self.style) },
+            .Text(value) => { frame.paint_cells(area, value, self.style) },
+            .Dimmed => { frame.dim_cells(area, self.style) },
+            _ => { frame.apply_cell_style(area, self.style) },
+        }
+    }
 
     pub fn render(&self, frame: &mut tui.Frame, base: tui.Rect) {
-        x := i32(cmp.clamp<i64>(i64(base.x) + i64(self.dx), 0, 2147483647))
-        y := i32(cmp.clamp<i64>(i64(base.y) + i64(self.dy), 0, 2147483647))
-        area := tui.Rect { x: x, y: y, w: base.w, h: base.h }.intersection(frame.area())
-        for row in area.y..(area.y + area.h) {
-            for col in area.x..(area.x + area.w) {
-                if col >= base.x && row >= base.y && i64(col) < i64(base.x) + i64(base.w) && i64(row) < i64(base.y) + i64(base.h) { continue }
-                cell := tui.Rect { x: col, y: row, w: 1, h: 1 }
-                frame.apply_style(cell, self.style)
-                match self.effect {
-                    .Symbol(ch) => { frame.fill(cell, ch, tui.plain()) },
-                    .Dimmed => {
-                        bg := frame.style_at(col, row).unwrap().get_background().unwrap()
-                        dim := match bg {
-                            .Rgb(r, g, b) => tui.plain().background(.Rgb(r / 2, g / 2, b / 2)),
-                            _ => tui.plain().background(.Black),
-                        }
-                        frame.apply_style(cell, dim.dim())
-                    },
-                    _ => {},
-                }
-            }
+        area := base.offset(self.dx,self.dy).intersection(frame.area())
+        overlap := area.intersection(base)
+        if overlap.is_empty() {
+            self.paint(&mut frame, area)
+        } else {
+            self.paint(&mut frame, tui.Rect { x:area.x, y:area.y, w:area.w, h:overlap.y-area.y })
+            self.paint(&mut frame, tui.Rect { x:area.x, y:overlap.y, w:overlap.x-area.x, h:overlap.h })
+            self.paint(&mut frame, tui.Rect { x:overlap.right(), y:overlap.y, w:area.right()-overlap.right(), h:overlap.h })
+            self.paint(&mut frame, tui.Rect { x:area.x, y:overlap.bottom(), w:area.w, h:area.bottom()-overlap.bottom() })
         }
         match self.effect { .Custom(apply) => { apply(&mut frame, area, base) }, _ => {}, }
     }
@@ -118,7 +118,7 @@ impl Block {
     }
 
     fn space(padding: i32, border: bool) -> i32 {
-        i32(cmp.min<i64>(2147483647,i64(cmp.max<i32>(0,padding)) + (if border { 1 } else { 0 })))
+        i32(cmp.min<i64>(65535,i64(cmp.max<i32>(0,padding)) + (if border { 1 } else { 0 })))
     }
 
     pub fn horizontal_space(&self) -> (i32,i32) {
@@ -138,7 +138,7 @@ impl Block {
         top_border := if top && area.h > 0 { i64(1) } else { i64(0) }
         w := i64(area.w) - left_border - l - i64(cmp.max<i32>(0, self.padding.right)) - (if self.borders.right { i64(1) } else { i64(0) })
         h := i64(area.h) - top_border - t - i64(cmp.max<i32>(0, self.padding.bottom)) - (if bottom { i64(1) } else { i64(0) })
-        tui.Rect { x: i32(cmp.min<i64>(2147483647, i64(area.x) + left_border + l)), y: i32(cmp.min<i64>(2147483647, i64(area.y) + top_border + t)),
+        tui.Rect { x: i32(cmp.min<i64>(65535, i64(area.x) + left_border + l)), y: i32(cmp.min<i64>(65535, i64(area.y) + top_border + t)),
             w: i32(cmp.max<i64>(0, w)), h: i32(cmp.max<i64>(0, h)) }
     }
 
