@@ -3,6 +3,7 @@ import ..src.layout as lay
 import ..src.tui
 import std.bytes as bytes
 import ..benchmarks.layout_scene
+import ..benchmarks.panels
 import .widget_cells as cells
 import sys
 
@@ -204,7 +205,71 @@ fn many_panels() {
     }
 }
 
+fn mixed_panels() {
+    modes: [lay.Flex; 7] = [.Start, .Center, .End, .SpaceBetween, .SpaceAround, .SpaceEvenly, .Legacy]
+    for n in [32, 48] {
+        spec := panels.rules(n)
+        for m in 0..7 {
+            for gap in [-1,0,2] {
+                for d in 0..2 {
+                    axis: lay.Direction = if d == 0 { .Horizontal } else { .Vertical }
+                    mut grid := lay.Layout::new(axis,spec.clone()).flex(modes[m]).spacing(gap).margin(2,1)
+                    extent := n * (5+d)
+                    area := tui.Rect::new(7,11,if d == 0 { extent } else { 9 },if d == 0 { 11 } else { extent })
+                    emit(&mut grid,area,f"{d} {m} {gap} 2 1",&spec)
+                }
+            }
+        }
+    }
+}
+
+fn minimum_levels() {
+    modes: [lay.Flex;3] = [.Start,.Center,.End]
+    mut seed: i64 = 197
+    for trial in 0..720 {
+        n := 3 + random(&mut seed,10)
+        mut spec: []lay.Constraint = []
+        mut floors := 0
+        for _ in 0..n {
+            floor := u16(random(&mut seed,18))
+            r: lay.Constraint = match random(&mut seed,8) {
+                0 => .Length(floor), 1 => .Max(floor), 2 => .Fill(1), 3 => .Fill(if trial%3 == 0 { 2 } else { 1 }),
+                4 if trial%5 == 0 => .Min(32768), _ => .Min(floor),
+            }
+            match &r { .Min(v) if v <= 32767 => { floors += i32(v) }, .Length(v) => { floors += i32(v) }, .Max(v) => { floors += i32(v) }, _ => {}, }
+            spec.push(r)
+        }
+        gap := trial%7-3
+        m := trial%3
+        d := (trial/3)%2
+        axis: lay.Direction = if d == 0 { .Horizontal } else { .Vertical }
+        mut grid := lay.Layout::new(axis,spec.clone()).flex(modes[m]).spacing(gap)
+        for delta in [-1,0,1,13] {
+            size := floors+gap*(n-1)+delta
+            extent := if size < 1 { 1 } else { size }
+            area := tui.Rect::new(3,2,if d == 0 { extent } else { 7 },if d == 0 { 7 } else { extent })
+            emit(&mut grid,area,f"{d} {m} {gap} 0 0",&spec)
+        }
+    }
+}
+
+fn benchmark_panels() {
+    for mode in ["minimums","crowded","overlap","weighted","cached"] {
+        mut spec := panels.rules(32)
+        if mode == "weighted" { spec[10] = .Fill(3) }
+        gap := if mode == "overlap" { -1 } else { 1 }
+        mut grid := lay.Layout::horizontal(spec.clone()).spacing(gap).margin(2,1).cache_capacity(1)
+        for i in 0..3 {
+            w := (if mode == "crowded" { 79 } else { 160 }) + (if mode == "cached" { 0 } else { i })
+            emit(&mut grid,tui.Rect::new(7,11,w,11),f"0 0 {gap} 2 1",&spec)
+        }
+    }
+}
+
 fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--benchmark-panels" { benchmark_panels(); return }
+    if sys.arg_count() == 2 && sys.arg(1) == "--minimum-levels" { minimum_levels(); return }
+    if sys.arg_count() == 2 && sys.arg(1) == "--mixed-panels" { mixed_panels(); return }
     if sys.arg_count() == 2 && sys.arg(1) == "--rules" { rule_values(); return }
     if sys.arg_count() == 2 && sys.arg(1) == "--many-panels" { many_panels(); return }
     if sys.arg_count() == 2 && sys.arg(1) == "--minimums" { large_minimums(); return }

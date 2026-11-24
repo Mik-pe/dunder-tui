@@ -196,6 +196,8 @@ const RATIO_SIZE: f64 = 100000.0
 const LIMIT_SIZE: f64 = 10000.0
 const FILL_GROW: f64 = 1000.0
 const SPACE_GROW: f64 = 10.0
+const FILL_RATIO: f64 = 100.0
+const NEIGHBOR_SIZE: f64 = 1.0
 
 impl json.Encode for Layout {
     fn encode_json(&self, out: &mut json.Writer) {
@@ -313,6 +315,69 @@ impl Layout {
         true
     }
 
+    fn level_minimums(&self, available: f64, extra: f64, flexible: i32, sizes: &mut []f64) -> bool {
+        mut minimums := 0.0
+        for rule in &self.rules {
+            match rule { .Min(n) => { minimums += minimum_bound(n) }, _ => {}, }
+        }
+        crowded := minimums >= available
+        if !crowded && minimums > extra { return false }
+        budget := if crowded { available } else { extra }
+        mut free := flexible
+        mut level := budget / f64(free)
+        while free > 0 {
+            mut pinned := 0
+            mut reserved := 0.0
+            for rule in &self.rules {
+                bound := match rule { .Min(n) => minimum_bound(n), .Fill(_) => 0.0, _ => { continue }, }
+                if (crowded && bound < level) || (!crowded && bound > level) { pinned += 1; reserved += bound }
+            }
+            if free == flexible - pinned { break }
+            free = flexible - pinned
+            level = if free == 0 { 0.0 } else { (budget - reserved) / f64(free) }
+        }
+        for i in 0..self.rules.len {
+            bound := match &self.rules[i] {
+                .Min(n) => minimum_bound(n), .Fill(_) => 0.0,
+                _ => { if crowded { sizes[i] = 0.0 }; continue },
+            }
+            sizes[i] = if crowded { math.min(level, bound) } else { math.max(level, bound) }
+        }
+        true
+    }
+
+    fn distribute_fills(&self, available: f64, extra: f64, flexible: i32, weights: f64, all_zero: bool,
+                        fixed_gaps: bool, sizes: &mut []f64) -> bool {
+        mut pinned := -1
+        for i in 0..self.rules.len {
+            scale := weight(&self.rules[i], self.flex_mode)
+            if scale == 0.0 { continue }
+            portion := extra * (if all_zero { 1.0 } else { scale }) / weights
+            match &self.rules[i] {
+                .Min(n) if portion < minimum_bound(n) => {
+                    if fixed_gaps && weights == f64(flexible) &&
+                            FILL_GROW + FILL_RATIO * (weights - 1.0) + 4.0 * NEIGHBOR_SIZE < LIMIT_SIZE {
+                        return self.level_minimums(available, extra, flexible, &mut sizes)
+                    }
+                    if flexible != 2 || weights > 3.0 || pinned >= 0 || extra < minimum_bound(n) { return false }
+                    pinned = i
+                    sizes[i] = minimum_bound(n)
+                    continue
+                },
+                _ => {},
+            }
+            sizes[i] = portion
+        }
+        if extra < -1e-8 { return false }
+        if pinned < 0 { return true }
+        for i in 0..self.rules.len {
+            if i == pinned || weight(&self.rules[i], self.flex_mode) == 0.0 { continue }
+            sizes[i] = extra - sizes[pinned]
+            match &self.rules[i] { .Min(n) if sizes[i] < minimum_bound(n) => { return false }, _ => {}, }
+        }
+        true
+    }
+
     fn direct(&self, extent: i32, edges: &mut []i32) -> bool {
         n := self.rules.len
         length := f64(extent)
@@ -369,8 +434,7 @@ impl Layout {
         if zero_fills > 0 && zero_fills != n { return false }
         if zero_fills == n { weights = f64(n) }
         mut extra := available - used
-        if extra < -1e-8 {
-            if self.flex_mode != .Legacy { return false }
+        if extra < -1e-8 && self.flex_mode == .Legacy {
             mut remaining := available
             for rank in 0..5 {
                 for i in 0..n {
@@ -383,29 +447,9 @@ impl Layout {
             extra = 0.0
         }
         if weights > 0.0 {
-            mut pinned := -1
-            for i in 0..n {
-                scale := weight(&self.rules[i], self.flex_mode)
-                if scale == 0.0 { continue }
-                portion := extra * (if zero_fills == n { 1.0 } else { scale }) / weights
-                match &self.rules[i] {
-                    .Min(min) if portion < minimum_bound(min) => {
-                        if flexible != 2 || weights > 3.0 || pinned >= 0 || extra < minimum_bound(min) { return false }
-                        pinned = i
-                    },
-                    _ => {},
-                }
-                sizes[i] = portion
-            }
-            if pinned >= 0 {
-                sizes[pinned] = desired(&self.rules[pinned], length, self.flex_mode)
-                for i in 0..n {
-                    if i == pinned || weight(&self.rules[i], self.flex_mode) == 0.0 { continue }
-                    sizes[i] = extra - sizes[pinned]
-                    match &self.rules[i] { .Min(min) if sizes[i] < minimum_bound(min) => { return false }, _ => {}, }
-                }
-            }
+            if !self.distribute_fills(available, extra, flexible, weights, zero_fills == n, fixed_gaps, &mut sizes) { return false }
         } else {
+            if extra < -1e-8 { return false }
             match self.flex_mode {
                 .Legacy => { sizes[grow] += extra },
                 .Start => {}, .End => { lead += extra }, .Center => { lead += extra / 2.0 },
@@ -505,10 +549,10 @@ impl Layout {
             if a > 0.0 {
                 for j in (i + 1)..n {
                     b := weight(&self.rules[j], self.flex_mode)
-                    if b > 0.0 { axis.compare(&mut model, 2 * i + 1, b, 2 * j + 1, a, 100.0) }
+                    if b > 0.0 { axis.compare(&mut model, 2 * i + 1, b, 2 * j + 1, a, FILL_RATIO) }
                 }
             }
-            if i > 0 && self.flex_mode != .Legacy { axis.compare(&mut model, 2 * i - 1, 1.0, 2 * i + 1, 1.0, 1.0) }
+            if i > 0 && self.flex_mode != .Legacy { axis.compare(&mut model, 2 * i - 1, 1.0, 2 * i + 1, 1.0, NEIGHBOR_SIZE) }
         }
         values := model.solve()
         edges.push(0)

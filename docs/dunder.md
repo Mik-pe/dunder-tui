@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Lagra små poster i en ägd array
+
+Layoutlösaren behöver ett kolumnnummer och en koefficient per term. Med förreserverad lagring gav 65 536 insättningar i `[]Term` 65 539 allokeringsanrop och 1 050 688 begärda byte i Dunder 0.12.1. Två arrayer för `i32` och `f64` gav fem anrop och 3 184 byte. Båda varianterna ändrar varje koefficient och ger summan 58 556 416 på macOS ARM64, Linux ARM64 och översatt Linux x86-64. Den självbyggda kompilatorn från Dunders `90573fc` gav samma värden på macOS. En klon kunde växa till 257 poster och ändras via ett muterbart lån medan originalets enda post behöll sitt värde. Sammanhängande lagring av skalära poster i ägda arrayer skulle låta lösaren använda en enda array. [Fristående prov](../benchmarks/language/sparse_terms.ddr) · [Mätning av layoutlösaren](../benchmarks/panels.md)
+
 ## Låna en modulkonstants strängdata
 
 Unicode-tabellerna kan läsas direkt som strängkonstanter. I 0.12.1 ger `view := LABEL.as_str()` E4003 när `LABEL` är en modulkonstant av typen `string`. Med `owner := LABEL` följt av `view := owner.as_str()` kompilerar samma läsning och ger rätt byte. Låt lokala strängvyer låna direkt från en oföränderlig strängkonstant. [Minimiprov](../tests/dogfood/compiler/constant_string_view.ddr)

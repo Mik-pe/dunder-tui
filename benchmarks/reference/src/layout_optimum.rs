@@ -296,5 +296,13 @@ pub fn optimal_projections(
         }
         problem.score(Some(&bins)).as_ref() == Some(&best)
     };
-    (optimal(reference), optimal(actual))
+    let verified = optimal(reference);
+    (
+        verified,
+        if reference == actual {
+            verified
+        } else {
+            optimal(actual)
+        },
+    )
 }

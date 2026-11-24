@@ -1,0 +1,58 @@
+capability stdio
+import sys
+
+struct Term { column: i32, value: f64 }
+
+fn records() -> i64 {
+    mut terms: []Term = []
+    terms.reserve(256)
+    mut sum: i64 = 0
+    for batch in 0..256 {
+        terms.clear()
+        for i in 0..256 { terms.push(Term { column:i, value:f64(2*i+batch) }) }
+        for i in 0..terms.len {
+            terms[i].value += 0.5
+            sum += i64(2.0*terms[i].value) + i64(terms[i].column)
+        }
+    }
+    sum
+}
+
+fn numbers() -> i64 {
+    mut columns: []i32 = []
+    mut values: []f64 = []
+    columns.reserve(256)
+    values.reserve(256)
+    mut sum: i64 = 0
+    for batch in 0..256 {
+        columns.clear()
+        values.clear()
+        for i in 0..256 { columns.push(i); values.push(f64(2*i+batch)) }
+        for i in 0..columns.len {
+            values[i] += 0.5
+            sum += i64(2.0*values[i]) + i64(columns[i])
+        }
+    }
+    sum
+}
+
+fn check_copy() {
+    mut original: []Term = [Term { column:7, value:2.5 }]
+    mut copy := original.clone()
+    for i in 0..256 { copy.push(Term { column:i, value:f64(i) }) }
+    first := &mut copy[0]
+    first.value += 1.0
+    assert(original.len == 1 && original[0].column == 7 && original[0].value == 2.5)
+    assert(copy.len == 257 && copy[0].column == 7 && copy[0].value == 3.5)
+    assert(copy[256].column == 255 && copy[256].value == 255.0)
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 2 }
+    total := match sys.arg(1) {
+        "records" => records(), "numbers" => numbers(),
+        "check" => { check_copy(); return 0 }, _ => { return 2 },
+    }
+    print(total)
+    0
+}

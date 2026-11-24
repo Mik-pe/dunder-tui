@@ -208,3 +208,7 @@ required-features = ["theme-oracle"]
 [[example]]
 name = "text_values"
 required-features = ["theme-oracle"]
+
+[[example]]
+name = "panels"
+required-features = ["layout-cache"]

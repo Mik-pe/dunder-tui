@@ -106,99 +106,158 @@ fn geometry() {
 fn coord(n: i64) -> u16 {
     u16::try_from(n).expect("invalid terminal coordinate")
 }
-fn compare(line: &str) -> u8 {
-    let mut numbers = line
-        .split_ascii_whitespace()
-        .map(|s| s.parse::<i64>().unwrap());
-    let mut next = || numbers.next().unwrap();
-    let direction = [Direction::Horizontal, Direction::Vertical][next() as usize];
-    let flex = [
-        Flex::Start,
-        Flex::Center,
-        Flex::End,
-        Flex::SpaceBetween,
-        Flex::SpaceAround,
-        Flex::SpaceEvenly,
-        Flex::Legacy,
-    ][next() as usize];
-    let gap = i32::try_from(next()).unwrap().clamp(-32768, 32767);
-    let (mx, my) = (coord(next()), coord(next()));
-    let area = Rect {
-        x: coord(next()),
-        y: coord(next()),
-        width: coord(next()),
-        height: coord(next()),
-    };
-    let count = next() as usize;
-    let rules: Vec<_> = (0..count)
-        .map(|_| {
-            let (t, a, b) = (
-                next(),
-                u32::try_from(next()).unwrap(),
-                u32::try_from(next()).unwrap(),
-            );
-            match t {
-                0 => Constraint::Length(u16::try_from(a).unwrap()),
-                1 => Constraint::Percentage(u16::try_from(a).unwrap()),
-                2 => Constraint::Ratio(a, b),
-                3 => Constraint::Min(u16::try_from(a).unwrap()),
-                4 => Constraint::Max(u16::try_from(a).unwrap()),
-                5 => Constraint::Fill(u16::try_from(a).unwrap()),
-                _ => panic!(),
-            }
-        })
-        .collect();
-    let layout = Layout::new(direction, rules.clone())
-        .horizontal_margin(mx)
-        .vertical_margin(my)
-        .flex(flex)
-        .spacing(gap);
-    let (parts, spacers) = match std::panic::catch_unwind(|| layout.split_with_spacers(area)) {
-        Ok(regions) => regions,
-        Err(error) => {
-            let message = error
-                .downcast_ref::<String>()
-                .map(String::as_str)
-                .or_else(|| error.downcast_ref::<&str>().copied());
-            if message == Some("failed to split: InternalSolverError(ObjectiveUnbounded)") {
-                return b'U';
-            }
-            std::panic::resume_unwind(error)
-        }
-    };
-    let expected = parts
-        .iter()
-        .chain(spacers.iter())
-        .copied()
-        .collect::<Vec<_>>();
-    let actual = (0..(2 * count + 1))
-        .map(|_| Rect {
+struct LayoutCase {
+    direction: Direction,
+    flex: Flex,
+    gap: i32,
+    margin: Margin,
+    area: Rect,
+    rules: Vec<Constraint>,
+    actual: Vec<Rect>,
+}
+
+impl LayoutCase {
+    fn parse(line: &str) -> Self {
+        let mut numbers = line
+            .split_ascii_whitespace()
+            .map(|s| s.parse::<i64>().unwrap());
+        let mut next = || numbers.next().unwrap();
+        let direction = [Direction::Horizontal, Direction::Vertical][next() as usize];
+        let flex = [
+            Flex::Start,
+            Flex::Center,
+            Flex::End,
+            Flex::SpaceBetween,
+            Flex::SpaceAround,
+            Flex::SpaceEvenly,
+            Flex::Legacy,
+        ][next() as usize];
+        let gap = i32::try_from(next()).unwrap().clamp(-32768, 32767);
+        let (mx, my) = (coord(next()), coord(next()));
+        let area = Rect {
             x: coord(next()),
             y: coord(next()),
             width: coord(next()),
             height: coord(next()),
-        })
-        .collect::<Vec<_>>();
-    assert!(numbers.next().is_none());
-    if actual == expected {
-        return b'=';
+        };
+        let count = next() as usize;
+        let rules: Vec<_> = (0..count)
+            .map(|_| {
+                let (t, a, b) = (
+                    next(),
+                    u32::try_from(next()).unwrap(),
+                    u32::try_from(next()).unwrap(),
+                );
+                match t {
+                    0 => Constraint::Length(u16::try_from(a).unwrap()),
+                    1 => Constraint::Percentage(u16::try_from(a).unwrap()),
+                    2 => Constraint::Ratio(a, b),
+                    3 => Constraint::Min(u16::try_from(a).unwrap()),
+                    4 => Constraint::Max(u16::try_from(a).unwrap()),
+                    5 => Constraint::Fill(u16::try_from(a).unwrap()),
+                    _ => panic!(),
+                }
+            })
+            .collect();
+        let actual = (0..(2 * count + 1))
+            .map(|_| Rect {
+                x: coord(next()),
+                y: coord(next()),
+                width: coord(next()),
+                height: coord(next()),
+            })
+            .collect::<Vec<_>>();
+        assert!(numbers.next().is_none());
+        Self {
+            direction,
+            flex,
+            gap,
+            margin: Margin::new(mx, my),
+            area,
+            rules,
+            actual,
+        }
     }
-    let verdict = mismatch(
-        &rules,
-        flex,
-        gap,
-        area.inner(Margin::new(mx, my)),
-        direction,
-        &expected,
-        &actual,
-    );
-    if verdict != b'~' {
-        eprintln!(
-            "{} {direction:?} {area:?} {flex:?} {gap} {mx} {my} {rules:?}\nD {actual:?}\nR {expected:?}",
-            char::from(verdict)
+    fn reference(&self) -> Option<Vec<Rect>> {
+        let layout = Layout::new(self.direction, self.rules.clone())
+            .horizontal_margin(self.margin.horizontal)
+            .vertical_margin(self.margin.vertical)
+            .flex(self.flex)
+            .spacing(self.gap);
+        let (parts, spacers) =
+            match std::panic::catch_unwind(|| layout.split_with_spacers(self.area)) {
+                Ok(regions) => regions,
+                Err(error) => {
+                    let message = error
+                        .downcast_ref::<String>()
+                        .map(String::as_str)
+                        .or_else(|| error.downcast_ref::<&str>().copied());
+                    if message == Some("failed to split: InternalSolverError(ObjectiveUnbounded)") {
+                        return None;
+                    }
+                    std::panic::resume_unwind(error)
+                }
+            };
+        Some(parts.iter().chain(spacers.iter()).copied().collect())
+    }
+    fn compare(&self, expected: &[Rect]) -> u8 {
+        if self.actual == expected {
+            return b'=';
+        }
+        let verdict = mismatch(
+            &self.rules,
+            self.flex,
+            self.gap,
+            self.area.inner(self.margin),
+            self.direction,
+            expected,
+            &self.actual,
         );
+        if verdict != b'~' {
+            eprintln!(
+                "{} {:?} {:?} {:?} {:?} {} {:?}\nD {:?}\nR {expected:?}",
+                char::from(verdict),
+                self.direction,
+                self.area,
+                self.margin,
+                self.flex,
+                self.gap,
+                self.rules,
+                self.actual
+            );
+        }
+        verdict
     }
-    verdict
+    fn compare_record(&self, input: &str, record: &str) -> u8 {
+        let (parameters, _) = record.split_once('\t').expect("missing rectangle list");
+        assert!(
+            input
+                .split_ascii_whitespace()
+                .take(10 + 3 * self.rules.len())
+                .eq(parameters.split_ascii_whitespace()),
+            "recorded parameters differ from the input"
+        );
+        self.compare(&Self::parse(record).actual)
+    }
+
+    fn optimal(&self) -> bool {
+        layout_optimum::optimal_projections(
+            &self.rules,
+            self.flex,
+            self.gap,
+            self.area.inner(self.margin),
+            self.direction,
+            &self.actual,
+            &self.actual,
+        )
+        .0
+    }
+}
+
+fn compare(line: &str) -> u8 {
+    let case = LayoutCase::parse(line);
+    case.reference()
+        .map_or(b'U', |expected| case.compare(&expected))
 }
 
 fn mismatch(
@@ -356,6 +415,60 @@ fn observed_empty_panels_cannot_validate_an_unequal_dunder_split() {
     assert_eq!(classify(&uniform, &observed), b'!');
 }
 
+fn finish_child(mut child: std::process::Child, limit: Duration) -> (std::process::Output, bool) {
+    let deadline = Instant::now() + limit;
+    let timed_out = loop {
+        if child.try_wait().unwrap().is_some() {
+            break false;
+        }
+        if Instant::now() >= deadline {
+            break true;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    if timed_out && let Err(error) = child.kill() {
+        assert!(
+            child.try_wait().unwrap().is_some(),
+            "could not stop the reference: {error}"
+        );
+    }
+    (child.wait_with_output().unwrap(), timed_out)
+}
+
+fn mixed_results(lines: &[String], attempts: usize, deadline: Duration) -> Vec<u8> {
+    let executable = std::env::current_exe().unwrap();
+    lines
+        .iter()
+        .enumerate()
+        .map(|(index, line)| {
+            let case = LayoutCase::parse(line);
+            for _ in 0..attempts {
+                let child = Command::new(&executable)
+                    .arg("--reference-regions")
+                    .arg(line)
+                    .stdout(Stdio::piped())
+                    .spawn()
+                    .unwrap();
+                let (output, timed_out) = finish_child(child, deadline);
+                if timed_out || (output.status.code() == Some(2) && output.stdout.is_empty()) {
+                    continue;
+                }
+                assert!(
+                    output.status.success(),
+                    "reference failed at case {}",
+                    index + 1
+                );
+                return case.compare_record(line, std::str::from_utf8(&output.stdout).unwrap());
+            }
+            eprintln!(
+                "No Ratatui split for case {}. Checking the exact objective.",
+                index + 1
+            );
+            if case.optimal() { b'O' } else { b'!' }
+        })
+        .collect()
+}
+
 fn checked_batches(lines: &[String], batch_size: usize, isolated_attempts: usize) -> Vec<u8> {
     let executable = std::env::current_exe().unwrap();
     let mut results = Vec::with_capacity(lines.len());
@@ -363,29 +476,13 @@ fn checked_batches(lines: &[String], batch_size: usize, isolated_attempts: usize
     while results.len() < lines.len() {
         let start = results.len();
         let end = (start + if stalled == 0 { batch_size } else { 1 }).min(lines.len());
-        let mut child = Command::new(&executable)
+        let child = Command::new(&executable)
             .arg("--layout-batch")
             .args(&lines[start..end])
             .stdout(Stdio::piped())
             .spawn()
             .unwrap();
-        let deadline = Instant::now() + Duration::from_secs(5);
-        let timed_out = loop {
-            if child.try_wait().unwrap().is_some() {
-                break false;
-            }
-            if Instant::now() >= deadline {
-                break true;
-            }
-            std::thread::sleep(Duration::from_millis(5));
-        };
-        if timed_out && let Err(error) = child.kill() {
-            assert!(
-                child.try_wait().unwrap().is_some(),
-                "could not stop the reference: {error}"
-            );
-        }
-        let mut output = child.wait_with_output().unwrap();
+        let (mut output, timed_out) = finish_child(child, Duration::from_secs(5));
         assert!(
             timed_out || output.status.success(),
             "reference exited {} in cases {}–{}",
@@ -431,6 +528,32 @@ fn main() {
         Some("--geometry") => return geometry(),
         Some("--frames") => return frames(),
         Some("--rules") => return rule_values(),
+        Some("--reference-regions") => {
+            let input = std::env::args().nth(2).unwrap();
+            let case = LayoutCase::parse(&input);
+            let Some(regions) = case.reference() else {
+                std::process::exit(2);
+            };
+            let parameters = input
+                .split_ascii_whitespace()
+                .take(10 + 3 * case.rules.len())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let mut out = io::stdout().lock();
+            write!(out, "{parameters}\t").unwrap();
+            for (i, r) in regions.iter().enumerate() {
+                if i > 0 {
+                    write!(out, " ").unwrap();
+                }
+                write!(out, "{} {} {} {}", r.x, r.y, r.width, r.height).unwrap();
+            }
+            writeln!(out).unwrap();
+            return;
+        }
+        Some("--exact-layout") => {
+            assert!(LayoutCase::parse(&std::env::args().nth(2).unwrap()).optimal());
+            return;
+        }
         Some("--layout-batch") => {
             let mut out = io::stdout().lock();
             for line in std::env::args().skip(2) {
@@ -456,23 +579,56 @@ fn main() {
         Some("--limits") => 980,
         Some("--minimums") => 6048,
         Some("--many-panels") => 1284,
+        Some("--mixed-panels" | "--recorded-panels") => 84,
+        Some("--benchmark-panels") => 15,
+        Some("--minimum-levels") => 2880,
         _ => 14_096,
     };
     assert_eq!(lines.len(), expected);
     let results = match mode.as_deref() {
-        Some("--minimums") => checked_batches(&lines, 64, 1),
+        Some("--minimums") | Some("--minimum-levels") => checked_batches(&lines, 64, 1),
         Some("--many-panels") => checked_batches(&lines, 8, 4),
+        Some("--recorded-panels") => {
+            let records = include_str!("../fixtures/mixed-panels-0.30.2.tsv");
+            assert_eq!(records.lines().count(), lines.len());
+            lines
+                .iter()
+                .zip(records.lines())
+                .map(|(input, record)| LayoutCase::parse(input).compare_record(input, record))
+                .collect()
+        }
+        Some("--mixed-panels") => {
+            let mut args = std::env::args().skip(2);
+            let attempts = args.next().map(|v| v.parse().unwrap()).unwrap_or(2);
+            let seconds = args.next().map(|v| v.parse().unwrap()).unwrap_or(5);
+            assert!(attempts > 0 && seconds > 0 && args.next().is_none());
+            mixed_results(&lines, attempts, Duration::from_secs(seconds))
+        }
         _ => lines.iter().map(|line| compare(line)).collect(),
     };
     let matches = results.iter().filter(|&&v| v == b'=').count();
     let ties = results.iter().filter(|&&v| v == b'~').count();
     let invalid_reference = results.iter().filter(|&&v| v == b'R').count();
     let differs = results.iter().filter(|&&v| v == b'!').count();
-    assert_eq!(matches + ties + invalid_reference + differs, expected);
-    println!(
-        "{matches} identical, {ties} verified alternate optima, {invalid_reference} overlapping nonoptimal reference layouts, {differs} unresolved"
+    let exact_only = results.iter().filter(|&&v| v == b'O').count();
+    assert_eq!(
+        matches + ties + invalid_reference + differs + exact_only,
+        expected
     );
+    let summary = format!(
+        "{matches} identical, {ties} verified alternate optima, {invalid_reference} overlapping nonoptimal reference layouts"
+    );
+    if mode.as_deref() == Some("--mixed-panels") {
+        println!(
+            "{summary}, {exact_only} exact optima without a live reference answer, {differs} incorrect or unclassified"
+        );
+    } else {
+        println!("{summary}, {differs} unresolved");
+    }
     assert_eq!(differs, 0);
+    if exact_only > 0 {
+        std::process::exit(2);
+    }
 }
 
 #[allow(deprecated)]

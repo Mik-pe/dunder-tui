@@ -1,65 +1,74 @@
 const EPS: f64 = 1e-10
 
-struct Term { column: i32, value: f64 }
-pub opaque struct Row { constant: f64, terms: []Term, basic: i32 }
+pub opaque struct Row { constant: f64, columns: []i32, values: []f64, basic: i32 }
 
 impl Row {
-    pub fn new(constant: f64) -> Self { Self { constant: constant, terms: [], basic: -1 } }
+    pub fn new(constant: f64) -> Self { Self { constant: constant, columns: [], values: [], basic: -1 } }
 
     pub fn shift(&mut self, value: f64) { self.constant += value }
 
     pub fn term(&mut self, column: i32, value: f64) {
         if value == 0.0 { return }
         mut i := 0
-        while i < self.terms.len && self.terms[i].column < column { i += 1 }
-        if i < self.terms.len && self.terms[i].column == column { self.terms[i].value += value; return }
-        self.terms.push(Term { column: column, value: value })
-        mut j := self.terms.len - 1
-        while j > i { self.terms[j] = self.terms[j - 1]; j -= 1 }
-        self.terms[i] = Term { column: column, value: value }
+        while i < self.columns.len && self.columns[i] < column { i += 1 }
+        if i < self.columns.len && self.columns[i] == column { self.values[i] += value; return }
+        self.columns.push(column)
+        self.values.push(value)
+        mut j := self.columns.len - 1
+        if j == i { return }
+        while j > i {
+            self.columns[j] = self.columns[j - 1]
+            self.values[j] = self.values[j - 1]
+            j -= 1
+        }
+        self.columns[i] = column
+        self.values[i] = value
     }
 
     fn find(&self, column: i32) -> i32 {
+        if self.columns.len == 0 || column < self.columns[0] || column > self.columns[self.columns.len - 1] { return -1 }
         mut lo := 0
-        mut hi := self.terms.len
+        mut hi := self.columns.len
         while lo < hi {
             mid := lo + (hi - lo) / 2
-            if self.terms[mid].column < column { lo = mid + 1 } else { hi = mid }
+            if self.columns[mid] < column { lo = mid + 1 } else { hi = mid }
         }
-        if lo < self.terms.len && self.terms[lo].column == column { lo } else { -1 }
+        if lo < self.columns.len && self.columns[lo] == column { lo } else { -1 }
     }
 
     fn reverse(&mut self) {
         self.constant = -self.constant
-        for i in 0..self.terms.len { self.terms[i].value = -self.terms[i].value }
+        for i in 0..self.columns.len { self.values[i] = -self.values[i] }
     }
 
     fn pivot(&mut self, at: i32) {
-        inv := 1.0 / self.terms[at].value
+        inv := 1.0 / self.values[at]
         self.constant *= -inv
-        for i in 0..self.terms.len { self.terms[i].value *= -inv }
-        self.terms[at].value = inv
+        for i in 0..self.columns.len { self.values[i] *= -inv }
+        self.values[at] = inv
     }
 
-    fn substitute(&mut self, pivot: &Row, at: i32, scratch: &mut []Term) {
-        factor := self.terms[at].value
+    fn substitute(&mut self, pivot: &Row, at: i32, columns: &mut []i32, values: &mut []f64) {
+        factor := self.values[at]
         self.constant += factor * pivot.constant
-        self.terms[at].value = 0.0
-        scratch.clear()
+        self.values[at] = 0.0
+        columns.clear()
+        values.clear()
         mut i := 0
         mut j := 0
-        while i < self.terms.len || j < pivot.terms.len {
+        while i < self.columns.len || j < pivot.columns.len {
             mut column := 0
             mut v := 0.0
-            if j == pivot.terms.len || (i < self.terms.len && self.terms[i].column < pivot.terms[j].column) {
-                column = self.terms[i].column; v = self.terms[i].value; i += 1
+            if j == pivot.columns.len || (i < self.columns.len && self.columns[i] < pivot.columns[j]) {
+                column = self.columns[i]; v = self.values[i]; i += 1
             } else {
-                column = pivot.terms[j].column; v = factor * pivot.terms[j].value; j += 1
-                if i < self.terms.len && self.terms[i].column == column { v += self.terms[i].value; i += 1 }
+                column = pivot.columns[j]; v = factor * pivot.values[j]; j += 1
+                if i < self.columns.len && self.columns[i] == column { v += self.values[i]; i += 1 }
             }
-            if v.abs() > EPS { scratch.push(Term { column: column, value: v }) }
+            if v.abs() > EPS { columns.push(column); values.push(v) }
         }
-        scratch = replace(&mut self.terms, replace(&mut scratch, []))
+        swap(&mut columns, &mut self.columns)
+        swap(&mut values, &mut self.values)
     }
 }
 
@@ -95,37 +104,43 @@ impl Model {
     }
 
     pub fn solve(&mut self) -> []f64 {
-        mut scratch: []Term = []
-        while true {
-            mut leaving := -1
-            for i in 0..self.rows.len {
-                if self.rows[i].constant < -1e-8 && (leaving < 0 || self.rows[i].basic < self.rows[leaving].basic) { leaving = i }
-            }
-            if leaving < 0 { break }
+        mut columns: []i32 = []
+        mut values: []f64 = []
+        mut pivot := Row::new(0.0)
+        mut leaving := -1
+        for i in 0..self.rows.len {
+            if self.rows[i].constant < -1e-8 && (leaving < 0 || self.rows[i].basic < self.rows[leaving].basic) { leaving = i }
+        }
+        while leaving >= 0 {
             mut entering := -1
             mut best := 0.0
-            for k in 0..self.rows[leaving].terms.len {
-                term := self.rows[leaving].terms[k]
-                if term.value <= EPS { continue }
-                price := (if self.costs[term.column] > 0.0 { self.costs[term.column] } else { 0.0 }) / term.value
+            for k in 0..self.rows[leaving].columns.len {
+                value := self.rows[leaving].values[k]
+                column := self.rows[leaving].columns[k]
+                if value <= EPS { continue }
+                price := (if self.costs[column] > 0.0 { self.costs[column] } else { 0.0 }) / value
                 if entering < 0 || price < best - EPS || ((price - best).abs() <= EPS &&
-                    self.symbols[term.column] < self.symbols[self.rows[leaving].terms[entering].column]) {
+                    self.symbols[column] < self.symbols[self.rows[leaving].columns[entering]]) {
                     entering = k; best = price
                 }
             }
             assert(entering >= 0)
-            mut pivot := replace(&mut self.rows[leaving], Row::new(0.0))
-            column := pivot.terms[entering].column
+            swap(&mut pivot, &mut self.rows[leaving])
+            column := pivot.columns[entering]
             pivot.pivot(entering)
             pivot.basic = replace(&mut self.symbols[column], pivot.basic)
+            mut next := -1
             for i in 0..self.rows.len {
-                at := self.rows[i].find(column)
-                if at >= 0 { self.rows[i].substitute(&pivot, at, &mut scratch) }
+                row := &mut self.rows[i]
+                at := row.find(column)
+                if at >= 0 { row.substitute(&pivot, at, &mut columns, &mut values) }
+                if row.constant < -1e-8 && (next < 0 || row.basic < self.rows[next].basic) { next = i }
             }
             price := self.costs[column]
             self.costs[column] = 0.0
-            for term in &pivot.terms { self.costs[term.column] += price * term.value }
-            self.rows[leaving] = move pivot
+            for k in 0..pivot.columns.len { self.costs[pivot.columns[k]] += price * pivot.values[k] }
+            swap(&mut pivot, &mut self.rows[leaving])
+            leaving = next
         }
         mut result: []f64 = []
         result.reserve(self.variables)

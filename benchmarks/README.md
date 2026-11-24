@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Dela upp ett fönster i 32 paneler
+
+Fem arbetslaster jämför ny bredd, trängda paneler, överlapp, olika fyllnadsvikter och återanvändning av samma bredd. [Layouttid, allokeringar, minne och körinstruktioner](panels.md)
+
 ## Skicka färdiga bildbuffertar till terminalen
 
 Åtta arbetslaster jämför Dunders `Frame.ansi_cells` med Ratatuis buffertdiff och Crossterm. En riktig terminalpanel kontrollerar vilka tecken och färger som till slut visas. [Bildtid, byte per arbetslast och minne](frame-output.md)
