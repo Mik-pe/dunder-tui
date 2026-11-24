@@ -1,22 +1,22 @@
 capability stdio
 import sys
 import std.array
-import std.json
 import std.time
 import ..src.testing
 import ..src.text as rich
 import ..src.tui
+import ..src.snapshot
 
-fn snapshot() -> string {
+fn saved_screen(format: snapshot.Format) -> string {
     rows: []rich.Line = [rich.Line::raw("A茶🌊123"),rich.Line::raw("B       ")]
     mut backend := testing.TestBackend::with_lines(&rows)
     backend.append_lines(129)
-    json.to_string(&backend).unwrap()
+    snapshot.to_string(&backend,format).unwrap()
 }
 
-fn run(which: i32, saved: string) -> i32 {
+fn run(which: i32, saved: string, format: snapshot.Format) -> i32 {
     if which == 3 {
-        restored := json.from_str<testing.TestBackend>(saved).unwrap()
+        restored := snapshot.from_str<testing.TestBackend>(saved,format).unwrap()
         assert(restored.scrollback().row(0).symbol_at(0,0).unwrap() == "A" && restored.scrollback().row(0).symbol_at(1,0).unwrap() == "茶")
         return restored.scrollback().len()
     }
@@ -43,19 +43,20 @@ fn run(which: i32, saved: string) -> i32 {
     backend.scrollback().len()
 }
 
-fn main() -> i32 {
+pub fn benchmark(format: snapshot.Format) -> i32 {
     names := ["blank-limit","mixed-limit","painted","restore"]
+    if sys.arg_count() == 2 && sys.arg(1) == "--dump-restore" { print(saved_screen(format)); return 0 }
     if sys.arg_count() == 3 && sys.arg(1) == "--resources" {
         for which in 0..4 {
             if sys.arg(2) == names[which] {
-                saved := if which == 3 { snapshot() } else { "" }
-                print(f"{run(which,saved)}")
+                saved := if which == 3 { saved_screen(format) } else { "" }
+                print(f"{run(which,saved,format)}")
                 return 0
             }
         }
         return 2
     }
-    saved := snapshot()
+    saved := saved_screen(format)
     for which in 0..4 {
         mut times: []i64 = []
         mut check := 0
@@ -63,7 +64,7 @@ fn main() -> i32 {
         for i in 0..23 {
             mut result := 0
             start := time.monotonic_ns()
-            for _ in 0..batch { result += run(which,saved) }
+            for _ in 0..batch { result += run(which,saved,format) }
             elapsed := (time.monotonic_ns()-start)/i64(batch)
             if i >= 3 { times.push(elapsed); check += result }
         }
@@ -72,3 +73,5 @@ fn main() -> i32 {
     }
     0
 }
+
+fn main() -> i32 { benchmark(.WithUnderlineColor) }

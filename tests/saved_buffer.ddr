@@ -1,5 +1,6 @@
 import std.json
 import ..src.tui
+import ..src.snapshot
 
 pub fn snapshots() -> []tui.Frame {
     mut original := tui.Frame::at(tui.Rect::new(3,4,8,1))
@@ -15,4 +16,13 @@ pub fn snapshots() -> []tui.Frame {
 pub fn paint(frame: &mut tui.Frame, saved: &mut tui.Frame) {
     area := frame.area()
     frame.copy_region(&saved,saved.area(),area.x+1,area.y+1)
+}
+
+pub fn underlined(format: snapshot.Format) -> tui.Frame {
+    mut frame := tui.Frame::new(6,1)
+    label := if format.has_underline_color() { "COLOR" } else { "BASIC" }
+    style := tui.ink(.Green).underlined().underline_color(.Rgb(208,64,192))
+    frame.text(frame.area(),label,style)
+    saved := snapshot.to_string(&frame,format).unwrap()
+    snapshot.from_str<tui.Frame>(saved,format).unwrap()
 }

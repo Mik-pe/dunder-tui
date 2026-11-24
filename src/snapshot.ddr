@@ -1,0 +1,66 @@
+import std.json
+
+pub enum Format { WithUnderlineColor, WithoutUnderlineColor }
+
+impl Format {
+    pub fn has_underline_color(&self) -> bool { match self { .WithUnderlineColor => true, .WithoutUnderlineColor => false, } }
+}
+
+pub trait Write {
+    fn write_snapshot(&self, out: &mut json.Writer, format: Format)
+}
+
+pub trait Read {
+    fn read_snapshot(doc: &json.Doc, node: i32, format: Format) -> Result<Self,json.JsonError>
+}
+
+pub struct WithoutUnderlineColor<T> { value: T }
+
+impl json.Encode for WithoutUnderlineColor<T> where T: Write {
+    fn encode_json(&self, out: &mut json.Writer) { self.value.write_snapshot(&mut out,.WithoutUnderlineColor) }
+}
+
+impl json.Decode for WithoutUnderlineColor<T> where T: Read {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        value := T::read_snapshot(&doc,node,.WithoutUnderlineColor)?
+        .Ok(Self { value: move value })
+    }
+}
+
+pub fn to_string<T: Write + Storable>(value: &T, format: Format) -> Result<string,json.JsonError> {
+    mut out := json.Writer::new()
+    value.write_snapshot(&mut out,format)
+    out.finish()
+}
+
+pub fn from_str<T: Read + Storable>(value: string, format: Format) -> Result<T,json.JsonError> {
+    doc := json.Doc::parse(value)?
+    T::read_snapshot(&doc,doc.root,format)
+}
+
+pub fn read<T: Read + Storable>(doc: &json.Doc, node: i32, format: Format) -> Result<T,json.JsonError> {
+    T::read_snapshot(&doc,node,format)
+}
+
+impl Write for []T where T: Write {
+    fn write_snapshot(&self, out: &mut json.Writer, format: Format) {
+        out.array()
+        for i in 0..self.len { self[i].write_snapshot(&mut out,format) }
+        out.end()
+    }
+}
+
+impl Read for []T where T: Read {
+    fn read_snapshot(doc: &json.Doc, node: i32, format: Format) -> Result<Self,json.JsonError> {
+        if doc.kind(node) != .Array { return .Err(json.JsonError::new("expected a snapshot array",doc.node_offset(node))) }
+        mut values: []T = []
+        values.reserve(doc.count(node))
+        mut child := doc.first_child[node]
+        while child >= 0 {
+            item := T::read_snapshot(&doc,child,format)?
+            values.push(move item)
+            child = doc.next_sibling[child]
+        }
+        .Ok(move values)
+    }
+}

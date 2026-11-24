@@ -2,6 +2,8 @@
 
 ## Omprov med den publicerade 0.12.0
 
+När ett bildarkiv innehåller många celler behöver avkodaren gå en gång genom en redan tolkad JSON-array. I 0.12.0 börjar `doc.at` från första barnet för varje index. På Macen tog 4 096 heltal 25,34 ms via index och 0,26 ms med `first_child` och `next_sibling`, med samma summa 8 386 560. På Linux ARM64 tog det 20,66 respektive 0,19 ms. En publik barniterator skulle låta avkodare göra samma genomgång utan att känna till `Doc`s interna arrayer. [Mätprogram](../benchmarks/language/json_array.ddr)
+
 Färgnamnet `blacK` innehåller Kelvin-tecknet U+212A. Ratatui läser det som svart. `std.text.lower` i Dunder använder ASCII och lämnar tecknet intakt. TUI-biblioteket hanterar nu detta färgnamn. Ett separat Unicode-anrop i standardbiblioteket skulle också kunna hantera att `İ` blir två skalärer och att versalt sigma får olika gemener beroende på sin plats i ordet. Samma resultat från 0.12.0 kontrollerades på macOS, Linux och Win64 under Wine. [Minimiprov](../tests/dogfood/unicode_lower.ddr) · [Färgprovet](../tests/palette_json.ddr)
 
 Testterminalens sparade markör har formatet `[kolumn,rad]`. Både skrivning och läsning av `(u16,u16)` med `std.json` ger E3004 i 0.12.0. Testbackenden skriver de två heltalen direkt och avvisar andra arraylängder vid läsning. [Minimiprov för tupelstöd](../tests/dogfood/json_tuple.ddr)

@@ -4,16 +4,18 @@ import sys
 import std.json
 import std.text
 import ..src.tui
+import ..src.snapshot as wire
+import .snapshot_format as codec
 
-fn check(line: string) -> Result<string, json.JsonError> {
+fn check(line: string, format: wire.Format) -> Result<string, json.JsonError> {
     value := line[2..line.len]
     if line[0] == b'C' {
         color := json.from_str<tui.Color>(value)?
         return json.to_string(&color)
     }
-    style := json.from_str<tui.Style>(value)?
-    saved := json.to_string(&style)?
-    loaded := json.from_str<tui.Style>(saved)?
+    style := codec.from_str<tui.Style>(value,format)?
+    saved := codec.to_string(&style,format)?
+    loaded := codec.from_str<tui.Style>(saved,format)?
     assert(style == loaded)
     seed := tui.ink(.Blue).background_index(7).bold().dim()
     patched := seed.patch(loaded)
@@ -23,14 +25,14 @@ fn check(line: string) -> Result<string, json.JsonError> {
     assert(frame.line(0) == "xx")
     left := frame.cell_at(0, 0).unwrap()
     right := frame.cell_at(1, 0).unwrap()
-    .Ok(saved + "\t" + json.to_string(&patched)? + "\t" + json.to_string(&left.style)? + "\t" + json.to_string(&right.style)?)
+    .Ok(saved + "\t" + codec.to_string(&patched,format)? + "\t" + codec.to_string(&left.style,format)? + "\t" + codec.to_string(&right.style,format)?)
 }
 
 fn main() -> i32 {
-    if sys.arg_count() != 2 { return 2 }
+    format := match codec.selected() { .Some(f) => f, .None => { return 2 }, }
     for line in text.split(sys.read(sys.arg(1)).unwrap(), "\n") {
         if line.len == 0 { continue }
-        match check(line) {
+        match check(line,format) {
             .Ok(result) => { print(result) },
             .Err(_) => { print("error") },
         }

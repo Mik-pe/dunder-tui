@@ -1,6 +1,7 @@
 import .tui
 import .geometry
 import .json_format
+import .snapshot
 import .text as rich
 import std.cmp as cmp
 import std.json
@@ -88,11 +89,11 @@ pub opaque struct TestBackend {
 
 pub struct SavedBackend { buffer: tui.Buffer, scrollback: tui.Buffer, cursor: bool, pos: geometry.Position }
 
-impl json.Decode for SavedBackend {
-    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+impl snapshot.Read for SavedBackend {
+    fn read_snapshot(doc: &json.Doc, node: i32, format: snapshot.Format) -> Result<Self,json.JsonError> {
         f := json_format.fields(&doc,node,&["buffer","scrollback","cursor","pos"],4,4)?
-        buffer := tui.Buffer::decode_json(&doc,f[0])?
-        scrollback := tui.Buffer::decode_json(&doc,f[1])?
+        buffer := tui.Buffer::read_snapshot(&doc,f[0],format)?
+        scrollback := tui.Buffer::read_snapshot(&doc,f[1],format)?
         cursor := bool::decode_json(&doc,f[2])?
         p := f[3]
         if doc.kind(p) != .Array || doc.count(p) != 2 {
@@ -104,28 +105,41 @@ impl json.Decode for SavedBackend {
     }
 }
 
-fn write_backend<B: json.Encode,H: json.Encode>(out: &mut json.Writer, buffer: &B, history: &H, visible: bool, x: i32, y: i32) {
+fn write_backend<B: snapshot.Write,H: snapshot.Write>(out: &mut json.Writer, buffer: &B, history: &H, visible: bool, x: i32, y: i32, format: snapshot.Format) {
     out.object()
-    json.field_value(&mut out,"buffer",&buffer)
-    json.field_value(&mut out,"scrollback",&history)
+    out.key("buffer"); buffer.write_snapshot(&mut out,format)
+    out.key("scrollback"); history.write_snapshot(&mut out,format)
     out.key("cursor"); out.boolean(visible)
     out.key("pos"); out.array(); out.integer(i64(x)); out.integer(i64(y)); out.end()
     out.end()
 }
 
 impl json.Encode for SavedBackend {
-    fn encode_json(&self, out: &mut json.Writer) {
-        write_backend(&mut out,&self.buffer,&self.scrollback,self.cursor,i32(self.pos.x),i32(self.pos.y))
+    fn encode_json(&self, out: &mut json.Writer) { self.write_snapshot(&mut out,.WithUnderlineColor) }
+}
+impl json.Decode for SavedBackend {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        SavedBackend::read_snapshot(&doc,node,.WithUnderlineColor)
+    }
+}
+
+impl snapshot.Write for SavedBackend {
+    fn write_snapshot(&self, out: &mut json.Writer, format: snapshot.Format) {
+        write_backend(&mut out,&self.buffer,&self.scrollback,self.cursor,i32(self.pos.x),i32(self.pos.y),format)
     }
 }
 
 impl json.Encode for Scrollback {
-    fn encode_json(&self, out: &mut json.Writer) {
+    fn encode_json(&self, out: &mut json.Writer) { self.write_snapshot(&mut out,.WithUnderlineColor) }
+}
+
+impl snapshot.Write for Scrollback {
+    fn write_snapshot(&self, out: &mut json.Writer, format: snapshot.Format) {
         area := tui.Rect::new(0,0,self.blank.area().w,self.len())
         out.object()
         json.field_value(&mut out,"area",&area)
         out.key("content"); out.array()
-        for y in 0..area.h { self.row(y).encode_json_cells(&mut out) }
+        for y in 0..area.h { self.row(y).write_snapshot_cells(&mut out,format) }
         out.end(); out.end()
     }
 }
@@ -147,14 +161,23 @@ impl SavedBackend {
 }
 
 impl json.Encode for TestBackend {
-    fn encode_json(&self, out: &mut json.Writer) {
-        write_backend(&mut out,&self.screen,&self.history,self.visible,self.x,self.y)
+    fn encode_json(&self, out: &mut json.Writer) { self.write_snapshot(&mut out,.WithUnderlineColor) }
+}
+impl json.Decode for TestBackend {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        TestBackend::read_snapshot(&doc,node,.WithUnderlineColor)
     }
 }
 
-impl json.Decode for TestBackend {
-    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
-        saved := SavedBackend::decode_json(&doc,node)?
+impl snapshot.Write for TestBackend {
+    fn write_snapshot(&self, out: &mut json.Writer, format: snapshot.Format) {
+        write_backend(&mut out,&self.screen,&self.history,self.visible,self.x,self.y,format)
+    }
+}
+
+impl snapshot.Read for TestBackend {
+    fn read_snapshot(doc: &json.Doc, node: i32, format: snapshot.Format) -> Result<Self,json.JsonError> {
+        saved := SavedBackend::read_snapshot(&doc,node,format)?
         match saved.to_backend() {
             .Ok(backend) => .Ok(move backend),
             .Err(reason) => .Err(json.JsonError::new(reason,doc.node_offset(node))),

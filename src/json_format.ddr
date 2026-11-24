@@ -1,26 +1,41 @@
 import std.json
+import std.bytes
+
+fn field_index(doc: &json.Doc, object: i32, child: i32, ordinal: i32, names: &[]string) -> i32 {
+    if doc.key_escaped[child] {
+        key := doc.key_at(object,ordinal).unwrap()
+        for i in 0..names.len { if key == names[i] { return i } }
+        return -1
+    }
+    start := doc.key_starts[child]
+    end := doc.key_ends[child]
+    if ordinal < names.len && bytes.equals_text(&doc.input,start,end,names[ordinal]) { return ordinal }
+    for i in 0..names.len { if bytes.equals_text(&doc.input,start,end,names[i]) { return i } }
+    -1
+}
 
 pub fn fields(doc: &json.Doc, node: i32, names: &[]string, required: i32, sequence_min: i32) -> Result<[]i32, json.JsonError> {
     mut values: []i32 = []
-    for _ in names { values.push(-1) }
+    values.reserve(names.len)
     count := doc.count(node)
     if doc.kind(node) == .Array {
         if count < sequence_min || count > names.len {
             return .Err(json.JsonError::new("wrong number of positional fields", doc.node_offset(node)))
         }
-        for i in 0..count { values[i] = doc.at(node, i) }
+        for i in 0..count { values.push(doc.at(node,i)) }
+        for _ in count..names.len { values.push(-1) }
         return .Ok(move values)
     }
     if doc.kind(node) != .Object { return .Err(json.JsonError::new("expected an object or array", doc.node_offset(node))) }
+    for _ in names { values.push(-1) }
+    mut child := doc.first_child[node]
     for i in 0..count {
-        key := doc.key_at(node, i).unwrap()
-        for j in 0..names.len {
-            if key != names[j] { continue }
-            value := doc.val_at(node, i)
-            if values[j] >= 0 { return .Err(json.JsonError::new("duplicate field " + key, doc.node_offset(value))) }
-            values[j] = value
-            break
+        slot := field_index(&doc,node,child,i,&names)
+        if slot >= 0 {
+            if values[slot] >= 0 { return .Err(json.JsonError::new("duplicate field " + names[slot],doc.node_offset(child))) }
+            values[slot] = child
         }
+        child = doc.next_sibling[child]
     }
     for i in 0..required {
         if values[i] < 0 { return .Err(json.JsonError::new("missing field " + names[i], doc.node_offset(node))) }

@@ -7,6 +7,8 @@ import .width
 const MODIFIERS: [string; 9] = ["BOLD", "DIM", "ITALIC", "UNDERLINED", "SLOW_BLINK",
     "RAPID_BLINK", "REVERSED", "HIDDEN", "CROSSED_OUT"]
 
+const FLAG_ERROR: string = "expected flag names separated by |"
+
 fn trim_flag(value: string) -> string {
     mut first := value.len
     mut last := 0
@@ -36,22 +38,24 @@ pub fn read_flags(doc: &json.Doc, node: i32) -> Result<i32, json.JsonError> {
 }
 
 pub fn read_flag_set(doc: &json.Doc, node: i32, max_bits: i32, named: fn(string)->Option<i32>) -> Result<i32,json.JsonError> {
-    error := json.JsonError::new("expected flag names separated by |", doc.node_offset(node))
-    value := match doc.as_str(node) { .Some(s) => s, .None => { return .Err(error) }, }
-    if trim_flag(value).len == 0 { return .Ok(0) }
+    value := match doc.as_str(node) {
+        .Some(s) => s,
+        .None => { return .Err(json.JsonError::new(FLAG_ERROR,doc.node_offset(node))) },
+    }
+    if value.len == 0 || trim_flag(value).len == 0 { return .Ok(0) }
     mut mask := 0
     for item in text.split(value, "|") {
         word := trim_flag(item)
         if text.starts_with(word,"0x") {
             start := if word.len > 2 && word[2] == b'+' { 3 } else { 2 }
             n := parse.hex_u64_range(word,start,word.len)
-            if !n.ok || n.value > u64(max_bits) { return .Err(error) }
+            if !n.ok || n.value > u64(max_bits) { return .Err(json.JsonError::new(FLAG_ERROR,doc.node_offset(node))) }
             mask = mask.bit_or(i32(n.value))
             continue
         }
         match named(word) {
             .Some(bits) => { mask = mask.bit_or(bits) },
-            .None => { return .Err(error) },
+            .None => { return .Err(json.JsonError::new(FLAG_ERROR,doc.node_offset(node))) },
         }
     }
     .Ok(mask)

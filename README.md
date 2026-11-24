@@ -142,6 +142,17 @@ mut bild := json.from_str<tui.Frame>(sparad).unwrap()
 bild.text(bild.area(), "Ansluten", tui.ink(.Green))
 ```
 
+För att utbyta en bild med en Ratatui-app byggd utan `underline-color` väljer du formatet vid läsning och skrivning.
+
+```dunder
+import tui.snapshot
+
+sparad := snapshot.to_string(&frame,.WithoutUnderlineColor).unwrap()
+bild := snapshot.from_str<tui.Frame>(sparad,.WithoutUnderlineColor).unwrap()
+```
+
+Samma val finns för stilar, celler, buffertar och testterminaler. I en egen post med `@derive(Encode, Decode)` kan ett stilfält ha typen `snapshot.WithoutUnderlineColor<tui.Style>`. Den avkodade stilen finns i `fält.value`. [Körbara exempel](tests/suite.ddr)
+
 Bilden innehåller ytans origo, storlek, symboler, färger och diffregler. Markör och bildnummer hör till terminalen. Med `raw_cell_at(x,y)` kan du läsa ett enskilt sparat cellvärde, även bakom ett brett tecken. [Dataformat och körbara prov](docs/parity.md#sparade-celler-och-bildbuffertar)
 
 ## Dela terminalyta med en annan ritare

@@ -53,7 +53,12 @@ fn snapshot() -> String {
 fn main() {
     let names = ["blank-limit", "mixed-limit", "painted", "restore"];
     let mut args = std::env::args().skip(1);
-    if args.next().as_deref() == Some("--resources") {
+    let action = args.next();
+    if action.as_deref() == Some("--dump-restore") {
+        println!("{}", snapshot());
+        return;
+    }
+    if action.as_deref() == Some("--resources") {
         let name = args.next().unwrap();
         let which = names.iter().position(|&n| n == name).unwrap();
         let saved = if which == 3 {

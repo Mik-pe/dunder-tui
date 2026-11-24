@@ -46,3 +46,25 @@ build/rust-profile/release/examples/scrollback --resources restore
 ```
 
 För RSS, kör de två tidsmätta binärerna med `--resources` och provets namn under `/usr/bin/time -l` på macOS eller `/usr/bin/time -v` på Linux. Cargo behöver den fristående referensens låsta paket i sin lokala cache.
+
+## JSON utan separat understrykningsfärg
+
+Samma 128 historikrader ger 93 755 byte JSON i grundformatet. Indatan jämfördes byte för byte mellan programmen på alla tre plattformar före tidtagningen. På macOS ARM64 tog Dunder 1,52 ms i median och 2,78 ms vid p95. Ratatui tog 0,88 respektive 1,72 ms. Spridningen av de sju processernas medianer var 1,34–2,29 ms för Dunder och 0,75–1,12 ms för Ratatui. [Alla tider, allokeringsanrop och högsta RSS](results/basic-restore-dunder-0.12.0-local.tsv)
+
+Dunders läsare går nu direkt från ett JSON-barn till nästa för vanliga objektnycklar och arrayer. Ett tomt attributfält får en snabb retur. Även med separat understrykningsfärg minskade resursprovets allokeringsanrop från 118 204 till 86 940 och dess begärda minne från 3 625 088 till 3 075 895 byte. För grundformatet mättes 73 413 anrop och 2 385 507 byte. Skapandet av indatan ingår i samtliga resursmätningar. [Tidigare mätning med understrykningsfärg](results/palette-restore-dunder-0.12.0-local.tsv)
+
+```sh
+mkdir -p build
+dunder build --locked --offline benchmarks/scrollback_basic.ddr -o build/basic
+dunder build --locked --offline benchmarks/measure.ddr -o build/measure
+ref=benchmarks/reference/Cargo.toml
+cargo build --locked --offline --release --manifest-path "$ref" --no-default-features \
+  --features serde-backend --example scrollback --target-dir build/basic-ref
+rust="$PWD/build/basic-ref/release/examples/scrollback"
+build/basic --dump-restore >build/basic.json
+"$rust" --dump-restore >build/basic-rust.json
+cmp build/basic.json build/basic-rust.json
+build/measure "$PWD/build/basic" "$rust"
+```
+
+Kör samma program med `--resources restore` för minnesmätningen. För antalet allokeringar, bygg Dunderprogrammet med `--runtime-profile` och lägg till `allocation-counts` i referensens funktionsflaggor.

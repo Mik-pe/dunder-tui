@@ -326,6 +326,10 @@ unsafe fn shadow_and_meter_screen(out: ptr, x: i32, y: i32) -> i32 {
     if unit_at(out,x+2,y+2) != 0x2554 || unit_at(out,x+3,y+3) != 32 || unit_at(out,x+10,y+5) != 75 { return 194 }
     last := u32(x+10).bit_or(u32(y+5).shl(16))
     if read_attr(out,addr(&mut attr),1,last,addr(&mut count)) == 0 || count != 1 || attr.bit_and(15) != 3 { return 195 }
+    mut basic := saved_buffer.underlined(.WithoutUnderlineColor)
+    if term.draw(&mut basic,saved_buffer.paint).is_err() { return 196 }
+    if unit_at(out,x+3,y+3) != 66 || unit_at(out,x+7,y+3) != 67 { return 197 }
+    if read_attr(out,addr(&mut attr),1,first,addr(&mut count)) == 0 || count != 1 || attr.bit_and(15) != 2 { return 198 }
     0
 }
 

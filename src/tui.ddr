@@ -15,6 +15,7 @@ import .paint
 import .colorspace
 import .theme_format
 import .json_format
+import .snapshot
 import .geometry
 import std.json
 import std.parse as parse
@@ -308,25 +309,40 @@ fn read_color(doc: &json.Doc, node: i32) -> Result<i32, json.JsonError> {
 }
 
 impl json.Encode for Style {
-    fn encode_json(&self, out: &mut json.Writer) {
+    fn encode_json(&self, out: &mut json.Writer) { self.write_snapshot(&mut out,.WithUnderlineColor) }
+}
+impl json.Decode for Style {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        Style::read_snapshot(&doc,node,.WithUnderlineColor)
+    }
+}
+
+impl snapshot.Write for Style {
+    fn write_snapshot(&self, out: &mut json.Writer, format: snapshot.Format) {
         out.object()
         write_color(&mut out, "fg", self.fg)
         write_color(&mut out, "bg", self.bg)
-        write_color(&mut out, "underline_color", self.underline)
+        if format.has_underline_color() { write_color(&mut out, "underline_color", self.underline) }
         theme_format.write_flags(&mut out, "add_modifier", self.added)
         theme_format.write_flags(&mut out, "sub_modifier", self.removed)
         out.end()
     }
 }
 
-impl json.Decode for Style {
-    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self, json.JsonError> {
-        fields := json_format.fields(&doc, node, &["fg", "bg", "underline_color", "add_modifier", "sub_modifier"], 0, 3)?
+impl snapshot.Read for Style {
+    fn read_snapshot(doc: &json.Doc, node: i32, format: snapshot.Format) -> Result<Self, json.JsonError> {
+        with_underline := format.has_underline_color()
+        first_flag := if with_underline { 3 } else { 2 }
+        fields := if with_underline {
+            json_format.fields(&doc,node,&["fg","bg","underline_color","add_modifier","sub_modifier"],0,3)?
+        } else {
+            json_format.fields(&doc,node,&["fg","bg","add_modifier","sub_modifier"],0,2)?
+        }
         fg := read_color(&doc, fields[0])?
         bg := read_color(&doc, fields[1])?
-        underline := read_color(&doc, fields[2])?
-        added := theme_format.read_flags(&doc, fields[3])?
-        removed := theme_format.read_flags(&doc, fields[4])?
+        underline := if with_underline { read_color(&doc,fields[2])? } else { INHERIT }
+        added := theme_format.read_flags(&doc, fields[first_flag])?
+        removed := theme_format.read_flags(&doc, fields[first_flag+1])?
         .Ok(Self { fg: fg, bg: bg, underline: underline, added: added, removed: removed })
     }
 }
@@ -600,7 +616,6 @@ impl json.Decode for Modifiers {
     }
 }
 
-@derive(Encode)
 pub struct RawCell {
     symbol: Option<string>, fg: Color, bg: Color, underline_color: Color, modifier: Modifiers, diff_option: CellDiffOption, skip: bool,
 }
@@ -620,28 +635,75 @@ impl RawCell {
     }
 }
 
+impl json.Encode for RawCell {
+    fn encode_json(&self, out: &mut json.Writer) { self.write_snapshot(&mut out,.WithUnderlineColor) }
+}
 impl json.Decode for RawCell {
     fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
-        f := json_format.fields(&doc,node,&["symbol","fg","bg","underline_color","modifier","diff_option","skip"],0,7)?
+        RawCell::read_snapshot(&doc,node,.WithUnderlineColor)
+    }
+}
+
+impl snapshot.Write for RawCell {
+    fn write_snapshot(&self, out: &mut json.Writer, format: snapshot.Format) {
+        out.object()
+        json.field_value(&mut out,"symbol",&self.symbol)
+        json.field_value(&mut out,"fg",&self.fg)
+        json.field_value(&mut out,"bg",&self.bg)
+        if format.has_underline_color() { json.field_value(&mut out,"underline_color",&self.underline_color) }
+        json.field_value(&mut out,"modifier",&self.modifier)
+        json.field_value(&mut out,"diff_option",&self.diff_option)
+        json.field_value(&mut out,"skip",&self.skip)
+        out.end()
+    }
+}
+
+impl snapshot.Read for RawCell {
+    fn read_snapshot(doc: &json.Doc, node: i32, format: snapshot.Format) -> Result<Self,json.JsonError> {
+        with_underline := format.has_underline_color()
+        flags := if with_underline { 4 } else { 3 }
+        f := if with_underline {
+            json_format.fields(&doc,node,&["symbol","fg","bg","underline_color","modifier","diff_option","skip"],0,7)?
+        } else {
+            json_format.fields(&doc,node,&["symbol","fg","bg","modifier","diff_option","skip"],0,6)?
+        }
         symbol := json.decode<Option<string>>(&doc, f[0])?
         fg := Color::decode_json(&doc, f[1])?
         bg := Color::decode_json(&doc, f[2])?
-        underline := Color::decode_json(&doc, f[3])?
-        modifier := Modifiers::decode_json(&doc, f[4])?
-        option := CellDiffOption::decode_json(&doc, f[5])?
-        skip := bool::decode_json(&doc, f[6])?
+        underline: Color = if with_underline { Color::decode_json(&doc,f[3])? } else { .Default }
+        modifier := Modifiers::decode_json(&doc, f[flags])?
+        option := CellDiffOption::decode_json(&doc, f[flags+1])?
+        skip := bool::decode_json(&doc, f[flags+2])?
         .Ok(Self { symbol:move symbol, fg:fg, bg:bg, underline_color:underline, modifier:modifier, diff_option:option, skip:skip })
     }
 }
 
-@derive(Encode)
 pub struct Buffer { area: Rect, content: []RawCell }
 
+impl json.Encode for Buffer {
+    fn encode_json(&self, out: &mut json.Writer) { self.write_snapshot(&mut out,.WithUnderlineColor) }
+}
 impl json.Decode for Buffer {
     fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        Buffer::read_snapshot(&doc,node,.WithUnderlineColor)
+    }
+}
+
+impl snapshot.Write for Buffer {
+    fn write_snapshot(&self, out: &mut json.Writer, format: snapshot.Format) {
+        out.object()
+        json.field_value(&mut out,"area",&self.area)
+        out.key("content")
+        self.content.write_snapshot(&mut out,format)
+        out.end()
+    }
+}
+
+impl snapshot.Read for Buffer {
+    fn read_snapshot(doc: &json.Doc, node: i32, format: snapshot.Format) -> Result<Self,json.JsonError> {
         f := json_format.fields(&doc,node,&["area","content"],2,2)?
         area := Rect::decode_json(&doc, f[0])?
-        content := json.decode<[]RawCell>(&doc, f[1])?
+        content := snapshot.read<[]RawCell>(&doc,f[1],format)?
         .Ok(Self { area:area, content:move content })
     }
 }
@@ -779,25 +841,38 @@ impl Frame {
     }
 
     pub fn encode_json_cells(&self, out: &mut json.Writer) {
-        for i in 0..self.glyphs.len { json.encode(&mut out,&self.raw_cell(i)) }
+        self.write_snapshot_cells(&mut out,.WithUnderlineColor)
+    }
+
+    pub fn write_snapshot_cells(&self, out: &mut json.Writer, format: snapshot.Format) {
+        for i in 0..self.glyphs.len { self.raw_cell(i).write_snapshot(&mut out,format) }
     }
 }
 
 impl json.Encode for Frame {
-    fn encode_json(&self, out: &mut json.Writer) {
+    fn encode_json(&self, out: &mut json.Writer) { self.write_snapshot(&mut out,.WithUnderlineColor) }
+}
+impl json.Decode for Frame {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        Frame::read_snapshot(&doc,node,.WithUnderlineColor)
+    }
+}
+
+impl snapshot.Write for Frame {
+    fn write_snapshot(&self, out: &mut json.Writer, format: snapshot.Format) {
         out.object()
         json.field_value(&mut out,"area",&self.bounds)
         out.key("content")
         out.array()
-        self.encode_json_cells(&mut out)
+        self.write_snapshot_cells(&mut out,format)
         out.end()
         out.end()
     }
 }
 
-impl json.Decode for Frame {
-    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
-        buffer := Buffer::decode_json(&doc,node)?
+impl snapshot.Read for Frame {
+    fn read_snapshot(doc: &json.Doc, node: i32, format: snapshot.Format) -> Result<Self,json.JsonError> {
+        buffer := Buffer::read_snapshot(&doc,node,format)?
         match buffer.to_frame() {
             .Ok(frame) => .Ok(move frame),
             .Err(reason) => .Err(json.JsonError::new(reason,doc.node_offset(node))),

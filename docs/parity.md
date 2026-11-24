@@ -26,7 +26,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | `layout-cache` | `Layout.cache_capacity` styr antal sparade uppdelningar. Layoutproven återanvänder tidigare storlekar efter regelbyten. |
 | `scrolling-regions` | Backendens regionskrollning och reservvägen med radmatning jämförs genom skrollhistorik och terminalutdata. |
 | `macros` | Konstruktorer för spann, rader, text och layout finns. Jämförelse per dokumenterad makroform återstår. |
-| `serde` | Färger, stilar, attribut, celler, diffregler, buffertar, layouter och geometri läses och skrivs med `std.json`. Detsamma gäller testbackenden, widgettillstånden, Tailwind- och Materialpaletter, horisontell och vertikal justering, kanttyper, kantflaggor och utfyllnad. Formatet för celler, stilar och deras behållare när Ratatui byggs utan `underline-color` återstår. Referensens `Span`, `Line` och `Text` saknar Serde-format. |
+| `serde` | Färger, stilar, attribut, celler, diffregler, buffertar, layouter och geometri läses och skrivs med `std.json`. Detsamma gäller testbackenden, widgettillstånden, Tailwind- och Materialpaletter, horisontell och vertikal justering, kanttyper, kantflaggor och utfyllnad. Stilar, celler, buffertar och testterminaler jämförs med och utan `underline-color`. Referensens `Span`, `Line` och `Text` saknar Serde-format. |
 | `crossterm`, `crossterm_0_28`, `crossterm_0_29`, `termina`, `termion`, `termwiz` | Dunder använder POSIX och Win32 direkt. Den låsta Crossterm-referensen och de faktiska terminalproven täcker bland annat ritning, markör och återställning. Skillnader mellan referensens övriga backendval är öppna. |
 | `std`, `portable-atomic`, `default` | Dunder bygger offline med sitt standardbibliotek. `portable-atomic` gäller referensens mål utan atomära typer. `default` väljer kalender, Crossterm, layoutcache, makron och understrykningsfärg. |
 
@@ -89,6 +89,28 @@ ref=build/rust/release/examples/themes
 build/themes build/theme-input >build/actual
 diff -u build/expected build/actual
 dunder run --locked --offline tests/theme_terminal.ddr
+```
+
+### JSON utan separat understrykningsfärg
+
+Ratatui utan `underline-color` sparar sex fält per cell. En cell i arrayform placerar attributen direkt efter bakgrunden. I objektform ignoreras nyckeln `underline_color` även om den upprepas eller innehåller ett ogiltigt färgvärde. Attributet `UNDERLINED` fungerar i båda formaten. Dunder väljer format per anrop, så att samma program kan läsa båda sorternas bilder. [Formatvalet](../src/snapshot.ddr) · [Terminalprovet](../tests/buffer_json_terminal.ddr)
+
+Referensen byggdes med `--no-default-features --features serde-backend`. Med standardvalet skulle Crossterm slå på understrykningsfärg indirekt. 1 838 färg- och stilfall, 4 538 cell-, buffert- och difffall och 424 testbackendfall gav identiska utdata på macOS ARM64, Linux ARM64 och översatt Linux x86-64. Win64 under Wine matchade samma 6 800 referenssvar och konsolprovet läste tillbaka den gröna etiketten. Nativ Windows x64 återstår för detta format. [Stilprov](../tests/theme_reference.ddr) · [Buffertprov](../tests/buffer_json.ddr) · [Backendprov](../tests/backend_json.ddr) · [Återställningstid och minne](../benchmarks/scrollback.md#json-utan-separat-understrykningsfärg)
+
+```sh
+mkdir -p build
+ref=benchmarks/reference/Cargo.toml
+cargo build --release --locked --offline --manifest-path "$ref" --no-default-features \
+  --features serde-backend --example themes --example buffer_json --example backend_json --target-dir build/ref
+for exe in themes buffer_json backend_json; do
+  src=$exe
+  if [ "$exe" = themes ]; then src=theme_reference; fi
+  dunder build --locked --offline "tests/$src.ddr" -o "build/$exe"
+  "build/ref/release/examples/$exe" --cases >"build/$exe.in"
+  "build/ref/release/examples/$exe" <"build/$exe.in" >"build/$exe.rust"
+  "build/$exe" "build/$exe.in" --without-underline-color >"build/$exe.dunder"
+  cmp "build/$exe.rust" "build/$exe.dunder" || exit 1
+done
 ```
 
 ### Återställ testterminalen

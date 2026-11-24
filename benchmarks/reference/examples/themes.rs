@@ -7,6 +7,21 @@ use serde_json::{from_str, json, to_string};
 use std::io::{self, BufRead};
 
 fn cases() {
+    if serde_json::to_value(ratatui::buffer::Cell::EMPTY)
+        .unwrap()
+        .get("underline_color")
+        .is_none()
+    {
+        for s in [
+            r#"{"underline_color":{"invalid":17},"underline_color":42,"add_modifier":"UNDERLINED"}"#,
+            r#"{"underline_color":false,"under\u006cine_color":[],"fg":"Red"}"#,
+            r#"["Yellow","Blue","UNDERLINED","BOLD"]"#,
+            r#"[null,null,"UNDERLINED"]"#,
+            r#"["Red","Blue",null,"BOLD","DIM"]"#,
+        ] {
+            println!("S\t{s}");
+        }
+    }
     for color in [
         r##""#FA00ff""##,
         r##""#+F+2+9""##,

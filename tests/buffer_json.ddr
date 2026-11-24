@@ -4,64 +4,66 @@ import sys
 import std.json
 import std.text
 import ..src.tui
+import ..src.snapshot as wire
+import .snapshot_format as codec
 
 fn canonical<T: json.Decode + json.Encode + Storable>(value: string) -> Result<string,json.JsonError> {
     parsed := json.from_str<T>(value)?
     json.to_string(&parsed)
 }
 
-fn snapshot(value: string) -> Result<string,json.JsonError> {
-    raw := json.from_str<tui.Buffer>(value)?
-    encoded := json.to_string(&raw)?
-    match json.from_str<tui.Frame>(value) {
+fn snapshot(value: string, format: wire.Format) -> Result<string,json.JsonError> {
+    raw := codec.from_str<tui.Buffer>(value,format)?
+    encoded := codec.to_string(&raw,format)?
+    match codec.from_str<tui.Frame>(value,format) {
         .Ok(frame) => {
-            assert(json.to_string(&frame)? == encoded)
-            assert(json.to_string(&frame.to_buffer())? == encoded)
+            assert(codec.to_string(&frame,format)? == encoded)
+            assert(codec.to_string(&frame.to_buffer(),format)? == encoded)
             mut copy := tui.Frame::at(frame.area())
             copy.copy_region(&frame,frame.area(),frame.area().x,frame.area().y)
-            assert(json.to_string(&copy)? == encoded)
+            assert(codec.to_string(&copy,format)? == encoded)
             .Ok(encoded + "\tok")
         },
         .Err(_) => .Ok(encoded + "\tinvalid area"),
     }
 }
 
-fn changes(value: string) -> Result<string,json.JsonError> {
-    frames := json.from_str<[]tui.Frame>(value)?
+fn changes(value: string, format: wire.Format) -> Result<string,json.JsonError> {
+    frames := codec.from_str<[]tui.Frame>(value,format)?
     positions := frames[1].diff_positions(&frames[0]).unwrap()
     mut coordinates: []i32 = []
     for p in &positions { coordinates.push(p.0); coordinates.push(p.1) }
     json.to_string(&coordinates)
 }
 
-fn painted(value: string) -> Result<string,json.JsonError> {
+fn painted(value: string, format: wire.Format) -> Result<string,json.JsonError> {
     content := json.from_str<string>(value)?
     mut frame := tui.Frame::at(tui.Rect::new(3,5,14,2))
     frame.text(frame.area(),content,tui.ink(.Green).bold().background(.Blue))
-    saved := json.to_string(&frame)?
-    mut loaded := json.from_str<tui.Frame>(saved)?
+    saved := codec.to_string(&frame,format)?
+    mut loaded := codec.from_str<tui.Frame>(saved,format)?
     assert(loaded.diff_positions(&frame).unwrap().len == 0)
     loaded.text(tui.Rect::new(3,6,14,1),"  OK",tui.ink(.Red))
-    .Ok(saved + "\t" + json.to_string(&loaded)?)
+    .Ok(saved + "\t" + codec.to_string(&loaded,format)?)
 }
 
-fn check(line: string) -> Result<string,json.JsonError> {
+fn check(line: string, format: wire.Format) -> Result<string,json.JsonError> {
     value := line[2..line.len]
     match line[0] {
         b'O' => canonical<tui.CellDiffOption>(value),
         b'M' => canonical<tui.Modifiers>(value),
-        b'C' => canonical<tui.RawCell>(value),
-        b'B' => snapshot(value),
-        b'P' => changes(value),
-        _ => painted(value),
+        b'C' => codec.to_string(&codec.from_str<tui.RawCell>(value,format)?,format),
+        b'B' => snapshot(value,format),
+        b'P' => changes(value,format),
+        _ => painted(value,format),
     }
 }
 
 fn main() -> i32 {
-    if sys.arg_count() != 2 { return 2 }
+    format := match codec.selected() { .Some(f) => f, .None => { return 2 }, }
     for line in text.split(sys.read(sys.arg(1)).unwrap(),"\n") {
         if line.len == 0 { continue }
-        match check(line) { .Ok(result) => { print(result) }, .Err(_) => { print("error") }, }
+        match check(line,format) { .Ok(result) => { print(result) }, .Err(_) => { print("error") }, }
     }
     0
 }

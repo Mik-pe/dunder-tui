@@ -1,0 +1,19 @@
+import std.json
+import sys
+import ..src.snapshot
+
+pub fn selected() -> Option<snapshot.Format> {
+    if sys.arg_count() == 2 { return .Some(.WithUnderlineColor) }
+    if sys.arg_count() == 3 && sys.arg(2) == "--without-underline-color" { return .Some(.WithoutUnderlineColor) }
+    .None
+}
+
+pub fn from_str<T: json.Decode + snapshot.Read + Storable>(value: string, format: snapshot.Format) -> Result<T,json.JsonError> {
+    if format.has_underline_color() { return json.from_str<T>(value) }
+    snapshot.from_str<T>(value,format)
+}
+
+pub fn to_string<T: json.Encode + snapshot.Write + Storable>(value: &T, format: snapshot.Format) -> Result<string,json.JsonError> {
+    if format.has_underline_color() { return json.to_string(&value) }
+    snapshot.to_string(&value,format)
+}

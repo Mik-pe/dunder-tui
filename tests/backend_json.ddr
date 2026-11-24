@@ -6,43 +6,45 @@ import std.text
 import ..src.testing
 import ..src.text as rich
 import ..src.tui
+import ..src.snapshot as wire
+import .snapshot_format as codec
 
 fn paint(frame: &mut tui.Frame, index: &mut i32) {
     frame.text(frame.area(),if index == 0 { "A茶" } else { "B!" },tui.ink(.Cyan))
     if index == 0 { frame.set_cursor_position(0,0) }
 }
 
-fn trace(move restored: testing.TestBackend, seed: i32) -> Result<string,json.JsonError> {
+fn trace(move restored: testing.TestBackend, seed: i32, format: wire.Format) -> Result<string,json.JsonError> {
     mut backend := move restored
-    mut result := json.to_string(&backend)?
+    mut result := codec.to_string(&backend,format)?
     area := backend.buffer().area()
     if area.w > 0 && area.h > 0 {
         backend.set_cursor_position(seed%area.w,(seed/2)%area.h)
         if seed%2 == 0 { backend.hide_cursor() } else { backend.show_cursor() }
         kinds: []testing.ClearType = [.AfterCursor,.BeforeCursor,.CurrentLine,.UntilNewLine,.All]
         backend.clear_region(kinds[seed%5])
-        result += "\t" + json.to_string(&backend)?
+        result += "\t" + codec.to_string(&backend,format)?
     }
     if area.w > 0 {
         backend.append_lines(seed+1)
         backend.scroll_down(0,area.h-1,1)
         backend.scroll_up(0,area.h,2)
-        result += "\t" + json.to_string(&backend)?
+        result += "\t" + codec.to_string(&backend,format)?
     }
     backend.resize(1+seed%4,1+seed%3)
-    result += "\t" + json.to_string(&backend)?
+    result += "\t" + codec.to_string(&backend,format)?
     backend.append_lines(3)
-    result += "\t" + json.to_string(&backend)?
+    result += "\t" + codec.to_string(&backend,format)?
     mut terminal := tui.Terminal<testing.TestBackend>::new(move backend)
     for i in 0..2 {
         mut index := i
         terminal.draw(&mut index,paint).unwrap()
-        result += "\t" + json.to_string(&terminal.backend())?
+        result += "\t" + codec.to_string(&terminal.backend(),format)?
     }
     .Ok(move result)
 }
 
-fn history_samples(device: &testing.TestBackend) -> string {
+fn history_samples(device: &testing.TestBackend, format: wire.Format) -> string {
     history := device.scrollback()
     height := history.len()
     mut rows: []tui.Buffer = []
@@ -50,24 +52,24 @@ fn history_samples(device: &testing.TestBackend) -> string {
         y := if i < 4 { i } else { height-36+i }
         rows.push(history.row(y).to_buffer())
     }
-    f"{height}\t" + json.to_string(&rows).unwrap()
+    f"{height}\t" + codec.to_string(&rows,format).unwrap()
 }
 
-fn rollover(seed: i32) -> string {
+fn rollover(seed: i32, format: wire.Format) -> string {
     mut device := testing.TestBackend::with_lines(&[rich.Line::raw("A茶"),rich.Line::raw("BC "),rich.Line::raw("🦀x")])
     device.append_lines(65534)
     strip := testing.TestBackend::with_lines(&[rich.Line::raw("🌊Z")])
     device.overwrite_region(&strip.buffer()).unwrap()
     device.scroll_up(0,3,3+seed)
-    a := history_samples(&device)
+    a := history_samples(&device,format)
     device.resize(1+seed%4,3)
-    b := history_samples(&device)
+    b := history_samples(&device,format)
     device.append_lines(65535)
-    a + "\t" + b + "\t" + history_samples(&device)
+    a + "\t" + b + "\t" + history_samples(&device,format)
 }
 
-fn check(kind: u8, value: string) -> Result<string,json.JsonError> {
-    if kind == b'C' { return .Ok(rollover(json.from_str<i32>(value)?)) }
+fn check(kind: u8, value: string, format: wire.Format) -> Result<string,json.JsonError> {
+    if kind == b'C' { return .Ok(rollover(json.from_str<i32>(value)?,format)) }
     if kind == b'L' {
         words := json.from_str<[]string>(value)?
         mut lines: []rich.Line = []
@@ -78,24 +80,24 @@ fn check(kind: u8, value: string) -> Result<string,json.JsonError> {
                 lines.push(rich.Line::new(move spans).styled(tui.plain().background(.Blue).bold()).align(.Right))
             }
         }
-        return trace(testing.TestBackend::with_lines(&lines),3)
+        return trace(testing.TestBackend::with_lines(&lines),3,format)
     }
-    raw := json.from_str<testing.SavedBackend>(value)?
-    saved := json.to_string(&raw)?
-    match json.from_str<testing.TestBackend>(value) {
+    raw := codec.from_str<testing.SavedBackend>(value,format)?
+    saved := codec.to_string(&raw,format)?
+    match codec.from_str<testing.TestBackend>(value,format) {
         .Ok(restored) => {
-            assert(json.to_string(&restored)? == saved)
-            trace(move restored,i32(kind)-i32(b'0'))
+            assert(codec.to_string(&restored,format)? == saved)
+            trace(move restored,i32(kind)-i32(b'0'),format)
         },
         .Err(_) => .Ok(saved + "\tinvalid area"),
     }
 }
 
 fn main() -> i32 {
-    if sys.arg_count() != 2 { return 2 }
+    format := match codec.selected() { .Some(f) => f, .None => { return 2 }, }
     for line in text.split(sys.read(sys.arg(1)).unwrap(),"\n") {
         if line.len == 0 { continue }
-        match check(line[0],line[2..line.len]) { .Ok(s) => { print(s) }, .Err(_) => { print("error") }, }
+        match check(line[0],line[2..line.len],format) { .Ok(s) => { print(s) }, .Err(_) => { print("error") }, }
     }
     0
 }

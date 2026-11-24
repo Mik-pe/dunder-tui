@@ -1,0 +1,41 @@
+capability stdio
+import std.json
+import std.time
+import std.array
+
+fn sum(doc: &json.Doc, indexed: bool) -> i64 {
+    mut result: i64 = 0
+    mut child := doc.first_child[doc.root]
+    for i in 0..doc.count(doc.root) {
+        if indexed { child = doc.at(doc.root,i) }
+        result += doc.as_i64(child).unwrap()
+        if !indexed { child = doc.next_sibling[child] }
+    }
+    result
+}
+
+fn main() {
+    for count in [1024,2048,4096] {
+        mut values: []i32 = []
+        for i in 0..count { values.push(i) }
+        doc := json.Doc::parse(json.to_string(&values).unwrap()).unwrap()
+        expected := i64(count)*i64(count-1)/2
+        mut indexed: []i64 = []
+        mut linked: []i64 = []
+        for run in 0..9 {
+            for pass in 0..2 {
+                use_index := (run+pass)%2 == 0
+                start := time.monotonic_ns()
+                total := sum(&doc,use_index)
+                elapsed := time.monotonic_ns()-start
+                assert(total == expected)
+                if run >= 2 {
+                    if use_index { indexed.push(elapsed) } else { linked.push(elapsed) }
+                }
+            }
+        }
+        array.sort<i64>(&mut indexed)
+        array.sort<i64>(&mut linked)
+        print(f"{count} {indexed[3]} {linked[3]} {expected}")
+    }
+}

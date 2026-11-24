@@ -11,6 +11,22 @@ fn buffer(x: u16, y: u16, width: u16, height: u16, cells: &[Value]) -> Value {
 
 fn cases() {
     let empty = to_value(Cell::EMPTY).unwrap();
+    if empty.get("underline_color").is_none() {
+        for symbol in [json!(null), json!(""), json!("茶"), json!("⬢")] {
+            for flags in ["UNDERLINED", "UNDERLINED | 0x8000"] {
+                let seq = json!([symbol, "Yellow", "Reset", flags, "None", false]);
+                println!("C\t{seq}");
+                println!("B\t{}", buffer(1, 2, 1, 1, &[seq]));
+            }
+        }
+        let doubled = to_string(&Cell::EMPTY).unwrap().replacen(
+            '{',
+            r#"{"underline_color":false,"under\u006cine_color":{"x":2},"#,
+            1,
+        );
+        println!("C\t{doubled}");
+        println!("B\t{{\"area\":[0,0,1,1],\"content\":[{doubled}]}}");
+    }
     let symbols = [
         json!(null),
         json!(" "),

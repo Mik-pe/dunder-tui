@@ -1,0 +1,4 @@
+capability stdio
+import .scrollback
+
+fn main() -> i32 { scrollback.benchmark(.WithoutUnderlineColor) }

@@ -10,6 +10,20 @@ use serde_json::{from_str, json, to_string, to_value};
 use std::io::{self, BufRead};
 
 fn cases() {
+    if to_value(ratatui::buffer::Cell::EMPTY)
+        .unwrap()
+        .get("underline_color")
+        .is_none()
+    {
+        let cells = json!([
+            ["茶", "Yellow", "Blue", "UNDERLINED", "None", false],
+            [null, "Reset", "Reset", "", "None", false]
+        ]);
+        let row = json!([[0, 0, 2, 1], cells]);
+        for seed in 0..6 {
+            println!("{seed}\t{}", json!([row, row, true, [1, 0]]));
+        }
+    }
     for seed in 0..12 {
         println!("C\t{seed}");
     }

@@ -24,6 +24,52 @@ import ..src.input
 import ..src.width
 import ..src.material
 import ..src.tailwind
+import ..src.snapshot
+
+@derive(Encode, Decode)
+struct SavedPreferences { name: string, styles: []Option<snapshot.WithoutUnderlineColor<tui.Style>> }
+
+@test fn application_records_can_embed_snapshots_with_standard_json() {
+    raw := "{\"name\":\"log\",\"styles\":[null,{\"fg\":\"Yellow\",\"underline_color\":false,\"add_modifier\":\"UNDERLINED\"}]}"
+    prefs := json.from_str<SavedPreferences>(raw).unwrap()
+    assert(prefs.styles[0].is_none() && prefs.styles[1].unwrap().value == tui.ink(.Yellow).underlined())
+    saved := json.to_string(&prefs).unwrap()
+    assert(saved == "{\"name\":\"log\",\"styles\":[null,{\"fg\":\"Yellow\",\"add_modifier\":\"UNDERLINED\"}]}")
+}
+
+@test fn snapshots_preserve_the_underline_modifier_in_both_formats() {
+    mut frame := tui.Frame::new(3,1)
+    area := frame.area()
+    frame.text(area,"ABC",tui.ink(.Green).underlined().underline_color(.Rgb(208,64,192)))
+    empty := tui.Frame::new(0,0)
+    formats: [snapshot.Format;2] = [.WithUnderlineColor,.WithoutUnderlineColor]
+    for format in formats {
+        saved := snapshot.to_string(&frame,format).unwrap()
+        restored := snapshot.from_str<tui.Frame>(saved,format).unwrap()
+        cell := restored.raw_cell_at(0,0).unwrap()
+        assert(cell.modifier.contains(.Underlined) && cell.fg == .Green)
+        assert(words.contains(saved,"underline_color") == format.has_underline_color())
+        assert((cell.underline_color == .Rgb(208,64,192)) == format.has_underline_color())
+        mut output: []u8 = []
+        restored.ansi_diff(&empty,&mut output)
+        assert(words.contains(bytes.decode(&output).unwrap(),"58;2;208;64;192") == format.has_underline_color())
+        if format.has_underline_color() { assert(saved == json.to_string(&frame).unwrap()) }
+    }
+    assert(frame.raw_cell_at(1,0).unwrap().underline_color == .Rgb(208,64,192))
+}
+
+@test fn positional_snapshots_validate_fields_and_ignore_unknown_object_keys() {
+    format: snapshot.Format = .WithoutUnderlineColor
+    style := snapshot.from_str<tui.Style>("[\"Yellow\",null,\"UNDERLINED\",\"BOLD\"]",format).unwrap()
+    assert(style == tui.ink(.Yellow).underlined().without(.Bold))
+    rows := "[[\"A\",\"Yellow\",\"Reset\",\"UNDERLINED\",\"None\",false]]"
+    cells := snapshot.from_str<[]tui.RawCell>(rows,format).unwrap()
+    assert(cells.len == 1 && cells[0].symbol == .Some("A") && cells[0].underline_color == .Default)
+    assert(snapshot.from_str<[]tui.RawCell>(rows,.WithUnderlineColor).is_err())
+    repeated := "{\"fg\":\"Red\",\"underline_color\":false,\"under\\u006cine_color\":42}"
+    assert(snapshot.from_str<tui.Style>(repeated,format).unwrap() == tui.ink(.Red))
+    assert(snapshot.from_str<tui.Style>(repeated,.WithUnderlineColor).is_err())
+}
 
 @test fn saved_palette_preserves_family_and_custom_shades() {
     mut colors := tailwind.Palette::from_family(.Sky)
