@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Bygg buffertar från text
+
+Att bygga 24 rader med blandade skriftsystem och radslut tog 196 µs i median på macOS ARM64, jämfört med 234 µs tidigare och 35,2 µs för Ratatui. [Alla arbetslaster, p95 och resursvärden](line-input.md)
+
 ## Jämför råa buffertar
 
 För en oförändrad bild på 96 × 24 celler tog buffertdiffen 23 µs i median på macOS ARM64 och 50 µs när hela bilden fylldes med färgad text. Ratatui tog 13,1 respektive 16,2 µs. [Bildtider, allokeringar och minne för nio arbetslaster](raw-diff.md)

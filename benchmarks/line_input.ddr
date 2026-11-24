@@ -1,0 +1,38 @@
+capability stdio
+import ..src.tui
+import std.time
+import std.array
+import std.json
+import sys
+
+fn measure(mode:string, arg:string) {
+    words := if mode == "ascii" { ["server-01...", "client-02..."] }
+        else if mode == "unicode" { ["AB茶é....XYZ", "CD海ä::::UVZ"] }
+        else { ["لا\r\nカﾞ🙂..", "a\tB\n❤️風."] }
+    mut rows: []string = []
+    for y in 0..24 {
+        mut row := ""
+        for x in 0..8 { row += words[(x+y)%2] }
+        rows.push(move row)
+    }
+    if arg == "--cells" { print(json.to_string(&tui.Buffer::with_lines(&rows)).unwrap()); return }
+    mut samples: []i64 = []
+    mut checksum := 0
+    timed := arg == ""
+    count := if arg == "--setup" { 0 } else { 110 }
+    for i in 0..count {
+        start := if timed { time.monotonic_ns() } else { i64(0) }
+        b := tui.Buffer::with_lines(&rows)
+        checksum += b.area.w + b.area.h + b.get(0,i%24).cell_width()
+        if timed && i >= 10 { samples.push(time.monotonic_ns()-start) }
+    }
+    if timed {
+        array.sort<i64>(&mut samples)
+        print(f"{mode} {checksum} {samples[49]} {samples[94]}")
+    } else { print(f"{mode} {checksum}") }
+}
+
+fn main() {
+    arg := if sys.arg_count() > 1 { sys.arg(1) } else { "" }
+    for mode in ["ascii","unicode","multiline"] { measure(mode,arg) }
+}

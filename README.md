@@ -197,7 +197,7 @@ fn main() {
 }
 ```
 
-`cell(x,y)` ger ett valfritt delat lån. `update_cell(x,y,edit)` anropar din funktion om cellen finns. Med `set_stringn`, `set_span` och `set_line` får du koordinaten där nästa text kan börja. Vid en storleksändring behåller bufferten början av den linjära cellföljden. Med `to_frame()` kan du rita den redigerade bilden i en terminal. [Körbart terminalexempel](tests/buffer_app.ddr)
+`cell(x,y)` ger ett valfritt delat lån. `update_cell(x,y,edit)` anropar din funktion om cellen finns. `index_of(x,y)` räknar ut ett 64-bitarsindex från buffertens origo. `position_at(index)` ger koordinaten för en lagrad cell. Båda returnerar `Option`. Med `set_stringn`, `set_span` och `set_line` får du koordinaten där nästa text kan börja. Vid en storleksändring behåller bufferten början av den linjära cellföljden. Med `to_frame()` kan du rita den redigerade bilden i en terminal. [Körbart terminalexempel](tests/buffer_app.ddr)
 
 ## Markör och testterminal
 
@@ -227,7 +227,7 @@ fn main() {
 
 `assert_buffer_lines` och `assert_scrollback_lines` tar strängar, `Span` eller `Line`. För byggda bilder tar `assert_buffer` och `assert_scrollback` både `Frame` och `Buffer`. Ett fel visar vilken cell som skiljer sig och vad testet förväntade sig, även när skillnaden bara gäller stil eller diffregel. [Körbara jämförelser](tests/backend_assertions.ddr)
 
-Med `std.json` kan ett integrationstest spara skärm, skrollhistorik och markör och fortsätta rita från samma tillstånd. `testing.TestBackend::with_lines` bygger en testskärm från färdiga textrader. [Körbart exempel](tests/saved_backend.ddr)
+Med `std.json` kan ett integrationstest spara skärm, skrollhistorik och markör och fortsätta rita från samma tillstånd. `testing.TestBackend::with_lines(&["Klar", "Nästa"])` bygger en testskärm direkt från strängar. Du kan också skicka en samling `Span` eller `Line` med stil. [Körbart exempel](tests/saved_backend.ddr)
 
 ```dunder
 import std.json

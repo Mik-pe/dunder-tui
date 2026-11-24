@@ -1,0 +1,16 @@
+import std.text
+
+fn first_nonempty(move source: string) -> string {
+    mut lines := text.lines(source.as_str())
+    while lines.advance() {
+        line := lines.current()
+        if line.len == source.len { return move source }
+        if line.len > 0 { return line.to_string() }
+    }
+    ""
+}
+
+fn main() {
+    assert(first_nonempty("en rad") == "en rad")
+    assert(first_nonempty("\nandra\nsista") == "andra")
+}

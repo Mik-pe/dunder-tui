@@ -27,6 +27,21 @@ import ..src.material
 import ..src.tailwind
 import ..src.snapshot
 
+@test fn raw_buffer_coordinates_use_the_area_and_available_storage() {
+    mut b := tui.Buffer::default()
+    assert(b.area.is_empty() && b.index_of(0,0).is_none() && b.position_at(0).is_none())
+    b.area = tui.Rect::new(7,11,3,2)
+    b.content.push(tui.RawCell::from_char(`X`))
+    assert(b.index_of(9,12).unwrap() == 5 && b.cell(9,12).is_none())
+    assert(b.position_at(b.index_of(7,11).unwrap()).unwrap() == (7,11) && b.position_at(1).is_none())
+    assert(b.index_of(6,11).is_none())
+    b.area = tui.Rect::new(0,0,65535,65535)
+    assert(b.index_of(65534,65534).unwrap() == i64(65535)*i64(65535)-1)
+    assert(b.position_at(b.index_of(65534,65534).unwrap()).is_none())
+    terminal := testing.TestBackend::with_lines(&["första\r\nraden", "界"])
+    terminal.assert_buffer_lines(&["förstaraden", "界"])
+}
+
 @test fn raw_buffer_changes_borrow_cells_and_stop_on_request() {
     mut old := tui.Buffer::empty(tui.Rect::new(3,2,4,2))
     mut next := tui.Buffer::empty(tui.Rect::new(3,2,4,3))

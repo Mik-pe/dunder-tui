@@ -1,6 +1,6 @@
 import .tui
 import .repetition
-import .text_lines as scanning
+import std.text as strings
 import std.bytes as bytes
 import std.array as array
 import std.cmp as cmp
@@ -132,11 +132,8 @@ impl Span {
     pub fn patch_style(&mut self, style: tui.Style) { self.style = self.style.patch(style) }
     pub fn reset_style(&mut self) { self.style = tui.Style::reset() }
     fn append_content(&self, out: &mut []u8) {
-        content := self.content()
-        mut rows := scanning.Cursor::new()
-        while rows.advance(content) {
-            bytes.extend_range(&mut out, content.as_bytes(), rows.start, rows.end)
-        }
+        mut rows := strings.lines(self.content())
+        while rows.advance() { bytes.extend(&mut out, rows.current().as_bytes()) }
     }
     pub fn to_string(&self) -> string {
         mut out: []u8 = []
@@ -205,13 +202,16 @@ impl Line {
     }
 
     pub fn raw(move value: string) -> Self {
-        mut spans: []Span = []
-        mut rows := scanning.Cursor::new()
-        while rows.advance(value.as_str()) {
-            if rows.start == 0 && rows.end == value.len { return Line::new([Span::raw(move value)]) }
-            spans.push(Span::raw(value[rows.start..rows.end]))
+        {
+            mut rows := strings.lines(value.as_str())
+            if !rows.advance() { return Line::new([]) }
+            if rows.current().len < value.len {
+                mut spans: []Span = [Span::raw(rows.current().to_string())]
+                while rows.advance() { spans.push(Span::raw(rows.current().to_string())) }
+                return Line::new(move spans)
+            }
         }
-        Line::new(move spans)
+        Line::new([Span::raw(move value)])
     }
     pub fn new(move spans: []Span) -> Self {
         columns := spans_width(&spans)
@@ -351,15 +351,21 @@ impl Text {
     }
 
     pub fn raw(move value: string) -> Self {
-        mut lines: []Line = []
-        mut rows := scanning.Cursor::new()
-        if value.len == 0 { lines.push(Line::new([])) }
-        while rows.advance(value.as_str()) {
-            if rows.start == 0 && rows.end == value.len { return Text::new([Line::new([Span::raw(move value)])]) }
-            if rows.end == rows.start { lines.push(Line::new([])) }
-            else { lines.push(Line::new([Span::raw(value[rows.start..rows.end])])) }
+        {
+            mut rows := strings.lines(value.as_str())
+            if !rows.advance() { return Text::new([Line::new([])]) }
+            if rows.current().len < value.len {
+                mut lines: []Line = []
+                while true {
+                    row := rows.current()
+                    if row.len == 0 { lines.push(Line::new([])) }
+                    else { lines.push(Line::new([Span::raw(row.to_string())])) }
+                    if !rows.advance() { break }
+                }
+                return Text::new(move lines)
+            }
         }
-        Text::new(move lines)
+        Text::new([Line::new([Span::raw(move value)])])
     }
 
     pub fn styled(move self, style: tui.Style) -> Self { mut doc := move self; doc.style = style; move doc }

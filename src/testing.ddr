@@ -203,16 +203,32 @@ impl ExpectedLine for rich.Span {
 }
 
 impl ExpectedLine for string {
-    fn expected_width(&self) -> i32 { rich.Line::raw(self.clone()).width() }
+    fn expected_width(&self) -> i32 { self.buffer_width() }
     fn write_expected(&self, frame: &mut tui.Frame, area: tui.Rect) { _ := rich.Line::raw(self.clone()).write(&mut frame, area) }
 }
 
 fn frame_from_lines<L>(lines: &L) -> tui.Frame {
     mut width := 0
     for line in lines { width = cmp.max<i32>(width, line.expected_width()) }
-    mut screen := tui.Frame::new(i32(u16(width)), i32(u16(lines.len)))
+    mut screen := tui.Frame::new(width.bit_and(65535), lines.len.bit_and(65535))
+    size := screen.area()
+    if size.w == 0 { return move screen }
+    if lines.len > 65535 {
+        mut outside := tui.Frame::new(size.w,1)
+        for i in 0..lines.len {
+            y := i.bit_and(65535)
+            if y < size.h {
+                lines[i].write_expected(&mut screen,tui.Rect::new(0,y,size.w,1))
+            } else {
+                area := outside.area()
+                lines[i].write_expected(&mut outside,area)
+                assert(outside.row_is_blank(0))
+            }
+        }
+        return move screen
+    }
     for y in 0..lines.len {
-        lines[y].write_expected(&mut screen, tui.Rect::new(0, i32(u16(y)), screen.area().w, 1))
+        lines[y].write_expected(&mut screen, tui.Rect::new(0,y,size.w,1))
     }
     move screen
 }
@@ -272,7 +288,7 @@ impl TestBackend {
         Self { screen: move screen, history: move history, x: 0, y: 0, visible: false, scrolling_regions:true }
     }
 
-    pub fn with_lines(lines: &[]rich.Line) -> Self {
+    pub fn with_lines<L>(lines: &L) -> Self {
         screen := frame_from_lines(&lines)
         history := Scrollback::new(screen.area().w)
         Self { screen:move screen, history:move history, x:0, y:0, visible:false, scrolling_regions:true }

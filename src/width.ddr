@@ -336,6 +336,23 @@ pub fn cell_columns(value: string) -> i32 {
     cell_columns_view(value.as_str())
 }
 
+fn halfwidth_sound_marks(value: &str) -> i32 {
+    mut marks := 0
+    for cp in value.runes() {
+        if cp == rune(0xff9e) || cp == rune(0xff9f) { marks += 1 }
+    }
+    marks
+}
+
+pub fn text_columns(value: &str) -> i32 {
+    for i in 0..value.len {
+        if value[i] < 32 || value[i] >= 127 {
+            return measured_columns(value) - halfwidth_sound_marks(&value[i..value.len])
+        }
+    }
+    value.len
+}
+
 pub fn cell_columns_view(value: &str) -> i32 {
     if value.len == 0 { return 0 }
     if value.len == 1 { return 1 }
@@ -354,8 +371,7 @@ pub fn cell_columns_view(value: &str) -> i32 {
     }
     measured := measured_columns(value)
     if measured <= 65535 { return measured }
-    mut marks := 0
-    for cp in value.runes() { if cp == rune(0xff9e) || cp == rune(0xff9f) { marks += 1 } }
+    marks := halfwidth_sound_marks(value)
     cells := (measured-marks).bit_and(65535) + marks.bit_and(65535)
     if cells >= 65535 { 65535 } else { cells }
 }

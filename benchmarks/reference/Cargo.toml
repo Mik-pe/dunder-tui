@@ -150,3 +150,11 @@ required-features = ["theme-oracle"]
 [[example]]
 name = "raw_diff"
 required-features = ["theme-oracle"]
+
+[[example]]
+name = "buffer_lines"
+required-features = ["theme-oracle"]
+
+[[example]]
+name = "line_input"
+required-features = ["theme-oracle"]

@@ -1,7 +1,6 @@
 capability stdio, unsafe
 
 import .lines
-import .text_lines
 import .width
 import .terminal
 import .input
@@ -855,6 +854,10 @@ impl snapshot.Read for RawCell {
 @derive(Eq, Hash)
 pub struct Buffer { area: Rect, content: []RawCell }
 
+impl Default for Buffer {
+    fn default() -> Self { Self { area:Rect::new(0,0,0,0), content:[] } }
+}
+
 pub struct BufferPair { previous: &Buffer, current: &Buffer }
 pub opaque struct BufferDiff { pair: &BufferPair, at:i32, trailing:i32, force:bool, limit: i32, index: i32 }
 pub struct CellChange { x: i32, y: i32, cell: &RawCell }
@@ -979,16 +982,21 @@ pub trait BufferText {
 
 impl BufferText for string {
     fn buffer_width(&self) -> i32 {
-        mut columns := 0
-        mut rows := text_lines.Cursor::new()
-        while rows.advance(self.as_str()) { columns += GlyphRun::new(self[rows.start..rows.end]).text_width() }
-        columns
+        for i in 0..self.len {
+            if self[i] >= 128 || self[i] == 10 {
+                mut columns := 0
+                mut rows := strings.lines(self.as_str())
+                while rows.advance() { columns += width.text_columns(rows.current()) }
+                return columns
+            }
+        }
+        self.len
     }
     fn write_buffer(&self, buffer: &mut Buffer, x: i32, y: i32, limit: i32) -> (i32,i32) {
         mut col := x
-        mut rows := text_lines.Cursor::new()
-        while col - x < limit && rows.advance(self.as_str()) {
-            (end, _) := buffer.set_stringn(col, y, &self[rows.start..rows.end], limit - (col - x), plain())
+        mut rows := strings.lines(self.as_str())
+        while col - x < limit && rows.advance() {
+            (end, _) := buffer.set_stringn(col, y, rows.current(), limit - (col - x), plain())
             col = end
         }
         (col, y)
@@ -1092,14 +1100,29 @@ impl Buffer {
     pub fn with_lines<L>(lines: &L) -> Self {
         mut columns := 0
         for line in lines { columns = cmp.max<i32>(columns, line.buffer_width()) }
-        w := i32(u16(columns))
-        mut buffer := Self::empty(Rect::new(0, 0, w, i32(u16(lines.len))))
-        for y in 0..lines.len { _ := lines[y].write_buffer(&mut buffer, 0, i32(u16(y)), w) }
+        w := columns.bit_and(65535)
+        mut buffer := Self::empty(Rect::new(0, 0, w, lines.len.bit_and(65535)))
+        for y in 0..lines.len { _ := lines[y].write_buffer(&mut buffer, 0, y.bit_and(65535), w) }
         move buffer
     }
-    fn cell_index(&self, x: i32, y: i32) -> i32 {
+    fn offset_at(&self, x: i32, y: i32) -> i64 {
         if !self.area.contains(x, y) { return -1 }
-        i := i64(y - self.area.y) * i64(self.area.w) + i64(x - self.area.x)
+        (i64(y)-i64(self.area.y)) * i64(self.area.w) + (i64(x)-i64(self.area.x))
+    }
+    pub fn index_of(&self, x: i32, y: i32) -> Option<i64> {
+        i := self.offset_at(x,y)
+        if i < 0 { return .None }
+        .Some(i)
+    }
+    pub fn position_at(&self, index: i64) -> Option<(i32,i32)> {
+        if index < 0 || index >= i64(self.content.len) || self.area.w <= 0 { return .None }
+        x := i64(self.area.x) + index % i64(self.area.w)
+        y := i64(self.area.y) + index / i64(self.area.w)
+        if x < 0 || x > 65535 || y < 0 || y > 65535 { return .None }
+        .Some((i32(x), i32(y)))
+    }
+    fn cell_index(&self, x: i32, y: i32) -> i32 {
+        i := self.offset_at(x,y)
         if i >= i64(self.content.len) { -1 } else { i32(i) }
     }
     pub fn cell(&self, x: i32, y: i32) -> Option<&RawCell> from self {
@@ -1173,6 +1196,10 @@ impl Buffer {
     }
     fn write_ascii(&mut self, x: i32, y: i32, value: &str, count: i32, patch: &CellStyle) -> (i32,i32) {
         start := self.cell_index(x, y)
+        if patch.style.empty() {
+            for offset in 0..count { self.content[start+offset].write_ascii(value[offset]) }
+            return (x+count, y)
+        }
         for offset in 0..count {
             cell := &mut self.content[start+offset]
             cell.write_ascii(value[offset])
