@@ -1,0 +1,18 @@
+trait Named { fn into_name(move self) -> string }
+
+struct Label { value: string }
+impl Named for Label { fn into_name(move self) -> string { move self.value } }
+
+struct Menu {}
+impl Menu {
+    fn labels<T: Named>(move items: []T) -> []string {
+        mut names: []string = []
+        for item in move items { names.push(item.into_name()) }
+        move names
+    }
+}
+
+fn main() {
+    names := Menu::labels([Label {value:"Norr"},Label {value:"Söder"}])
+    assert(names.len == 2 && names[0] == "Norr" && names[1] == "Söder")
+}

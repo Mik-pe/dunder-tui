@@ -1,0 +1,85 @@
+capability stdio
+import .styled_grid
+import ..src.list
+import ..src.table
+import ..src.text as rich
+import ..src.tui
+import std.json
+
+fn marker(k:i32) -> rich.Line {
+    if k == 0 { return rich.Line::raw("NORD") }
+    rich.Line::new([rich.Span::styled("界",tui.ink(.Yellow).italic()),rich.Span::raw("→")]).styled(tui.ink(.Cyan))
+}
+
+fn menu(k:i32) -> list.List {
+    mut first := list.Item::raw("höst\n雨")
+    first.style = tui.plain().background(.Magenta)
+    mut view := list.List::new([move first,list.Item::raw("🔭"),list.Item::raw("slut\n水")])
+    view.marker = marker(k)
+    view.spacing = .Always
+    view.repeat_marker = k == 1
+    if k == 2 { view.direction = .BottomToTop }
+    view.highlight = tui.ink(.LightGreen).without(.Italic)
+    move view
+}
+
+fn grid(k:i32) -> table.Table {
+    mut word := table.Cell::raw("aveny\n茶").spanning(2)
+    word.style = tui.ink(.Red).underlined()
+    mut row := table.Row::new([table.Cell::default(),move word])
+    row.height = 2
+    row.style = tui.plain().background(.Magenta)
+    mut view := table.Table::default()
+    view.set_widths([.Length(0),.Fill(1)])
+    view.set_rows([move row,table.Row::from([rich.Line::raw("x"),rich.Line::raw("y")])])
+    view.column_spacing = 4
+    view.marker = rich.Text::new([marker(k),rich.Line::raw("↓")])
+    view.highlight_spacing = .Always
+    view.row_highlight = tui.ink(.LightGreen).without(.Italic)
+    view.column_highlight = tui.plain().underlined()
+    move view
+}
+
+pub fn live(frame: &mut tui.Frame, phase: &mut i32) {
+    a := frame.area()
+    frame.fill(a,`.`,tui.plain())
+    narrow := phase == 1
+    mut items := list.List::from(["one","two"])
+    items.marker = rich.Line::raw("NORD").styled(tui.ink(.Indexed(81)))
+    items.clip_to_area = narrow
+    mut selected := list.ListState::new()
+    selected.first()
+    items.render_stateful(&mut frame,tui.Rect::new(a.x+1,a.y,2,1),&mut selected)
+    mut rows := table.Table::new([table.Row::strings(["s"])],[.Fill(1)])
+    rows.marker = rich.Text::raw("VIND")
+    rows.clip_to_area = narrow
+    mut cell := table.TableState::new()
+    cell.first()
+    rows.render_stateful(&mut frame,tui.Rect::new(a.x+1,a.y+1,2,1),&mut cell)
+    mut span := table.Table::new([table.Row::new([table.Cell::raw("SPAN").spanning(2)])],[.Length(0),.Length(0)])
+    span.column_spacing = 4
+    span.clip_to_area = narrow
+    span.render(&mut frame,tui.Rect::new(a.x+1,a.y+2,1,1))
+}
+
+fn main() {
+    for a in [tui.Rect::new(0,0,16,9),tui.Rect::new(5,3,16,9)] {
+        for flags in [false,true] { for k in 0..3 { for table_first in [false,true] {
+            mut frame := styled_grid.seed(a,flags)
+            mut items := menu(k)
+            mut rows := grid(k)
+            mut selected := list.ListState::new()
+            mut cell := table.TableState::new()
+            mut step := 0
+            for (dx,dy,w,h) in [(1,1,2,5),(2,1,3,5),(0,2,13,5),(3,2,1,3),(4,1,0,5),(2,1,5,0),(12,1,3,4),(1,1,2,5)] {
+                area := tui.Rect::new(a.x+dx,a.y+dy,w,h)
+                if step%4 == 0 { selected.select(.None); cell.select_cell(.None) }
+                else { selected.select(.Some(step%3)); cell.select_cell(.Some((step%2,step%2))) }
+                if (step%2 == 0) == table_first { rows.render_stateful(&mut frame,area,&mut cell) }
+                else { items.render_stateful(&mut frame,area,&mut selected) }
+                print(json.to_string(&frame).unwrap())
+                step += 1
+            }
+        } } }
+    }
+}

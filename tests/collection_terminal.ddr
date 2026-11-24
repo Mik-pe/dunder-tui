@@ -1,0 +1,35 @@
+capability unsafe, stdio, process
+import sys
+import ..src.tui
+import .collection_cells
+import .terminal_driver as driver
+
+fn app() -> i32 {
+    mut term := tui.open(.Fullscreen).unwrap()
+    for step in 0..2 {
+        mut phase := step
+        if term.draw(&mut phase,collection_cells.live).is_err() { return 1 }
+        match term.backend_mut().next(3000) { .Press(_) => {}, _ => { return 1 }, }
+    }
+    0
+}
+
+fn exercise(master:i32, slave:i32, screen:&mut driver.Screen) -> bool {
+    unsafe {
+        if !driver.wait_for(master,&mut screen,2,".SPAN....","38;5;81") ||
+            !screen.contains(0,".NORD....") || !screen.contains(1,".VIND....") { return false }
+        if !driver.send(master,"n") || !driver.wait_for(master,&mut screen,2,".S.......","") ||
+            !screen.contains(0,".NO......") || !screen.contains(1,".VI......") { return false }
+        return driver.send(master,"q") && driver.wait_for(master,&mut screen,0,"","\x1b[?1049l")
+    }
+    false
+}
+
+fn main() -> i32 {
+    if sys.arg_count() == 2 { return app() }
+    unsafe { if driver.test_with_args(sys.arg(0),["draw"],12,5,exercise) {
+        print("List and table markers, column spans, clipping and terminal restoration OK")
+        return 0
+    } }
+    1
+}

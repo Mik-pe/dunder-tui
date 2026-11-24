@@ -10,6 +10,7 @@ import .saved_layout
 import .saved_buffer
 import ..benchmarks.manifest_scene
 import .saved_widgets
+import .collection_cells
 import .saved_backend
 import .saved_palette
 import .meter_cells
@@ -317,6 +318,12 @@ unsafe fn shadow_and_meter_screen(out: ptr, x: i32, y: i32) -> i32 {
     phase = 1
     if term.draw(&mut phase,border_cells.joined).is_err() { return 173 }
     if unit_at(out,x+3,y+2) != 0x256d || unit_at(out,x+9,y+5) != 0x256f { return 174 }
+    phase = 0
+    if term.draw(&mut phase,collection_cells.live).is_err() { return 215 }
+    if unit_at(out,x+6,y+2) != 68 || unit_at(out,x+6,y+3) != 68 || unit_at(out,x+6,y+4) != 78 { return 216 }
+    phase = 1
+    if term.draw(&mut phase,collection_cells.live).is_err() { return 217 }
+    if unit_at(out,x+5,y+2) != 46 || unit_at(out,x+5,y+3) != 46 || unit_at(out,x+4,y+4) != 46 { return 218 }
     mut layouts := saved_layout.panels()
     if term.draw(&mut layouts[0], saved_layout.paint).is_err() { return 175 }
     if unit_at(out,x+4,y+3) != 65 || unit_at(out,x+5,y+3) != 32 || unit_at(out,x+7,y+3) != 66 { return 176 }

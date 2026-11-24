@@ -61,3 +61,15 @@ Vid rullning i pseudoterminalen mättes följande bildtider, avrundade till hela
 | Linux x86-64, översatt | 613 / 840 | 181 / 282 | 674 / 1 117 | 141 / 255 |
 
 Över 1 320 bilder skrev Dunder 1 441 240 byte för listan och 1 499 730 för tabellen till pseudoterminalen. Ratatui skrev 1 595 009 och 1 848 065 byte. När tabellen återanvände de valda rad- och kolumnindexen sjönk antalet allokeringsanrop i samma Dunderprov från 342 540 till 316 140 på Macen. Räknarna omfattar uppbyggnad och ritning. Minnesvärdet är medianen för fem processers högsta RSS i KiB. [Allokeringsanrop, begärda byte och minne per värd](results/widget-state-dunder-0.12.0-resources.tsv)
+
+## Hela markörer och kolumnspann med Dunder 0.12.1
+
+Med Ratatui 0.30.2 och Dunder 0.12.1 kördes varje arbetslast nio gånger lokalt. De första två körningarna värmde upp systemen. Tabellen visar medianen av de övriga sju körningarnas p50 och p95 i mikrosekunder vid skrollning i en pseudoterminal. Underlaget innehåller också minsta och högsta värde för varje percentil, alla sex arbetslaster och samma jämförelse i minne. [Alla 144 mätserier](results/list-table-0.12.1.tsv) · [Tidtagning och PTY](measure.ddr)
+
+| Värd | Lista Dunder | Lista Ratatui | Tabell Dunder | Tabell Ratatui |
+| --- | ---: | ---: | ---: | ---: |
+| macOS ARM64 | 39 / 43 | 52 / 56 | 51 / 61 | 53 / 63 |
+| Linux ARM64 | 41 / 42 | 50 / 51 | 63 / 67 | 55 / 58 |
+| Linux x86-64, översatt | 231 / 242 | 95 / 115 | 402 / 434 | 85 / 99 |
+
+Dunder skrev 1 441 240 byte för listan och 1 499 730 för tabellen under 1 320 bilder per program. Ratatui skrev 1 595 009 och 1 848 065. I ett separat kontrollbygge på Mac gjordes en sex element lång array vid varje ritning för att jämföra radmarginalerna. Genom att läsa de sparade värdena direkt sjönk tabellprovets allokeringsanrop från 339 193 till 336 555. Ratatui gjorde 170 509. Högsta RSS för tabellen var 19 232 KiB respektive 10 096 KiB, medianen av tre processer. [Allokeringsanrop, begärda byte och minne per värd](results/list-table-resources-0.12.1.tsv)

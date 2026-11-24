@@ -1177,7 +1177,7 @@ struct SavedPreferences { name: string, styles: []Option<snapshot.WithoutUnderli
     assert(state.selected == .Some(0))
 }
 
-@test fn list_clips_the_marker_and_keeps_multiline_items_together() {
+@test fn list_repeats_full_width_markers_and_supports_clipping() {
     mut view := lists.List::new([lists.Item::raw("a\nb"), lists.Item::raw("界"), lists.Item::new(rich.Text::new([]))])
     assert(view.len() == 3 && !view.is_empty())
     view.marker = rich.Line::raw("界:")
@@ -1190,11 +1190,33 @@ struct SavedPreferences { name: string, styles: []Option<snapshot.WithoutUnderli
     mut state := lists.ListState::new()
     state.first()
     view.render_stateful(&mut frame, tui.Rect { x: 1, y: 1, w: 2, h: 2 }, &mut state)
+    assert(frame.line(1) == ".界:.." && frame.line(2) == ".界:..")
+    assert(!frame.style_at(3, 1).unwrap().has(.Reversed))
+    frame.fill(frame.area(), `.`, tui.plain())
+    view.clip_to_area = true
+    view.render_stateful(&mut frame, tui.Rect { x: 1, y: 1, w: 2, h: 2 }, &mut state)
     assert(frame.line(1) == ".界..." && frame.line(2) == ".界...")
     assert(frame.style_at(1, 1).unwrap().has(.Reversed))
     view.spacing = .Never
     view.render(&mut frame, tui.Rect { x: 1, y: 0, w: 1, h: 1 })
     assert(frame.line(0) == "......")
+}
+
+@test fn default_collections_and_typed_arrays_render_through_the_public_api() {
+    mut frame := tui.Frame::new(6,3)
+    mut menu := lists.List::default()
+    assert(menu.is_empty())
+    menu = lists.List::from([rich.Line::raw("ett"),rich.Line::raw("två")])
+    menu.render(&mut frame,frame.area())
+    assert(frame.line(0) == "ett   " && frame.line(1) == "två   ")
+    mut grid := table.Table::default()
+    assert(grid.len() == 0 && grid.marker.height() == 0)
+    absent := table.Cell::default()
+    assert(absent.column_span == 0 && absent.content.height() == 0)
+    grid.set_rows([table.Row::new([move absent,table.Cell::raw("rad")])])
+    grid.set_widths([.Length(4)])
+    grid.render(&mut frame,tui.Rect::new(0,2,6,1))
+    assert(frame.line(2) == "rad   ")
 }
 
 @test fn list_scroll_padding_tracks_rows_when_items_have_different_heights() {

@@ -7,10 +7,7 @@ use ratatui::{
     layout::{Alignment, Rect},
     style::{Style, Stylize},
     text::{Line, Span, Text},
-    widgets::{
-        Block, Fill, HighlightSpacing, List, ListDirection, ListItem, ListState, StatefulWidget,
-        Widget,
-    },
+    widgets::{Block, HighlightSpacing, List, ListDirection, ListItem, ListState, StatefulWidget},
 };
 use std::io::{self, BufRead};
 
@@ -122,7 +119,7 @@ fn sequence(
     kind: usize,
     dataset: usize,
 ) -> usize {
-    let mut spill = 0;
+    let mut frames = 0;
     let mut view = configured(w, h, kind, dataset);
     let mut state = ListState::default();
     for step in 0..18 {
@@ -153,7 +150,6 @@ fn sequence(
         let height = if matches!(step, 4 | 7) { h / 2 } else { h };
         let area = Rect::new(1, 1, width as u16, height as u16);
         let mut full = widget_cells::seeded(area);
-        let mut prior = state;
         StatefulWidget::render(&view, area, &mut full, &mut state);
         let actual_state = input.next().unwrap();
         let actual = input.next().unwrap();
@@ -162,36 +158,14 @@ fn sequence(
             format!("{} {}", state.offset(), index(state.selected())),
             "state w={w} h={h} options={kind} data={dataset} step={step}"
         );
-        if actual != widget_cells::snapshot(&full) {
-            let mut clipped = Buffer::empty(area);
-            Fill::new(".")
-                .green()
-                .on_blue()
-                .bold()
-                .render(area, &mut clipped);
-            StatefulWidget::render(&view, area, &mut clipped, &mut prior);
-            let mut guard = widget_cells::seeded(area);
-            assert!(
-                (0..full.area.height).any(|y| (0..full.area.width)
-                    .any(|x| !area.contains((x, y).into()) && full[(x, y)] != guard[(x, y)])),
-                "unexpected in-bounds mismatch w={w} h={h} options={kind} data={dataset} step={step}\nactual {actual}\nreference {}",
-                widget_cells::snapshot(&full)
-            );
-            for (pos, cell) in clipped.content.iter().enumerate() {
-                let x = area.x + (pos % width) as u16;
-                let y = area.y + (pos / width) as u16;
-                guard[(x, y)] = cell.clone();
-            }
-            assert_eq!(
-                actual,
-                widget_cells::snapshot(&guard),
-                "bounded result w={w} h={h} options={kind} data={dataset} step={step}"
-            );
-            assert_eq!(state, prior);
-            spill += 1;
-        }
+        assert_eq!(
+            actual,
+            widget_cells::snapshot(&full),
+            "frame w={w} h={h} options={kind} data={dataset} step={step}"
+        );
+        frames += 1;
     }
-    spill
+    frames
 }
 
 fn main() {
@@ -200,20 +174,17 @@ fn main() {
         benchmark(&mut input);
         return;
     }
-    let mut spill = 0;
+    let mut frames = 0;
     for w in [0, 1, 2, 5, 12] {
         for h in [0, 1, 2, 4, 6, 9] {
             for kind in 0..24 {
                 for dataset in 0..3 {
-                    spill += sequence(&mut input, w, h, kind, dataset);
+                    frames += sequence(&mut input, w, h, kind, dataset);
                 }
             }
         }
     }
-    assert_eq!(spill, 1847);
+    assert_eq!(frames, 38880);
     assert!(input.next().is_none());
-    println!(
-        "{} whole frames, {spill} clipped marker overflows, 38880 matching list states",
-        38880 - spill
-    );
+    println!("{frames} whole list frames and states match");
 }

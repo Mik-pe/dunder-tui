@@ -11,6 +11,10 @@ import .repetition
 
 pub struct Cell { content: rich.Text, style: tui.Style, column_span: u16 }
 
+impl Default for Cell {
+    fn default() -> Self { Self { content: rich.Text::default(), style: tui.plain(), column_span: 0 } }
+}
+
 impl Cell {
     pub fn from<T: rich.IntoText>(move value: T) -> Self { Cell::new(value.into_text()) }
 
@@ -38,12 +42,13 @@ impl Row {
     pub fn new(move cells: []Cell) -> Self {
         Self { cells: move cells, style: tui.plain(), height: 1, top_margin: 0, bottom_margin: 0 }
     }
-    pub fn strings(move values: []string) -> Self {
+    pub fn from<Values>(move values: Values) -> Self {
         mut cells: []Cell = []
         cells.reserve(values.len)
-        for value in move values { cells.push(Cell::raw(move value)) }
+        for value in move values { cells.push(Cell::from(move value)) }
         Row::new(move cells)
     }
+    pub fn strings(move values: []string) -> Self { Row::from(move values) }
     fn total_height(&self) -> i32 {
         cmp.min<i32>(65535, i32(self.height) + i32(self.top_margin) + i32(self.bottom_margin))
     }
@@ -263,12 +268,10 @@ impl Bands {
     fn prepare(&mut self, area: tui.Rect, header: &Option<Row>, footer: &Option<Row>) {
         (a,b,c) := band_sizes(&header)
         (d,e,f) := band_sizes(&footer)
-        sizes := [a,b,c,d,e,f]
-        mut changed := !self.ready
-        for i in 0..6 { if sizes[i] != self.sizes[i] { changed = true } }
-        if changed {
+        if !self.ready || self.sizes[0] != a || self.sizes[1] != b || self.sizes[2] != c ||
+            self.sizes[3] != d || self.sizes[4] != e || self.sizes[5] != f {
             self.parts.set_constraints([.Length(a),.Length(b),.Length(c),.Min(0),.Length(d),.Length(e),.Length(f)])
-            self.sizes = sizes; self.ready = true
+            self.sizes = [a,b,c,d,e,f]; self.ready = true
         }
         _ := self.parts.arrange(area)
     }
@@ -277,7 +280,11 @@ impl Bands {
 pub struct Table {
     rows: Rows, columns: Columns, bands: Bands, header: Option<Row>, footer: Option<Row>, block: block.Block,
     style: tui.Style, row_highlight: tui.Style, column_highlight: tui.Style, cell_highlight: tui.Style,
-    marker: rich.Text, highlight_spacing: list.HighlightSpacing, column_spacing: u16, flex: layout.Flex,
+    marker: rich.Text, highlight_spacing: list.HighlightSpacing, column_spacing: u16, flex: layout.Flex, clip_to_area: bool,
+}
+
+impl Default for Table {
+    fn default() -> Self { Table::new([],[]) }
 }
 
 impl Table {
@@ -286,7 +293,7 @@ impl Table {
             bands: Bands { parts: layout.Layout::vertical([]), sizes:[0;6], ready:false },
             header: .None, footer: .None, block: block.Block::new(), style: tui.plain(),
             row_highlight: tui.plain(), column_highlight: tui.plain(), cell_highlight: tui.plain(),
-            marker: rich.Text::raw(""), highlight_spacing: .WhenSelected, column_spacing: 1, flex: .Start }
+            marker: rich.Text::default(), highlight_spacing: .WhenSelected, column_spacing: 1, flex: .Start, clip_to_area: false }
     }
     pub fn set_rows(&mut self, move rows: []Row) { self.rows = Rows::new(move rows) }
     pub fn set_widths(&mut self, move widths: []layout.Constraint) { self.columns = Columns::new(move widths) }
@@ -321,7 +328,8 @@ impl Table {
         n := self.column_count()
         c := selection.fit_index(&mut state.selected_column,n)
         reserved := self.highlight_spacing == .Always || (self.highlight_spacing == .WhenSelected && selected >= 0)
-        gutter := if reserved { cmp.min<i32>(area.w,self.marker.width()) } else { 0 }
+        marker_width := if reserved { self.marker.width().bit_and(65535) } else { 0 }
+        gutter := cmp.min<i32>(area.w,marker_width)
         self.columns.prepare(area,gutter,n,self.column_spacing,self.flex)
         self.bands.prepare(area,&self.header,&self.footer)
         bands := &self.bands.parts.regions().areas
@@ -341,9 +349,16 @@ impl Table {
             frame.apply_cell_style(line,row.style)
             if selected == i {
                 selected_row = line
-                if gutter > 0 { self.marker.render(&mut frame,line.cols(gutter).0) }
+                if gutter > 0 {
+                    mut marker := line
+                    marker.w = if self.clip_to_area { gutter } else { marker_width }
+                    if marker.w > line.w {
+                        frame.apply_cell_style(marker.cols(line.w).1,row.style)
+                    }
+                    self.marker.render(&mut frame,marker)
+                }
             }
-            draw_cells(&row,&mut frame,line,&cols,i32(self.column_spacing))
+            draw_cells(&row,&mut frame,line,&cols,i32(self.column_spacing),self.clip_to_area)
         }
         frame.apply_cell_style(selected_row,self.row_highlight)
         if c >= 0 && c < cols.len {
@@ -361,7 +376,7 @@ fn draw_band(row: &Row, frame: &mut tui.Frame, area: tui.Rect, cols: &[]tui.Rect
     }
 }
 
-fn draw_cells(row: &Row, frame: &mut tui.Frame, area: tui.Rect, cols: &[]tui.Rect, spacing: i32) {
+fn draw_cells(row: &Row, frame: &mut tui.Frame, area: tui.Rect, cols: &[]tui.Rect, spacing: i32, clip_to_area: bool) {
     mut c := 0
     for cell in &row.cells {
         if c >= cols.len { break }
@@ -369,8 +384,9 @@ fn draw_cells(row: &Row, frame: &mut tui.Frame, area: tui.Rect, cols: &[]tui.Rec
         end := c+cmp.min<i32>(cols.len-c,i32(cell.column_span))
         mut width := i64(end-c-1)*i64(spacing)
         for i in c..end { width += i64(cols[i].w) }
-        w := i32(cmp.min<i64>(width,i64(area.right()-cols[c].x)))
-        cell.draw(&mut frame,tui.Rect { x:cols[c].x, y:area.y, w:w, h:area.h })
+        span_width := i32(width.bit_and(65535))
+        w := if clip_to_area { cmp.min<i32>(span_width,area.right()-cols[c].x) } else { span_width }
+        cell.draw(&mut frame,tui.Rect::new(cols[c].x,area.y,w,area.h))
         c = end
     }
 }

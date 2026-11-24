@@ -440,14 +440,14 @@ graph.render(&mut frame,area)
 
 ## Listor med markering
 
-Spara listan och dess skrolltillstånd i din app. En post kan innehålla flera rader, färgade textspann och breda tecken.
+Spara listan och dess skrolltillstånd i din app. På `main` tar `List::from` en array med strängar, färgade spann, textrader eller textblock.
 
 ```dunder
 import tui
 import tui.list as lists
 import tui.text as rich
 
-mut books := lists.List::new([lists.Item::raw("Nattåget\nRoman"), lists.Item::raw("Molnatlas\nNatur")])
+mut books := lists.List::from(["Nattåget\nRoman", "Molnatlas\nNatur"])
 books.marker = rich.Line::raw("▸ ")
 books.highlight = tui.plain().background_rgb(0x224451)
 books.scroll_padding = 1
@@ -456,6 +456,8 @@ cursor.first()
 ```
 
 Rita med `books.render_stateful(&mut frame, area, &mut cursor)`. Anropa `cursor.next()` och `cursor.previous()` från tangenthanteraren. När vyn krymper justerar listan `cursor.offset` så att hela den markerade posten syns om den ryms. `cursor.last()` hittar sista posten vid nästa ritning, även om innehållet har bytts med `books.set_items(...)`. En lista från nederkanten använder `books.direction = .BottomToTop`. [Bokhyllans källkod](examples/bokhylla/main.ddr) · [Mätning med 16 384 poster](benchmarks/lists.md)
+
+Markören får sin fulla textbredd även när listan är smalare. Sätt `books.clip_to_area = true` om markören ska stanna vid listans högra kant.
 
 På `main` kan du spara markering och skrollposition med `std.json` och öppna dem igen i nästa session.
 
@@ -485,6 +487,8 @@ cursor.select_cell(.Some((0,1)))
 ```
 
 Spara tabell och markering i appens tillstånd. Rita med `departures.render_stateful(&mut frame, area, &mut cursor)`. En `Cell` kan innehålla rik text och spänna över flera kolumner. Ange `row.height` för flerradigt innehåll. Ändra en befintlig cell med `set_cell` och ersätt hela datamängden med `set_rows`. [Tabellprov](docs/parity.md#tabeller-i-080)
+
+På `main` kan du använda `Row::from([rad1, rad2])` för celler med formaterade textrader. I en trång tabell kan markörtext och mellanrum i ett kolumnspann nå in i nästa panel. Med `departures.clip_to_area = true` stannar båda vid tabellens innerkant.
 
 Med `repeat` får varje kopia eget innehåll. Här upprepas en stiliserad cell och bara den första kajen stängs. Samma metod finns för spann i en rad, rader i ett dokument och kolumnbredder. [Körbar avgångstavla](benchmarks/manifest_scene.ddr)
 

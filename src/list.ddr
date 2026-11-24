@@ -218,14 +218,25 @@ impl Items {
 
 pub struct List {
     items: Items, style: tui.Style, block: block.Block, direction: Direction, scroll_padding: i32,
-    highlight: tui.Style, marker: rich.Line, spacing: HighlightSpacing, repeat_marker: bool,
+    highlight: tui.Style, marker: rich.Line, spacing: HighlightSpacing, repeat_marker: bool, clip_to_area: bool,
+}
+
+impl Default for List {
+    fn default() -> Self { List::new([]) }
 }
 
 impl List {
+    pub fn from<Values>(move values: Values) -> Self {
+        mut items: []Item = []
+        items.reserve(values.len)
+        for value in move values { items.push(Item::from(move value)) }
+        List::new(move items)
+    }
+
     pub fn new(move items: []Item) -> Self {
         Self { items: Items::new(move items), style: tui.plain(), block: block.Block::new(),
             direction: .TopToBottom, scroll_padding: 0, highlight: tui.plain(),
-            marker: rich.Line::raw(""), spacing: .WhenSelected, repeat_marker: false }
+            marker: rich.Line::raw(""), spacing: .WhenSelected, repeat_marker: false, clip_to_area: false }
     }
     pub fn set_items(&mut self, move items: []Item) { self.items = Items::new(move items) }
     pub fn len(&self) -> i32 { self.items.entries.len }
@@ -258,9 +269,10 @@ impl List {
             end = self.items.fitting_end(first, end, area.h)
         }
         state.offset = first
-        gutter := if self.spacing == .Always || (self.spacing == .WhenSelected && selected >= 0) {
-            cmp.min<i32>(area.w, self.marker.width())
+        marker_width := if self.spacing == .Always || (self.spacing == .WhenSelected && selected >= 0) {
+            self.marker.width().bit_and(65535)
         } else { 0 }
+        gutter := if self.clip_to_area { cmp.min<i32>(area.w,marker_width) } else { marker_width }
         mut y := if self.direction == .BottomToTop { area.y + area.h } else { area.y }
         for i in first..end {
             item := &self.items.entries[i]
@@ -270,19 +282,19 @@ impl List {
             row := tui.Rect { x: area.x, y: y, w: area.w, h: h }
             frame.apply_cell_style(row, self.style.patch(item.style))
             mut content := row
-            marker := content.take_cols(gutter)
+            _ := content.take_cols(gutter)
             item.content.render(&mut frame, content)
             if i == selected { frame.apply_cell_style(row, self.highlight) }
             if gutter > 0 {
-                mut blanks := marker
+                mut blanks := tui.Rect::new(row.x,y,gutter,h)
                 if i == selected {
                     n := if self.repeat_marker { h } else { 1 }
                     for j in 0..n {
-                        self.marker.render(&mut frame, tui.Rect { x: marker.x, y: y + j, w: gutter, h: 1 })
+                        self.marker.render(&mut frame, tui.Rect::new(row.x,y+j,gutter,1))
                     }
                     _ := blanks.take_rows(n)
                 }
-                frame.fill(blanks, ` `, tui.plain())
+                frame.paint_rune(blanks, ` `, tui.plain())
             }
             if self.direction == .TopToBottom { y += h }
         }

@@ -432,7 +432,7 @@ done
 
 Provet utför 18 åtgärder per följd. Det ändrar markering, första synliga post, listans innehåll och terminalens storlek. Bilderna omfattar bland annat tomma listor, nollhöga och för höga poster, blandade radhöjder, två ritriktningar och tre regler för markörens utrymme. Tecken, förgrund, bakgrund, använda attribut, markering och första synliga post kontrolleras efter varje ritning. [Ratatuis list-API](https://docs.rs/ratatui/0.30.2/ratatui/widgets/struct.List.html)
 
-Alla 38 880 listtillstånd matchar Ratatui. I 37 033 fall matchar hela bilden inklusive kontrollkanten. I 1 847 fall skriver referensens markör utanför listans ruta. Där kontrolleras också resultatet med Ratatui i en buffert begränsad till rutan. Dunder bevarar grannytan. Ytterligare 1 320 bilder och tillstånd från prestandaprovets lista med 16 384 poster är identiska. [Dunderprov](../tests/list_reference.ddr) · [Ratatui-prov](../benchmarks/reference/examples/lists.rs) · [Mätningar](../benchmarks/lists.md)
+På `main` matchar alla 38 880 listbilder och tillstånd Ratatui, inklusive cellerna utanför listans ruta. Listan ritar markören i sin fulla textbredd och kan även fylla utrymmet på omarkerade rader. `List.clip_to_area` begränsar båda till listans ruta. Ytterligare 1 320 bilder och tillstånd från prestandaprovets lista med 16 384 poster matchar. [Dunderprov](../tests/list_reference.ddr) · [Ratatui-prov](../benchmarks/reference/examples/lists.rs) · [Mätningar](../benchmarks/lists.md)
 
 ```sh
 mkdir -p build
@@ -479,7 +479,9 @@ Biblioteket löser vanliga fördelningar direkt. För kombinationer som behöver
 
 Provet kör 20 åtgärder för varje kombination av storlek, tabellkonfiguration och datamängd. Efter varje åtgärd jämförs de ritade cellerna, stilarna, första synliga raden och vald rad och kolumn. Det täcker bland annat tomma och ojämna tabeller, radmarginaler, kolumnspann, alla sju flexlägen, ändrade kolumnbredder, markeringssymboler och byte av data medan en cell är vald. [Dunderprov](../tests/table_reference.ddr) · [Ratatui-prov](../benchmarks/reference/examples/tables.rs)
 
-I en körning matchade 30 752 av 33 600 bilder hela referensbufferten direkt. För 2 144 bilder valde layoutlösarna olika likvärdiga höjder för sidhuvud, innehåll och sidfot. Provet kontrollerar båda lösningarnas optimala fel med exakt aritmetik och ritar om med Ratatui på de kontrollerade höjderna. I 704 bilder skrev referensen utanför tabellens inneryta. Där jämförs hela bilden med en avgränsad Ratatui-buffert och kontrollkanten måste vara intakt. Alla 33 600 tillstånd matchade. Antalet likvärdiga layouter kan variera mellan körningar.
+På `main` jämförs alla 33 600 tillstånd och hela den omgivande bilden. På macOS ARM64 matchade 31 156 bilder direkt. I 2 444 fall valde layoutlösarna olika höjder för sidhuvud, innehåll och sidfot. Provet visar med exakt aritmetik att båda lösningarna är optimala, ritar med Ratatui vid de valda höjderna och jämför sedan hela bilden. Antalet likvärdiga lösningar kan variera mellan körningar. `Table.clip_to_area` begränsar markören och kolumnspannen till tabellens inneryta.
+
+Ett separat prov växlar mellan lista och tabell på samma buffert. Det kontrollerar 192 bilder med två buffertursprung, breda tecken, överlappande celler, understrykningsfärg och cellernas diffregler. En terminalkontroll växlar mellan full och beskuren markörbredd och läser också tillbaka en cell som spänner över två kolumner. [Dunderprov](../tests/collection_cells.ddr) · [Ratatui-celler](../benchmarks/reference/examples/collection_cells.rs) · [Pseudoterminal](../tests/collection_terminal.ddr) · [Win32-konsol](../tests/windows_console.ddr)
 
 Ytterligare 1 320 bilder med 4 096 rader matchade referensen cell för cell i prestandaprovets sex arbetslaster. Terminalprovet startar tidtabellen som en egen process, navigerar i båda led, krymper fönstret till två rader och kontrollerar återställningen. [Terminalprov](../tests/table_terminal.ddr) · [Bildtid och terminalutdata](../benchmarks/tables.md)
 
@@ -491,6 +493,11 @@ build/table-check | build/rust/release/examples/tables
 build/table-check --benchmark | build/rust/release/examples/tables --benchmark
 dunder build --locked --offline --example avganger -o build/avganger
 dunder run --locked --offline tests/table_terminal.ddr -- build/avganger
+dunder build --locked --offline tests/collection_cells.ddr -o build/collection-cells
+cargo build --release --locked --offline --manifest-path benchmarks/reference/Cargo.toml --features theme-oracle,layout-cache --example collection_cells --target-dir build/rust
+build/collection-cells > build/collection.actual
+build/rust/release/examples/collection_cells > build/collection.expected
+cmp build/collection.actual build/collection.expected
 ```
 
 ## Diagram och canvas i 0.9.0

@@ -52,6 +52,8 @@ Ett kontrollerat uppslag i en redigerbar buffert skulle kunna lämna `Option<&mu
 
 I 0.12.1 får `total(&[a, b])` E3003 när en metod tar `&[]T`. Med `total<Item>(&[a, b])` blir summan 5. Testterminalens radkontroll tar hela samlingstypen som parameter så att det räcker att skriva `assert_buffer_lines(&["hej"])`. [Minimiprov](../tests/dogfood/compiler/infer_array_argument.ddr)
 
+Samma inferensfel uppstår när en metod tar ägarskap med `move items: []T`. En fast array med två poster ger E3003. En explicit elementtyp eller en dynamisk array ger tillbaka båda strängarna i rätt ordning. Listan och tabellraden tar hela samlingen som typparameter, så att `List::from(["ett", "två"])` fungerar direkt. [Minimiprov med ägda värden](../tests/dogfood/compiler/infer_owned_array.ddr)
+
 En metod som lämnar `&str from self` kan låna ett strängfält direkt. Om den i stället lånar en sträng ur samma posts `Option<string>` ger matchgrenen E4003. Båda möjliga returvärdena tillhör mottagaren. Celljämförelsen jämför därför symbolerna inne i matchgrenarna. [Minimiprov med båda grenarna](../tests/dogfood/compiler/borrow_optional_field.ddr)
 
 ## Nollställning och radjämförelse i 0.12.1

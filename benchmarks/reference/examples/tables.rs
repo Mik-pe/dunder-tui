@@ -9,7 +9,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Flex, Layout, Rect},
     style::{Style, Stylize},
     text::{Line, Span, Text},
-    widgets::{Block, Cell, HighlightSpacing, Row, StatefulWidget, Table, TableState, Widget},
+    widgets::{Block, Cell, HighlightSpacing, Row, StatefulWidget, Table, TableState},
 };
 use std::collections::HashSet;
 use std::io::{self, BufRead};
@@ -213,30 +213,6 @@ fn rectify(
     Some(replay)
 }
 
-fn bounded(view: &Table<'static>, area: Rect, k: usize, start: TableState) -> (Buffer, TableState) {
-    let body = inner(area, k);
-    let mut guard = widget_cells::seeded(area);
-    guard.set_style(area, Style::new().on_black());
-    if k % 5 == 0 {
-        Block::bordered().title("T").render(area, &mut guard);
-    }
-    let mut clipped = Buffer::empty(body);
-    for (x, y) in body.positions().map(|p| (p.x, p.y)) {
-        clipped[(x, y)] = guard[(x, y)].clone();
-    }
-    let mut cursor = start;
-    StatefulWidget::render(
-        view.clone().block(Block::new()),
-        body,
-        &mut clipped,
-        &mut cursor,
-    );
-    for (x, y) in body.positions().map(|p| (p.x, p.y)) {
-        guard[(x, y)] = clipped[(x, y)].clone();
-    }
-    (guard, cursor)
-}
-
 fn benchmark(input: &mut impl Iterator<Item = String>) {
     let mut scene = table_scene::Scene::new(4096);
     for mode in ["idle", "cell", "scroll", "resize", "repaint", "jump"] {
@@ -278,8 +254,6 @@ fn main() {
     let mut exact = 0;
     let mut different = 0;
     let mut ties = 0;
-    let mut spill = 0;
-    let mut both = 0;
     let mut proved = HashSet::new();
     for w in [0, 1, 3, 7, 14, 27] {
         for h in [0, 1, 3, 6, 11] {
@@ -372,24 +346,11 @@ fn main() {
                             ties += 1;
                             continue;
                         }
-                        let (guard, checked) = bounded(candidate, area, k, prior);
-                        let escaped = guard
-                            .area
-                            .positions()
-                            .any(|p| !inner.contains(p) && guard[p] != replay[p]);
-                        if escaped && checked == state && img == widget_cells::snapshot(&guard) {
-                            if fixed.is_some() {
-                                both += 1;
-                            } else {
-                                spill += 1;
-                            }
-                            continue;
-                        }
                         if different < 30 {
                             eprintln!(
-                                "{w} {h} {k} {d} {step} tied={} escaped={escaped}\nD {img}\nR {}",
+                                "{w} {h} {k} {d} {step} tied={}\nD {img}\nR {}",
                                 fixed.is_some(),
-                                widget_cells::snapshot(&guard)
+                                widget_cells::snapshot(&replay)
                             );
                         }
                         different += 1;
@@ -399,9 +360,7 @@ fn main() {
         }
     }
     assert!(input.next().is_none());
-    println!(
-        "{exact} exact, {ties} equivalent band layouts, {spill} clipped overflows, {both} both, {different} unresolved"
-    );
-    assert_eq!(exact + ties + spill + both + different, 33600);
+    println!("{exact} exact, {ties} equivalent band layouts, {different} unresolved");
+    assert_eq!(exact + ties + different, 33600);
     assert_eq!(different, 0);
 }
