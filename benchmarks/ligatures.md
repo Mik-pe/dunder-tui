@@ -16,6 +16,22 @@ Varje par visar median / p95 i mikrosekunder, avrundat till närmaste heltal. Re
 
 I den första serien på Linux ARM64 nådde enskilda p95-värden 1,53 ms. Vid en omkörning av hela serien låg Dunders sju p95-värden för skrollning mellan 34 och 36 µs. Sammanlagt läste pseudoterminalen 1 382 478 byte från Dunder och 1 624 225 från Ratatui i alla tre miljöerna.
 
+## Nativ x86-64 i 0.18.3
+
+Båda programmen kördes på samma värd per operativsystem. Linux använde en pseudoterminal på Ubuntu 24.04 under KVM på en Intel Xeon 6975P-C. På Windows Server 2025 skrev programmen till en Win32-konsolbuffert med VT och UTF-8. Drivrutinen läste tillbaka statuscellen på rad 24 efter varje process. Båda plattformarna använde Dunder 0.11.2 och sju uppmätta processpar efter två uppvärmningar. Tabellen visar median / p95 i mikrosekunder. [Linuxprovet](https://github.com/Mik-pe/dunder-tui/actions/runs/45303881483/job/138142828857) · [Windowsprovet](https://github.com/Mik-pe/dunder-tui/actions/runs/45303881483/job/138142828516) · [Råvärden och spridning](results/native-x64-0.18.3.tsv)
+
+| Arbete | Linux Dunder | Linux Ratatui | Windows Dunder | Windows Ratatui |
+| --- | ---: | ---: | ---: | ---: |
+| Oförändrad bild | 371 / 380 | 59 / 70 | 1 247 / 1 427 | 213 / 289 |
+| En cell | 369 / 380 | 61 / 70 | 1 259 / 1 320 | 214 / 248 |
+| Skrollning | 387 / 397 | 63 / 71 | 1 580 / 1 665 | 244 / 293 |
+| Storleksändring | 638 / 706 | 101 / 110 | 1 969 / 2 307 | 362 / 483 |
+| Full omritning | 573 / 586 | 96 / 106 | 1 773 / 2 080 | 377 / 436 |
+
+På båda systemen tog Dunder längre tid i alla fem fallen, även i minnet. Över 1 100 bilder tog terminalerna emot 1 382 478 byte från Dunder och 1 624 225 byte från Ratatui. Högsta RSS på Linux var i median 1 088 respektive 2 708 KiB över tre processer. På Windows avlästes högsta arbetsminne med `K32GetProcessMemoryInfo` under körningen och efter avslut. Medianen var 4 076 respektive 4 252 KiB. [Windowsdrivrutinen](console.ddr)
+
+Linux räknade 82 996 allokeringsanrop i Dunder och 23 184 i Ratatui. På Windows registrerade Ratatui 23 227. Dunders profilerade program på Windows avslutades normalt utan att skriva sin räknarrapport. [Dunders Windowsuppföljning](https://github.com/Mik-pe/dunder/blob/main/docs/next-steps.md#verifiera-windows-som-kompilatorvärd)
+
 ## Allokering och minne
 
 Dunders profil räknade 82 996 allokeringsanrop och 1 839 634 begärda byte. 265 anrop hämtade nytt minne och 82 731 återanvände poolen. Ratatui räknade 23 188 anrop och 1 265 238 begärda byte på macOS, samt 23 184 anrop på Linux. Medianen av tre processers högsta RSS var 2 032 / 2 480 KiB på macOS, 432 / 1 940 KiB på Linux ARM64 och 6 104 / 5 468 KiB på översatt Linux x86-64, med Dunder först i varje par.
@@ -23,3 +39,5 @@ Dunders profil räknade 82 996 allokeringsanrop och 1 839 634 begärda byte. 265
 ## Upprepa mätningen
 
 Följ [bygg- och mätkommandona för loggvyn](emoji.md#upprepa-mätningen) med `TUI_BENCH_SCENE=ligatures` före verifiering och tidtagning. Mätningen ovan använder Dunder 0.11.2 och Rust 1.99.1 i releaseprofil.
+
+Kör `gh workflow run native.yml` i det publika repot för att upprepa x64-serierna med den publicerade kompilatorn. Arbetsflödet skriver verktygsversioner, bildtider, bytesummor och minnesvärden till körloggen. Med `-f profile=true` räknar Callgrind dessutom exekverade instruktioner på Linux för den oförändrade vyn. [Bygg- och mätkommandon](../.github/workflows/native.yml)

@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Nativ x86-64 i 0.18.3
+
+På Linux x86-64 tog en oförändrad riktextbild 371 µs i median med Dunder och 59 µs med Ratatui i en pseudoterminal. I en Win32-konsol tog samma bild 1 247 respektive 213 µs. [Fem arbetslaster med bildtid, utmatning och minne](ligatures.md#nativ-x86-64-i-0183)
+
 ## Ligaturer och textjustering i 0.18.2
 
 I en vy med centrerade, färgsatta textrader tog skrollning i en pseudoterminal på macOS ARM64 29 µs i median med Dunder och 38 µs med Ratatui. På översatt Linux x86-64 tog samma arbete 234 respektive 63 µs. [Mätvärden för fem arbetslaster](ligatures.md)

@@ -6,7 +6,7 @@ Bygg interaktiva terminalappar i Dunder för macOS, Linux och Windows. Skriv en 
 
 Vill du se animationerna direkt? Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i en terminal. Samma paket innehåller kustkartan `kustlinjer`, signalvisualiseraren `signal`, boklistan `bokhylla` samt tidtabellen `avganger`, loggboken `loggbok` och kalendern `almanacka`. [Ladda ner för macOS, Linux eller Windows](https://github.com/Mik-pe/dunder-tui/releases/latest)
 
-Med Dunder 0.11.1 eller senare installerat kan du starta exemplen med deras namn. [Installera Dunder](https://github.com/Mik-pe/dunder#installera-och-kör)
+På macOS och Linux kan du starta exemplen med deras namn från Dunder 0.11.1. På Windows fungerar de färdigbyggda apparna direkt. Dunder 0.11.2 ger ett fel när kompilatorn öppnar ett paketmanifest på Windows, även för ett paket utan beroenden. [Installera Dunder](https://github.com/Mik-pe/dunder#installera-och-kör) · [Windowsprovet](https://github.com/Mik-pe/dunder-tui/actions/runs/45302071651/job/138136790534)
 
 ```sh
 git clone https://github.com/Mik-pe/dunder-tui.git
@@ -84,7 +84,7 @@ Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.18.2", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.18.3", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.
@@ -187,6 +187,8 @@ terminal.show_cursor()?
 ```
 
 Vid nästa lyckade ritning bestämmer bildens markör åter position och synlighet. En misslyckad ritfunktion behåller den visade bilden och `completed()`. De celler funktionen redan skrivit finns kvar i arbetsbufferten. Anropa `current_buffer_mut().clear()` om du vill börja om på en tom bild. Egna backends kan implementera `read_cursor`, `move_to` och `set_cursor_visible`. Metoderna returnerar ett fel om backenden saknar stödet. [Körbart exempel](tests/direct_cursor_app.ddr)
+
+När en `Terminal` lämnar sitt scope efter att ha dolt markören anropar den backendens `restore_cursor()`. En egen backend som implementerar `set_cursor_visible` får återställningen automatiskt. Win32-backenden återställer konsolens sparade markörstorlek och synlighet. [Prov med tidig retur och ägarbyte](tests/cursor_lifetime.ddr)
 
 ## Rita i en del av terminalen
 
@@ -361,9 +363,9 @@ I 0.3 används `tui.plain()` och stilmetoderna för att ersätta gamla `Style { 
 | `arm64-linux`, `x86_64-linux` | Samma terminalgränssnitt. Appen använder Linux systemanrop direkt. |
 | `x86_64-windows` | Win32-konsol med egen skärmbuffert och tangentbordshändelser via `ReadConsoleInputW`. |
 
-Kör `dunder test examples/motion/tests.ddr` för alla tio animationerna och `dunder test` för layout, rullning, Unicode och tangentavkodning. På macOS och Linux öppnar `dunder run tests/posix_terminal.ddr` en pseudoterminal och kontrollerar bland annat omritning, storleksändring, Ctrl+C och återställning. På Windows öppnar `dunder run tests/windows_console.ddr` en separat konsol och kontrollerar inmatning, skärminnehåll, färg och återgång till föregående skärm.
+Kör `dunder test examples/motion/tests.ddr` för alla tio animationerna och `dunder test` för layout, rullning, Unicode och tangentavkodning. På macOS och Linux öppnar `dunder run tests/posix_terminal.ddr` en pseudoterminal och kontrollerar bland annat omritning, storleksändring, Ctrl+C och återställning. Windowsprovet öppnar en separat konsol och kontrollerar inmatning, skärminnehåll, färg och återgång till föregående skärm. Det kan korsbyggas med `dunder build tests/windows_console.ddr --target x86_64-windows -o console.exe` och köras med `.\console.exe` på Windows. [Bygg direkt på Windows med 0.11.2](.github/workflows/native.yml)
 
-I en pseudoterminal på en Mac med M5 skickade de tio scenerna 29,9–30,1 bilder per sekund vid 100 × 30 teckenceller och ett mål på 30. Galleriets scenbyte, paus och återställning av terminalen har provats på macOS och Linux. Windowsbinären har provats under Wine. Körning på en nativ Windowsvärd återstår. [Renderingsmätning mot Ratatui](benchmarks/README.md) · [Täckning och återstående arbete](docs/parity.md)
+I en pseudoterminal på en Mac med M5 skickade de tio scenerna 29,9–30,1 bilder per sekund vid 100 × 30 teckenceller och ett mål på 30. Galleriets scenbyte, paus och återställning av terminalen har provats på macOS och Linux. Windowsbinären har provats under Wine. Det separata Win32-provet har även körts på Windows Server 2025 x64 där det läser tillbaka celler, färger och markör från konsolen. [Win32-körning](https://github.com/Mik-pe/dunder-tui/actions/runs/45302071651/job/138136790534) · [Renderingsmätning mot Ratatui](benchmarks/README.md) · [Täckning och återstående arbete](docs/parity.md)
 
 Korsbygg exempelvis en Windowsapp med `dunder build examples/counter/main.ddr --target x86_64-windows -o counter.exe`.
 

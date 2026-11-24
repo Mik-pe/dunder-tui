@@ -101,6 +101,29 @@ jobs:
               echo "::warning::Dunder 0.11.2 std.process $arg exited 101 during child startup on Windows."
             fi
           done
+      - name: Isolate the width of the Win32 process ID
+        if: runner.os == 'Windows'
+        run: |
+          cd "$SOURCE_ROOT"
+          mkdir -p build/pid-probe
+          base=https://raw.githubusercontent.com/Mik-pe/dunder/cd7d1b1fa6a82b1ef80bf0c3545a000a81f44e5b/stdlib
+          for path in process.ddr sys/winprocess.ddr; do
+            curl -fsSL "$base/$path" -o "build/pid-probe/${path##*/}"
+          done
+          (
+            cd build/pid-probe
+            echo '29a5331cfa909e4aac48fe112c72c7881586f4b5f5463842c0b64fd2dfce2509  process.ddr' | sha256sum -c
+            echo 'c0bbd4aa79aa5682f0eaf615785b19ad7162f6fb4a141a6705288e1a74c8c920  winprocess.ddr' | sha256sum -c
+            sed -i 's/^import std.sys.winprocess as win$/import .winprocess as win/' process.ddr
+            sed 's/^import std.process$/import .process as process/' ../../tests/dogfood/compiler/windows_child.ddr >main.ddr
+          )
+          build/dunder.exe build --offline --locked build/pid-probe/main.ddr -o build/pid-before.exe
+          if build/pid-before.exe exec; then exit 1; else test "$?" = 101; fi
+          sed -i 's/i32(info\[2\])/i32(load_u32(addr(\&info[2])))/' build/pid-probe/winprocess.ddr
+          build/dunder.exe build --offline --locked build/pid-probe/main.ddr -o build/pid-after.exe
+          build/pid-after.exe exec
+          build/pid-after.exe spawn
+          echo 'Reading only the process DWORD passed exec and spawn/wait.'
       - name: Compare cursor lifetime, text cells and completed frames
         run: |
           cd "$SOURCE_ROOT"
@@ -163,7 +186,12 @@ jobs:
             done
           fi
           build/dunder$EXT build --locked --offline --runtime-profile benchmarks/terminal.ddr -o "build/profile$EXT"
-          build/profile$EXT --allocations
+          build/profile$EXT --allocations 2>build/dunder-allocations.log
+          cat build/dunder-allocations.log
+          if ! grep -Fq '"kind":"runtime_profile"' build/dunder-allocations.log; then
+            [[ "$RUNNER_OS" == Windows ]] || exit 1
+            echo '::warning::Dunder 0.11.2 emitted no allocation report on Windows. Allocation counts are unavailable for this build.'
+          fi
           cargo build --release --locked --offline --manifest-path benchmarks/reference/Cargo.toml --features layout-cache,allocation-counts --example terminal_bench --target-dir build/rust
           "$ref" --allocations
       - name: Profile native x64 instructions for an idle frame

@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Paket och barnprocesser på Windows
+
+På Windows Server 2025 x64 stoppar Dunder 0.11.2 ett paket med noll beroenden när den öppnar Git-lagret. Samma källfiler går att bygga med filingången utanför manifestet. Ett separat fel avslutar ett program som startar ett barn via `std.process` med kod 101. Process-ID och tråd-ID läses som ett enda heltal efter `CreateProcessW`. [Minimalt processprov](../tests/dogfood/compiler/windows_child.ddr) · [Dunders nästa steg](https://github.com/Mik-pe/dunder/blob/2c3d893/docs/next-steps.md#verifiera-windows-som-kompilatorvärd)
+
 ## Terminalbredd för lånade grafem
 
 I Dunder 0.11.2 ger `std.text.graphemes` ett element för både 😶‍🌫️ och 😶‍🌫. Ändå behöver en terminalapp placera nästa bokstav två respektive tre kolumner längre fram. En breddfunktion i standardbiblioteket skulle låta terminalappar använda den lånade vyn direkt. TUI-provet kontrollerar bland annat var bokstaven hamnar efter en omritning i en pseudoterminal. [Grafemprovet](../tests/stdlib_text.ddr) · [Dunders nästa steg](https://github.com/Mik-pe/dunder/blob/4d72641f341c500c4c6f8421836409838b717964/docs/next-steps.md#mät-ett-grafem-i-terminalkolumner)
