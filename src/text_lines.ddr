@@ -1,0 +1,19 @@
+pub struct Cursor { start: i32, end: i32, next: i32 }
+
+impl Cursor {
+    pub fn new() -> Self { Self { start: 0, end: 0, next: 0 } }
+
+    pub fn advance(&mut self, value: &str) -> bool {
+        if self.next == value.len { return false }
+        self.start = self.next
+        mut end := self.start
+        while end < value.len && value[end] != 10 { end += 1 }
+        self.next = end
+        if end < value.len {
+            self.next += 1
+            if end > self.start && value[end - 1] == 13 { end -= 1 }
+        }
+        self.end = end
+        true
+    }
+}

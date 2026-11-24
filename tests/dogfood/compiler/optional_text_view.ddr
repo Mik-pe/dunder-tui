@@ -1,0 +1,10 @@
+fn after_marker(value: &str) -> Option<&str> from value {
+    if value.len == 0 || value[0] != 35 { return .None }
+    .Some(&value[1..value.len])
+}
+
+fn main() {
+    text := "#界"
+    view := after_marker(text.as_str()).unwrap()
+    assert(view == "界")
+}

@@ -1,0 +1,81 @@
+capability stdio
+import std.bytes as bytes
+import std.text as text
+import ...src.text_lines as scanning
+import sys
+
+struct Lines { source: &str, offset: i32 }
+struct LineView { source: &str, start: i32, end: i32 }
+
+impl LineView {
+    fn as_str(&self) -> &str from self { &self.source[self.start..self.end] }
+}
+
+impl Iterator for Lines {
+    fn next(&mut self) -> Option<LineView> from self {
+        start := self.offset
+        if start == self.source.len { return .None }
+        mut end := start
+        while end < self.source.len && self.source[end] != 10 { end += 1 }
+        self.offset = end
+        if end < self.source.len {
+            self.offset += 1
+            if end > start && self.source[end - 1] == 13 { end -= 1 }
+        }
+        .Some(LineView { source: self.source, start: start, end: end })
+    }
+}
+
+fn borrowed(source: &str, first: bool) -> i32 {
+    mut sum := 0
+    for line in (Lines { source: source, offset: 0 }) {
+        sum += line.as_str().len + 1
+        if first { break }
+    }
+    sum
+}
+
+fn owned(source: string, first: bool) -> i32 {
+    if source.len == 0 { return 0 }
+    mut sum := 0
+    parts := text.split(source, "\n")
+    for i in 0..parts.len {
+        line := &parts[i]
+        last := i + 1 == parts.len
+        if last && line.len == 0 { break }
+        trimmed := !last && line.len > 0 && line[line.len - 1] == 13
+        sum += line.len + (if trimmed { 0 } else { 1 })
+        if first { break }
+    }
+    sum
+}
+
+fn cursor(source: &str, first: bool) -> i32 {
+    mut sum := 0
+    mut rows := scanning.Cursor::new()
+    while rows.advance(source) {
+        line := &source[rows.start..rows.end]
+        sum += line.len + 1
+        if first { break }
+    }
+    sum
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 3 { return 2 }
+    mut data: []u8 = []
+    for _ in 0..1024 { bytes.append_utf8(&mut data, "blå\r\n\n界\n") }
+    bytes.append_utf8(&mut data, "a\r")
+    source := bytes.decode(&data).unwrap()
+    first := sys.arg(2) == "first"
+    if !first && sys.arg(2) != "all" { return 2 }
+    sum := match sys.arg(1) {
+        "borrowed" => borrowed(source.as_str(), first),
+        "cursor" => cursor(source.as_str(), first),
+        "owned" => owned(source, first),
+        _ => { return 2 },
+    }
+    assert(sum == (if first { 5 } else { 10243 }))
+    print(sum)
+    0
+}
