@@ -1,0 +1,94 @@
+name: Native terminal tests
+on: workflow_dispatch
+
+permissions: {}
+
+jobs:
+  terminal:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            compiler: x86_64-linux.gz
+            digest: 8855f35a53123b51ad2670af801a2b8e98bc953bdbbb79ef27d24411413b3d7f
+            probe: posix_terminal
+          - runner: windows-2025
+            compiler: x86_64-windows.exe
+            digest: 1fc8481699cb23f3c8447f676f576f51f089c04b3a3c7ac214c94dbd59078b9c
+            probe: windows_console
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 18
+    defaults:
+      run:
+        shell: bash
+    env:
+      TUI_BENCH_SCENE: ligatures
+    steps:
+      - name: Fetch the selected public revision
+        run: |
+          git init -q
+          git config core.autocrlf false
+          git fetch --quiet --depth=1 --no-tags "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" "$GITHUB_SHA"
+          git checkout --quiet --detach FETCH_HEAD
+          git rev-parse HEAD
+      - name: Install Dunder 0.11.2
+        env:
+          ASSET: ${{ matrix.compiler }}
+          DIGEST: ${{ matrix.digest }}
+        run: |
+          mkdir -p build
+          curl --fail --silent --show-error --location "https://github.com/Mik-pe/dunder/releases/download/v0.11.2/$ASSET" -o "build/$ASSET"
+          echo "$DIGEST  build/$ASSET" | sha256sum --check
+          if [[ "$ASSET" == *.exe ]]; then
+            mv "build/$ASSET" build/dunder.exe
+            echo 'EXT=.exe' >> "$GITHUB_ENV"
+            build/dunder.exe --version
+          else
+            gzip -dc "build/$ASSET" > build/dunder
+            chmod +x build/dunder
+            echo 'EXT=' >> "$GITHUB_ENV"
+            build/dunder --version
+          fi
+          uname -sm
+          rustc --version
+      - name: Build offline and exercise the OS terminal
+        env:
+          PROBE: ${{ matrix.probe }}
+        run: |
+          build/dunder$EXT test --locked --offline
+          build/dunder$EXT build --locked --offline "tests/$PROBE.ddr" -o "build/console$EXT"
+          build/console$EXT
+          echo "$PROBE passed on $RUNNER_OS $RUNNER_ARCH"
+      - name: Compare cursor lifetime, text cells and completed frames
+        run: |
+          manifest=benchmarks/reference/Cargo.toml
+          cargo fetch --locked --manifest-path "$manifest"
+          cargo build --release --locked --offline --manifest-path "$manifest" --features layout-cache --example cursor_lifetime --example text --example terminal_bench --target-dir build/rust
+          ref=build/rust/release/examples
+          build/dunder$EXT build --locked --offline tests/cursor_lifetime.ddr -o "build/lifetime$EXT"
+          build/lifetime$EXT >build/dunder-trace 2>build/dunder-errors
+          "$ref/cursor_lifetime$EXT" >build/reference-trace 2>build/reference-errors
+          diff --strip-trailing-cr build/reference-trace build/dunder-trace
+          diff --strip-trailing-cr build/reference-errors build/dunder-errors
+          build/dunder$EXT build --locked --offline tools/ligatures.ddr -o "build/cases$EXT"
+          build/cases$EXT >build/cases.txt
+          build/dunder$EXT build --locked --offline tests/text_reference.ddr -o "build/text$EXT"
+          build/text$EXT --ligatures build/cases.txt | "$ref/text$EXT" --ligatures build/cases.txt
+          build/dunder$EXT build --locked --offline benchmarks/terminal.ddr -o "build/benchmark$EXT"
+          build/benchmark$EXT --verify | "$ref/terminal_bench$EXT" --verify
+      - name: Measure the terminal workload
+        run: |
+          ref=build/rust/release/examples/terminal_bench$EXT
+          build/dunder$EXT build --locked --offline benchmarks/measure.ddr -o "build/measure$EXT"
+          driver=()
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            build/dunder build --locked --offline benchmarks/pty.ddr -o build/pty
+            driver=(build/pty)
+            lscpu | grep -E '^(Architecture|Model name|Hypervisor vendor):'
+          fi
+          build/measure$EXT "build/benchmark$EXT" "$ref" "${driver[@]}"
+          build/dunder$EXT build --locked --offline --runtime-profile benchmarks/terminal.ddr -o "build/profile$EXT"
+          build/profile$EXT --allocations
+          cargo build --release --locked --offline --manifest-path benchmarks/reference/Cargo.toml --features layout-cache,allocation-counts --example terminal_bench --target-dir build/rust
+          "$ref" --allocations

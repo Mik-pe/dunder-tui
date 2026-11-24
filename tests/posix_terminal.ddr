@@ -28,6 +28,24 @@ fn send(fd: i32, data: string) -> bool {
     false
 }
 
+struct CursorOutput { fd: i32 }
+impl tui.Backend for CursorOutput {
+    fn size(&mut self) -> (i32,i32) { (32,7) }
+    fn set_cursor_visible(&mut self, visible: bool) -> Result<(),string> {
+        if send(self.fd, if visible { "\x1b[?25h" } else { "\x1b[?25l" }) { .Ok } else { .Err("write") }
+    }
+    fn present(&mut self, frame: &tui.Frame, previous: &tui.Frame) -> Result<(),string> {
+        self.set_cursor_visible(frame.cursor_position().is_some())
+    }
+}
+
+fn use_cursor(master: i32, slave: i32) -> Result<(),string> {
+    mut t := tui.Terminal<CursorOutput>::new(CursorOutput { fd:slave })
+    t.apply_buffer()?
+    assert(output(master) == "\x1b[?25l")
+    .Err("leave")
+}
+
 fn draw(frame: &mut tui.Frame, state: &Probe) {
     (heading, body) := frame.area().rows(1)
     frame.text(heading, "Rubrik", tui.ink(.LightCyan).italic().underlined().underline_color(.Indexed(199)))
@@ -110,6 +128,7 @@ unsafe fn verify(quit: string, timed: bool) -> bool {
     mut size: [u16; 4] = [7, 32, 0, 0]
     if open_pty(addr(&mut master), addr(&mut slave), ptr(0), ptr(0), addr(&size[0])) != 0 { return false }
     defer { _ := sys.fd_close(master); _ := sys.fd_close(slave) }
+    if use_cursor(master,slave).is_ok() || output(master) != "\x1b[?25h" { return false }
     in_fd := duplicate(0)
     out_fd := duplicate(1)
     defer {

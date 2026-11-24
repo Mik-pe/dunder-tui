@@ -6,6 +6,7 @@ import .terminal
 import .input
 import .posix
 import .windows
+import sys
 import std.bytes as bytes
 import std.time as clock
 import std.cmp as cmp
@@ -1530,6 +1531,8 @@ fn valid_area(area: Rect) -> bool {
         i64(area.x)+i64(area.w) <= 65536 && i64(area.y)+i64(area.h) <= 65536 && area.cell_count() <= 1048576
 }
 
+const CURSOR_UNSUPPORTED: string = "Backend cannot change cursor visibility."
+
 pub trait Backend {
     fn size(&mut self) -> (i32,i32)
     fn window_size(&mut self) -> Result<WindowSize,string> {
@@ -1546,15 +1549,22 @@ pub trait Backend {
     }
     fn scrollback_needs_full_screen(&self) -> bool { false }
     fn read_cursor(&mut self) -> Result<(i32,i32),string> { .Err("Backend cannot read the cursor.") }
-    fn set_cursor_visible(&mut self, visible: bool) -> Result<(),string> { .Err("Backend cannot change cursor visibility.") }
+    fn set_cursor_visible(&mut self, visible: bool) -> Result<(),string> { .Err(CURSOR_UNSUPPORTED) }
+    fn restore_cursor(&mut self) -> Result<(),string> {
+        match self.set_cursor_visible(true) {
+            .Err(message) if message != CURSOR_UNSUPPORTED => .Err(message),
+            _ => .Ok,
+        }
+    }
     fn move_to(&mut self, x: i32, y: i32) -> Result<(),string> { .Err("Backend cannot move the cursor.") }
     fn extend_lines(&mut self, rows: i32) -> Result<(),string> { .Err("Backend cannot append lines.") }
     fn shift_rows(&mut self, top: i32, bottom: i32, delta: i32) -> Result<(),string> { .Err("Backend cannot scroll a region.") }
     fn write_region(&mut self, frame: &Frame) -> Result<(),string> { .Err("Backend cannot write a region.") }
 }
 
+@resource(dispose)
 pub opaque struct Terminal<B> where B: Backend {
-    device: B, viewport: Viewport, area: Rect, screen: Rect, last_y: i32, buffers: [Frame;2], front: i32, number: u64, invalid: bool, staged: bool,
+    device: B, viewport: Viewport, area: Rect, screen: Rect, last_y: i32, buffers: [Frame;2], front: i32, number: u64, invalid: bool, staged: bool, hidden_cursor: bool,
 }
 
 enum Renderer<S> {
@@ -1565,7 +1575,16 @@ impl Terminal<B> {
     fn empty(move device: B) -> Self {
         empty := Rect { x:0,y:0,w:0,h:0 }
         pending := Rect { x:-1,y:0,w:0,h:0 }
-        Self { device: move device, viewport:.Fullscreen, area:empty, screen:pending, last_y:0, buffers: [Frame::new(0,0),Frame::new(0,0)], front: 0, number: 0, invalid: true, staged:false }
+        Self { device: move device, viewport:.Fullscreen, area:empty, screen:pending, last_y:0, buffers: [Frame::new(0,0),Frame::new(0,0)], front: 0, number: 0, invalid: true, staged:false, hidden_cursor:false }
+    }
+
+    fn dispose(&mut self) {
+        if self.hidden_cursor {
+            match self.device.restore_cursor() {
+                .Ok => {},
+                .Err(message) => { _ := sys.eprint("Failed to show the cursor: " + message) },
+            }
+        }
     }
 
     pub fn new(move device: B) -> Self {
@@ -1632,12 +1651,16 @@ impl Terminal<B> {
 
     pub fn show_cursor(&mut self) -> Result<(),string> {
         self.buffers[self.front].cursor_changed = true
-        self.device.set_cursor_visible(true)
+        self.device.set_cursor_visible(true)?
+        self.hidden_cursor = false
+        .Ok
     }
 
     pub fn hide_cursor(&mut self) -> Result<(),string> {
         self.buffers[self.front].cursor_changed = true
-        self.device.set_cursor_visible(false)
+        self.device.set_cursor_visible(false)?
+        self.hidden_cursor = true
+        .Ok
     }
 
     pub fn size(&mut self) -> (i32,i32) { self.device.size() }
@@ -1866,6 +1889,7 @@ impl Terminal<B> {
             self.device.present(&self.buffers[back],&unknown)
         } else { self.device.present(&self.buffers[back],&self.buffers[self.front]) }
         if result.is_err() { self.invalid = true; return result }
+        self.hidden_cursor = self.buffers[back].cursor_x < 0
         self.track_inline(true)
         self.staged = false
         flushed := self.device.flush()
@@ -1983,6 +2007,7 @@ pub fn open(viewport: Viewport) -> Result<Terminal<LiveBackend>,string> {
 }
 
 impl Backend for LiveBackend {
+    fn restore_cursor(&mut self) -> Result<(),string> { self.close(); .Ok }
     fn clear_screen(&mut self, area: Rect) -> Result<(),string> {
         if target_is("windows") {
             if !self.session.win.vt { blank := Frame::at(area); return self.write_region(&blank) }

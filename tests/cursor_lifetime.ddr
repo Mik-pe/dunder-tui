@@ -1,0 +1,72 @@
+capability stdio
+import ..src.tui
+
+@resource(dispose)
+struct Probe { trace: string, fail_visibility: bool, fail_flush: bool }
+
+impl Probe {
+    fn dispose(&self) { print("[" + self.trace + "]") }
+}
+
+impl tui.Backend for Probe {
+    fn size(&mut self) -> (i32,i32) { (3,2) }
+    fn set_cursor_visible(&mut self, visible: bool) -> Result<(),string> {
+        if self.fail_visibility {
+            self.fail_visibility = false
+            self.trace = self.trace + if visible { "S" } else { "H" }
+            return .Err("visibility")
+        }
+        self.trace = self.trace + if visible { "s" } else { "h" }
+        .Ok
+    }
+    fn present(&mut self, frame: &tui.Frame, previous: &tui.Frame) -> Result<(),string> {
+        self.set_cursor_visible(frame.cursor_position().is_some())
+    }
+    fn draw_cells(&mut self, frame: &tui.Frame, previous: &tui.Frame) -> Result<(),string> { .Ok }
+    fn flush(&mut self) -> Result<(),string> { if self.fail_flush { .Err("flush") } else { .Ok } }
+}
+
+fn reject(frame: &mut tui.Frame, state: &mut i32) -> Result<(),string> { .Err("render") }
+fn take(move t: tui.Terminal<Probe>) -> Result<(),string> { .Err("return early") }
+
+fn fresh() -> tui.Terminal<Probe> {
+    tui.Terminal<Probe>::new(Probe { trace:"", fail_visibility:false, fail_flush:false })
+}
+
+fn exercise(n: i32) {
+    mut t := fresh()
+    mut state := 0
+    match n {
+        0 => {},
+        1 => { assert(t.hide_cursor().is_ok()) },
+        2 => { assert(t.hide_cursor().is_ok() && t.show_cursor().is_ok()) },
+        3 => { assert(t.show_cursor().is_ok() && t.hide_cursor().is_ok()) },
+        4 => { assert(t.backend_mut().set_cursor_visible(false).is_ok()) },
+        5 => { assert(t.apply_buffer().is_ok()) },
+        6 => { assert(t.apply_buffer_with_cursor(.Some((0,0))).is_ok()) },
+        7 => { assert(t.apply_buffer().is_ok() && t.try_draw(&mut state,reject).is_err()) },
+        8 => { assert(t.apply_buffer().is_ok() && t.apply_buffer_with_cursor(.Some((1,1))).is_ok()) },
+        9 => { t.backend_mut().fail_visibility = true; assert(t.hide_cursor().is_err()) },
+        10 => { assert(t.hide_cursor().is_ok()); t.backend_mut().fail_visibility = true; assert(t.show_cursor().is_err()) },
+        11 => { assert(t.show_cursor().is_ok()); t.backend_mut().fail_visibility = true; assert(t.apply_buffer().is_err()) },
+        12 => { t.backend_mut().fail_flush = true; assert(t.apply_buffer().is_err()) },
+        13 => { assert(t.hide_cursor().is_ok()); t.backend_mut().fail_flush = true; assert(t.apply_buffer_with_cursor(.Some((0,0))).is_err()) },
+        14 => { t.get_frame().hide_cursor(); assert(t.flush().is_ok()); t.swap_buffers() },
+        15 => { assert(t.hide_cursor().is_ok()); assert(take(move t).is_err()) },
+        16 => { assert(t.hide_cursor().is_ok()); t.backend_mut().fail_visibility = true },
+        17 => { assert(t.hide_cursor().is_ok()); t = fresh(); assert(t.show_cursor().is_ok()) },
+        18 => {
+            assert(t.hide_cursor().is_ok())
+            mut terminals: []tui.Terminal<Probe> = []
+            terminals.push(move t)
+            assert(take(terminals.pop()).is_err())
+        },
+        19 => { assert(t.hide_cursor().is_ok() && t.backend_mut().set_cursor_visible(true).is_ok()) },
+        20 => { assert(t.apply_buffer().is_ok()); t.get_frame().set_cursor_position(2,1); assert(t.flush().is_ok()); t.swap_buffers() },
+        _ => { assert(false) },
+    }
+}
+
+fn main() {
+    for n in 0..21 { exercise(n) }
+}

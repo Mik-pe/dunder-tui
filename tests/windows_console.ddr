@@ -165,6 +165,29 @@ unsafe fn position(handle: ptr, coord: u32) -> i32
 @extern("kernel32.dll","SetConsoleCursorInfo")
 unsafe fn set_cursor_info(handle: ptr, info: ptr) -> i32
 
+struct CursorOutput { handle: ptr }
+impl tui.Backend for CursorOutput {
+    fn size(&mut self) -> (i32,i32) { (3,2) }
+    fn set_cursor_visible(&mut self, visible: bool) -> Result<(),string> {
+        unsafe {
+            mut shape: [u32;2] = [0;2]
+            if cursor_info(self.handle,addr(&mut shape[0])) == 0 { return .Err("read cursor") }
+            shape[1] = if visible { 1 } else { 0 }
+            if set_cursor_info(self.handle,addr(&shape[0])) == 0 { return .Err("write cursor") }
+        }
+        .Ok
+    }
+    fn present(&mut self, frame: &tui.Frame, previous: &tui.Frame) -> Result<(),string> {
+        self.set_cursor_visible(frame.cursor_position().is_some())
+    }
+}
+
+unsafe fn hide_until_return(out: ptr) -> bool {
+    mut t := tui.Terminal<CursorOutput>::new(CursorOutput { handle:out })
+    mut shape: [u32;2] = [0;2]
+    t.apply_buffer().is_ok() && cursor_info(out,addr(&mut shape[0])) != 0 && shape[1] == 0
+}
+
 fn embedded_frame(frame: &mut tui.Frame, state: &mut i32) {
     frame.label(frame.area(),"VIEW")
     frame.set_cursor_position(frame.area().x+1,frame.area().y)
@@ -310,6 +333,9 @@ fn verify() -> i32 {
         mut after: [u32;2] = [0;2]; mut restored_info: [i16;11] = [0;11]
         if cursor_info(active,addr(&mut after[0])) == 0 || info(active,addr(&mut restored_info[0])) == 0 { return 47 }
         if saved[0] != after[0] || saved[1] != after[1] || original[2] != restored_info[2] || original[3] != restored_info[3] { return 48 }
+        if !hide_until_return(active) || cursor_info(active,addr(&mut after[0])) == 0 ||
+            after[0] != saved[0] || after[1] == 0 { return 116 }
+        if set_cursor_info(active,addr(&saved[0])) == 0 { return 117 }
         probe_code := embedded(active)
         if probe_code != 0 { return probe_code }
         if mode(stdin,addr(&mut new_in)) == 0 || mode(stdout,addr(&mut new_out)) == 0 || old_in != new_in || old_out != new_out { return 56 }
