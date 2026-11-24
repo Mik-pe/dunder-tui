@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Buffertar och terminaler i 0.24.0
+
+Mätningar på fyra plattformar täcker enkel och stiliserad text vid storleksändring samt fem arbetslaster i körlistan. Den stora bufferten växlar mellan två rektanglar med 1 048 576 celler. [Bildtid, minne, terminalutdata och körinstruktioner](buffer-resize.md)
+
 ## Körlista i 0.23
 
 Körlistan flyttar stiliserade rader och byter hela det visade programmet. Efter kontroll av 1 100 terminalbilder mäts median, p95, allokeringar, minne och utdata på fyra målplattformar. [0.23.1 och rådata](collections.md#körlistan-i-0231) · [Körinstruktioner](collections.md#kör-provet)
