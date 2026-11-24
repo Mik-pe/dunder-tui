@@ -97,7 +97,40 @@ fn patterns() {
     } }
 }
 
+fn path_points(seed:i32) -> [](f64,f64) {
+    if seed == 0 { return [] }
+    if seed == 1 { return [(1.0,0.0)] }
+    mut coordinates: [](f64,f64) = [(-11.0,-7.0),(9.0,6.0),(0.0,2.0),(0.0,2.0)]
+    for i in 0..17 { coordinates.push((f64((seed*7+i*11)%23-11),f64((seed+3*i*i)%17-8))) }
+    move coordinates
+}
+
+fn paths() {
+    for seed in 0..11 {
+        coords := path_points(seed)
+        for dims in [(0,0),(1,1),(2,5),(9,1),(13,8)] {
+            area := tui.Rect{x:1,y:1,w:dims.0,h:dims.1}
+            for k in 0..9 { for mode in 0..5 {
+                mut view := plot.Plot::new([-4.0,4.0],[-3.0,3.0])
+                mut frame := cells.seeded(dims.0,dims.1)
+                view.marker = marker(k)
+                p := view.begin(&mut frame,area)
+                if mode == 0 { p.polyline(&coords,.Cyan) } else {
+                    baseline := match mode { 1 => -9.0, 2 => -1.5, 3 => 2.0, _ => 9.0, }
+                    p.filled_polyline(&coords,baseline,.Cyan)
+                }
+                if seed%2 == 1 { p.finish(&mut frame) } else { p.layer() }
+                p.set_marker(.HalfBlock)
+                p.point(1.0,0.0,.Red)
+                view.finish(&mut frame)
+                cells.snapshot(&frame)
+            } }
+        }
+    }
+}
+
 fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--paths" { paths(); return }
     if sys.arg_count() == 2 && sys.arg(1) == "--coordinates" {
         for resolution in [plot.MapResolution.Low,plot.MapResolution.High] {
             for i in 0..resolution.len() {

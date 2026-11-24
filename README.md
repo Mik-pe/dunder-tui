@@ -84,7 +84,7 @@ Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.17.0", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.18.0", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.
@@ -260,6 +260,8 @@ p.set_marker(.HalfBlock)
 p.circle(0.0,0.0,3.0,.Yellow)
 view.finish(&mut frame)
 ```
+
+För en kurva kan du skicka hela följden av koordinatpar till `p.polyline(&points,.Cyan)`. Använd `p.filled_polyline(&points,0.0,.Blue)` för att fylla ned till y = 0. En ensam punkt syns också. Om du vill lägga en widget mellan två grupper av former kan du skriva den första gruppen med `p.finish(&mut frame)`, rita widgeten och sedan fortsätta med samma koordinatsystem.
 
 Med `tui.chart` delar flera dataserier samma axlar. Varje serie kan ritas som punkter, linje, staplar eller fylld yta. För en interaktiv app kan du spara diagrammet i tillståndet och ändra `graph.datasets[0].data` eller axelgränserna före nästa ritning.
 

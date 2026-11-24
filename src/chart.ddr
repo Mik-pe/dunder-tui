@@ -32,17 +32,14 @@ impl Dataset {
     fn draw(&self, p: &mut plot.Painter) {
         color := self.style.get_foreground().unwrap_or(tui.Color.Default)
         p.set_marker(self.marker)
-        p.points(&self.data,color)
         match self.graph_type {
-            .Scatter => {},
-            .Bar => { for v in &self.data { p.line(v.0,0.0,v.0,v.1,color) } },
-            .Line | .Area => {
-                for i in 1..self.data.len {
-                    a := self.data[i-1]; b := self.data[i]
-                    if self.graph_type == .Area { p.filled_line(a.0,a.1,b.0,b.1,self.fill_to_y,color) }
-                    else { p.line(a.0,a.1,b.0,b.1,color) }
-                }
+            .Scatter => { p.points(&self.data,color) },
+            .Bar => {
+                p.points(&self.data,color)
+                for v in &self.data { p.line(v.0,0.0,v.0,v.1,color) }
             },
+            .Line => { p.polyline(&self.data,color) },
+            .Area => { p.filled_polyline(&self.data,self.fill_to_y,color) },
         }
     }
 }
@@ -172,8 +169,10 @@ impl Chart {
         self.surface.y_bounds = self.y_axis.bounds.clone()
         self.surface.background = self.style.get_background().unwrap_or(tui.Color.Default)
         p := self.surface.begin(&mut frame,g)
-        for dataset in &self.datasets { dataset.draw(&mut p) }
-        self.surface.finish(&mut frame)
+        for dataset in &self.datasets {
+            dataset.draw(&mut p)
+            p.finish(&mut frame)
+        }
         mut xt := 0
         mut yt := 0
         if g.h > 2 {

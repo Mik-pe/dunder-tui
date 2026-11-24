@@ -99,3 +99,39 @@ Dunder skrev 4 838 820 byte till pseudoterminalen och Ratatui skrev 8 096 420. D
 | macOS ARM64 | 559 462 | 25 822 | 10 334 579 | 129 152 500 | 2 064 | 2 960 |
 | Linux ARM64 | 559 462 | 25 819 | 10 334 579 | 129 153 109 | 428 | 2 024 |
 | Linux x86-64, översatt | 559 462 | 25 817 | 10 334 579 | 129 152 800 | 6 192 | 5 664 |
+
+## Ommätning i 0.18.0
+
+Testet ritar samma 1 100 bilder efter ändringarna i linje- och ytdiagrammen. Tabellen visar median och p95 i mikrosekunder per bild i en pseudoterminal. I resultatfilen finns alla fem arbetslaster i minne och terminal, inklusive spridningen mellan körningarna. [Samtliga 60 mätserier](results/terminal-0.18.0.tsv)
+
+| Plattform | Oförändrad, Dunder | Oförändrad, Ratatui | Rullning, Dunder | Rullning, Ratatui | Full omritning, Dunder | Full omritning, Ratatui |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| macOS ARM64 | 72 / 76 | 93 / 100 | 134 / 144 | 169 / 185 | 139 / 149 | 189 / 206 |
+| Linux ARM64 | 71 / 77 | 98 / 104 | 110 / 122 | 132 / 143 | 109 / 117 | 142 / 152 |
+| Linux x86-64, översatt | 628 / 660 | 178 / 191 | 961 / 1005 | 230 / 245 | 1040 / 1080 | 255 / 270 |
+
+Dunder skrev 4 838 820 byte till pseudoterminalen och Ratatui skrev 8 096 420. Den tidigare Dunder-versionen skrev exakt samma antal byte i alla fem arbetslaster. Allokeringsanropen inkluderar återanvändning av poolminne. RSS är medianen av tre körningars högsta residenta minne.
+
+| Plattform | Anrop Dunder | Anrop Ratatui | Begärda byte Dunder | Begärda byte Ratatui | RSS Dunder, KiB | RSS Ratatui, KiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| macOS ARM64 | 141 426 | 25 823 | 3 581 171 | 129 153 308 | 2 016 | 2 976 |
+| Linux ARM64 | 141 426 | 25 818 | 3 581 171 | 129 152 301 | 336 | 2 024 |
+| Linux x86-64, översatt | 141 426 | 25 817 | 3 581 171 | 129 152 800 | 6 064 | 5 660 |
+
+### Före och efter på samma värd
+
+Dunder 0.17.0 och 0.18.0 byggdes med samma Dunder 0.11.2. Programmen kördes växelvis i en egen serie på varje värd, med två uppvärmningskörningar följda av sju uppmätta körningar per program. Tabellen visar median / p95 i µs per bild i en pseudoterminal. Resultatfilen innehåller också minsta och största uppmätta median och p95. [Alla 60 mätserier för versionsjämförelsen](results/terminal-before-after-0.18.0.tsv)
+
+| Plattform | Oförändrad 0.17 | Oförändrad 0.18 | Rullning 0.17 | Rullning 0.18 | Full omritning 0.17 | Full omritning 0.18 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| macOS ARM64 | 99 / 108 | 70 / 77 | 164 / 175 | 133 / 147 | 171 / 184 | 137 / 149 |
+| Linux ARM64 | 101 / 108 | 71 / 77 | 142 / 150 | 110 / 118 | 143 / 152 | 107 / 113 |
+| Linux x86-64, översatt | 924 / 982 | 621 / 651 | 1235 / 1342 | 947 / 1001 | 1287 / 1342 | 1022 / 1088 |
+
+För att upprepa versionsjämförelsen, bygg `benchmarks/terminal.ddr` från vardera taggen med samma kompilator. Ge båda binärerna och PTY-drivrutinen från körkommandona ovan till mätprogrammet.
+
+```sh
+TUI_BENCH_DIFF_OPTIONS=1 build/measure build/terminal-0.17.0 build/terminal-0.18.0 build/pty --labels v0.17.0 v0.18.0
+```
+
+På Apple M5 med macOS 27.2.1 och i Linux ARM64 på samma värd hade Dunder lägre median och p95 än Ratatui för samtliga fem arbetslaster i pseudoterminalen. Även den högsta uppmätta medianen respektive p95 för Dunder låg under motsvarande lägsta värde för Ratatui i dessa körningar. På översatt Linux x86-64 var Ratatui snabbare i samtliga fall. Fysisk Linux x86-64 och nativ Windows x64 återstår.

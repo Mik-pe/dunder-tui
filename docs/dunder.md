@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Läs koordinatpar genom lån
+
+I Dunder 0.11.2 ger `a := points[i]` en ägd kopia av koordinatparet, medan `a := &points[i]` lånar elementet. Det fristående provet summerar två angränsande punkter i taget. Med 1 100 genomgångar av 96 punkter gav kopievarianten 209 000 tupelkopior och lånevarianten noll. Båda gav summan 836 000. Två diagramserier gjorde samma läsning i TUI-mätningen. Enbart ändringen till lån tog bort 418 000 allokeringsanrop från den körningen. [Mätprogram](../benchmarks/language/borrowed_points.ddr) · [Förslag till Dunders kompilator](https://github.com/Mik-pe/dunder/blob/1d4d815f1e7cd60ca7e68f2eed97f44eeb0bc24e/docs/next-steps.md#undvik-kopior-vid-läsning-av-koordinatpar)
+
 ## Skicka vidare ett lyckat Result
 
 När terminalen började tömma backendens utmatning efter varje bild ökade antalet allokeringsanrop. Genom att skicka tillbaka dess lyckade resultat med `move` kunde terminalen undvika 1 100 nykonstruerade resultat i mätningen med 1 100 bilder. I det isolerade provet anropar två program samma operation och kontrollerar samma felmeddelande. Den variant som bygger en ny `.Ok` gör ett extra poolåterbruk per lyckat anrop på Dunder 0.11.2. [Resultatprov](../benchmarks/language/unit_result.ddr) · [Förslag för kompilatorn](https://github.com/Mik-pe/dunder/blob/99e96aba89d6913e0b7c0411deeff435204fa16e/docs/next-steps.md#återanvänd-lyckade-resultat-vid-vidarebefordran)

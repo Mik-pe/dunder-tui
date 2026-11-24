@@ -1074,3 +1074,49 @@ impl tui.Backend for BufferedOutput {
     assert(t.flush().is_err())
     assert(t.apply_buffer().is_ok() && t.completed().line(0) == "test        ")
 }
+
+@test fn paths_preserve_isolated_vertices_nonfinite_gaps_and_wide_marker_order() {
+    nan := f64.from_bits(0x7ff8000000000000)
+    inf := f64.from_bits(0x7ff0000000000000)
+    points: [](f64,f64) = [(0.0,0.0),(nan,1.0),(3.0,0.0),(inf,-3.0),(-7.0,4.0),(5.0,-2.0),
+        (1.0,1.0),(1.0,1.0),(0.0,1.0),(-1.0,1.0)]
+    for mode in 0..3 {
+        mut expected := tui.Frame::new(11,7)
+        mut got := tui.Frame::new(11,7)
+        area := tui.Rect{x:1,y:1,w:8,h:5}
+        for run in 0..2 {
+            mut view := plot.Plot::new([-4.0,4.0],[-3.0,3.0])
+            view.marker = .Custom(`界`)
+            mut frame := tui.Frame::new(11,7)
+            frame.fill(frame.area(),`.`,tui.ink(.Green).background(.Blue).italic())
+            p := view.begin(&mut frame,area)
+            baseline := if mode == 1 { 7.0 } else { nan }
+            if run == 0 {
+                p.points(&points,.Yellow)
+                for i in 1..points.len {
+                    a := &points[i-1]; b := &points[i]
+                    if mode == 0 { p.line(a.0,a.1,b.0,b.1,.Yellow) }
+                    else { p.filled_line(a.0,a.1,b.0,b.1,baseline,.Yellow) }
+                }
+                p.layer()
+            } else {
+                if mode == 0 { p.polyline(&points,.Yellow) }
+                else { p.filled_polyline(&points,baseline,.Yellow) }
+                p.finish(&mut frame)
+            }
+            p.set_marker(.HalfBlock)
+            p.point(2.0,0.0,.Red)
+            view.finish(&mut frame)
+            if run == 0 { expected = move frame } else { got = move frame }
+        }
+        for y in 0..7 {
+            assert(got.line(y) == expected.line(y))
+            for x in 0..11 {
+                actual := got.style_at(x,y).unwrap()
+                want := expected.style_at(x,y).unwrap()
+                assert(actual.get_foreground() == want.get_foreground() && actual.get_background() == want.get_background())
+                assert(actual.has(.Italic) == want.has(.Italic))
+            }
+        }
+    }
+}

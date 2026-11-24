@@ -896,9 +896,13 @@ impl Frame {
     }
 
     fn append_cell(&self, out: &mut []u8, i: i32, terminal_output: bool) {
-        if self.glyphs[i] < 0 { if terminal_output { out.push(32) }; return }
-        if self.glyphs[i] == WRITTEN_SPACE { out.push(32); return }
-        cp := self.glyphs[i].bit_and(WIDE - 1) + 32
+        self.append_glyph(&mut out,i,self.glyphs[i],terminal_output)
+    }
+
+    fn append_glyph(&self, out: &mut []u8, i: i32, glyph: i32, terminal_output: bool) {
+        if glyph < 0 { if terminal_output { out.push(32) }; return }
+        if glyph == WRITTEN_SPACE { out.push(32); return }
+        cp := glyph.bit_and(WIDE - 1) + 32
         if cp == CLUSTER || cp == ZERO_CLUSTER {
             if terminal_output && cp == ZERO_CLUSTER { out.push(b' ') }
             bytes.append_utf8(&mut out, self.clusters[i])
@@ -1249,13 +1253,15 @@ impl Frame {
             paint.cursor(&mut out,self.bounds.x+scan.start%self.bounds.w,self.bounds.y+scan.start/self.bounds.w)
             mut i := scan.start
             while i < scan.end {
-                style := if self.glyphs[i] < 0 { i64(0) } else { self.styles[i] }
+                glyph := self.glyphs[i]
+                style := if glyph < 0 { i64(0) } else { self.styles[i] }
                 if current != style {
                     paint.transition(&mut out,self.decoration(current),self.decoration(style))
                     current = style
                 }
-                self.append_cell(&mut out,i,true)
-                i += self.advance(i)
+                if glyph >= 0 && glyph < 96 { out.push(u8(glyph+32)) }
+                else { self.append_glyph(&mut out,i,glyph,true) }
+                i += if glyph < WIDE { 1 } else { self.advance(i) }
             }
         }
         if current != 0 { bytes.append_utf8(&mut out, "\x1b[0m") }

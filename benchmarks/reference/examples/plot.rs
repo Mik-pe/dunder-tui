@@ -197,8 +197,77 @@ fn paint(ctx: &mut Context, scene: usize, xs: [f64; 2], ys: [f64; 2], area: Rect
     }
 }
 
+fn path_points(seed: i32) -> Vec<(f64, f64)> {
+    if seed == 0 {
+        return Vec::new();
+    }
+    if seed == 1 {
+        return vec![(1., 0.)];
+    }
+    let mut points = vec![(-11., -7.), (9., 6.), (0., 2.), (0., 2.)];
+    points.extend((0..17).map(|i| {
+        (
+            f64::from((seed * 7 + i * 11) % 23 - 11),
+            f64::from((seed + 3 * i * i) % 17 - 8),
+        )
+    }));
+    points
+}
+
+fn paths(mut input: impl Iterator<Item = String>) {
+    let mut checked = 0;
+    for seed in 0..11 {
+        let coords = path_points(seed);
+        for (w, h) in [(0, 0), (1, 1), (2, 5), (9, 1), (13, 8)] {
+            let area = Rect::new(1, 1, w, h);
+            for k in 0..9 {
+                for baseline in [None, Some(-9.), Some(-1.5), Some(2.), Some(9.)] {
+                    let mut buf = widget_cells::seeded(area);
+                    Canvas::default()
+                        .x_bounds([-4., 4.])
+                        .y_bounds([-3., 3.])
+                        .marker(marker(k))
+                        .paint(|ctx| {
+                            ctx.draw(&Points {
+                                coords: &coords,
+                                color: Cyan,
+                            });
+                            for pair in coords.windows(2) {
+                                let (a, b) = (pair[0], pair[1]);
+                                if let Some(y) = baseline {
+                                    ctx.draw(&FilledLine::new(a.0, a.1, b.0, b.1, y, Cyan));
+                                } else {
+                                    ctx.draw(&Line::new(a.0, a.1, b.0, b.1, Cyan));
+                                }
+                            }
+                            ctx.layer();
+                            ctx.marker(Marker::HalfBlock);
+                            ctx.draw(&Points {
+                                coords: &[(1., 0.)],
+                                color: Red,
+                            });
+                        })
+                        .render(area, &mut buf);
+                    assert_eq!(
+                        input.next().unwrap(),
+                        widget_cells::snapshot(&buf),
+                        "seed={seed} size={w}x{h} marker={k} baseline={baseline:?}"
+                    );
+                    checked += 1;
+                }
+            }
+        }
+    }
+    assert!(input.next().is_none());
+    println!("{checked} polyline frames matched Ratatui");
+}
+
 fn main() {
     let mut input = io::stdin().lock().lines().map(Result::unwrap);
+    if std::env::args().any(|a| a == "--paths") {
+        paths(input);
+        return;
+    }
     if std::env::args().any(|a| a == "--coordinates") {
         let path = std::env::args()
             .nth(2)

@@ -149,16 +149,23 @@ impl Painter {
     }
 
     fn fill_column(&mut self, x: i32, top: i32, bottom: i32, ink: i32) {
-        column := x/self.dx
-        stripe := if self.dx == 1 { 3 } else { 0x55.shl(x%2) }
-        mut y := top
-        while y <= bottom {
-            first := y%self.dy
-            rows := cmp.min<i32>(self.dy-first,bottom-y+1)
-            cut := (1.shl(rows*self.dx)-1).shl(first*self.dx)
-            self.mark(y/self.dy*self.area.w+column,u8(stripe.bit_and(cut)),ink)
-            y += rows
+        width := self.dx
+        height := self.dy
+        first := top/height
+        last := bottom/height
+        stride := self.area.w
+        mut cell := first*stride+x/width
+        stripe := if width == 1 { 3 } else { 0x55.shl(x%2) }
+        all := stripe.bit_and((1.shl(width*height))-1)
+        head := all.bit_and((-1).shl((top%height)*width))
+        tail := all.bit_and(1.shl((bottom%height+1)*width)-1)
+        if first == last { self.mark(cell,u8(head.bit_and(tail)),ink); return }
+        self.mark(cell,u8(head),ink)
+        for _ in (first+1)..last {
+            cell += stride
+            self.mark(cell,u8(all),ink)
         }
+        self.mark(cell+stride,u8(tail),ink)
     }
 
     pub fn point(&mut self, x: f64, y: f64, color: tui.Color) {
@@ -176,6 +183,37 @@ impl Painter {
     pub fn points(&mut self, coordinates: &[](f64,f64), color: tui.Color) {
         ink := self.ink(color)
         for p in coordinates { self.place(p.0,p.1,ink) }
+    }
+
+    pub fn polyline(&mut self, coordinates: &[](f64,f64), color: tui.Color) {
+        self.path(&coordinates,-1,color)
+    }
+
+    pub fn filled_polyline(&mut self, coordinates: &[](f64,f64), baseline: f64, color: tui.Color) {
+        base := self.project(self.xs[0],math.clamp(baseline,self.ys[0],self.ys[1]))
+        if base < 0 { self.points(&coordinates,color); return }
+        self.path(&coordinates,base/(self.area.w*self.dx),color)
+    }
+
+    fn path(&mut self, coordinates: &[](f64,f64), baseline: i32, color: tui.Color) {
+        if coordinates.len == 0 || self.area.is_empty() { return }
+        ink := self.ink(color)
+        stride := self.area.w*self.dx
+        mut previous := -1
+        for i in 0..coordinates.len {
+            point := &coordinates[i]
+            pixel := self.project(point.0,point.1)
+            if previous >= 0 && pixel >= 0 {
+                self.stroke(previous,pixel,baseline,ink)
+            } else {
+                if pixel >= 0 { self.dot(pixel%stride,pixel/stride,ink) }
+                if i > 0 {
+                    start := &coordinates[i-1]
+                    self.segment(start.0,start.1,point.0,point.1,baseline,color)
+                }
+            }
+            previous = pixel
+        }
     }
 
     pub fn line(&mut self, x1: f64, y1: f64, x2: f64, y2: f64, color: tui.Color) {
@@ -278,27 +316,24 @@ impl Painter {
         self.labels.push(Label { x:x, y:y, line:move line })
     }
 
-    fn save(&mut self, i: i32) {
+    fn symbol(&self, i: i32, fg: &mut i32, bg: &mut i32) -> rune {
         bits := i32(self.mask[i])
-        upper := self.upper[i]
-        self.drawn.push(i)
-        mut fg := upper
-        mut bg := -1
-        symbol := match self.marker {
+        fg = self.upper[i]
+        bg = -1
+        match self.marker {
             .Dot => `•`, .Bar => `▄`, .Custom(c) => c,
-            .Block => { bg = upper; `█` },
+            .Block => { bg = fg; `█` },
             .HalfBlock => {
                 if bits == 2 { fg = self.lower[i]; `▄` }
                 else if bits == 1 { `▀` }
                 else {
                     bg = self.lower[i]
-                    if upper == self.lower[i] || self.palette[upper] == self.palette[self.lower[i]] { `█` } else { `▀` }
+                    if fg == bg || self.palette[fg] == self.palette[bg] { `█` } else { `▀` }
                 }
             },
             .Braille => symbols.braille(bits), .Quadrant => symbols.quadrant(bits),
             .Sextant => symbols.sextant(bits), .Octant => symbols.octant(bits),
         }
-        self.symbols.push(symbol); self.foreground.push(fg); self.background.push(bg)
     }
 
     fn clear_drawing(&mut self) {
@@ -311,26 +346,41 @@ impl Painter {
         self.touched.clear()
     }
 
-    pub fn layer(&mut self) {
+    fn order_layer(&mut self) {
         match self.marker { .Custom(c) if width.columns(i32(c)) > 1 => { array.sort<i32>(&mut self.touched) }, _ => {}, }
-        for j in 0..self.touched.len { self.save(self.touched[j]) }
+    }
+
+    pub fn layer(&mut self) {
+        self.order_layer()
+        for j in 0..self.touched.len {
+            i := self.touched[j]
+            mut fg := 0; mut bg := -1
+            symbol := self.symbol(i,&mut fg,&mut bg)
+            self.drawn.push(i); self.symbols.push(symbol); self.foreground.push(fg); self.background.push(bg)
+        }
         self.clear_layer()
     }
 
-    fn finish(&mut self, frame: &mut tui.Frame) {
-        self.layer()
+    fn write_cell(&self, frame: &mut tui.Frame, i: i32, symbol:rune, fg:i32, bg:i32, right:i32) {
+        x := self.area.x+i%self.area.w
+        y := self.area.y+i/self.area.w
+        if bg < 0 { frame.styled_rune(x,y,right,symbol,&self.inks[fg]) }
+        else {
+            both := self.inks[fg].background(self.palette[bg])
+            frame.styled_rune(x,y,right,symbol,&both)
+        }
+    }
+
+    pub fn finish(&mut self, frame: &mut tui.Frame) {
         right := self.area.right()
         for j in 0..self.drawn.len {
-            i := self.drawn[j]
-            x := self.area.x+i%self.area.w
-            y := self.area.y+i/self.area.w
-            bg := self.background[j]
-            fg := self.foreground[j]
-            if bg < 0 { frame.styled_rune(x,y,right,self.symbols[j],&self.inks[fg]) }
-            else {
-                both := self.inks[fg].background(self.palette[bg])
-                frame.styled_rune(x,y,right,self.symbols[j],&both)
-            }
+            self.write_cell(&mut frame,self.drawn[j],self.symbols[j],self.foreground[j],self.background[j],right)
+        }
+        self.order_layer()
+        for i in &self.touched {
+            mut fg := 0; mut bg := -1
+            symbol := self.symbol(i,&mut fg,&mut bg)
+            self.write_cell(&mut frame,i,symbol,fg,bg,right)
         }
         if !self.area.is_empty() {
             for label in &self.labels {

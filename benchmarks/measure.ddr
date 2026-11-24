@@ -32,13 +32,16 @@ fn record(rows: &mut []Samples, cases: &mut []string, output: string, keep: bool
 }
 
 fn main() -> i32 {
-    if sys.arg_count() < 3 || sys.arg_count() > 4 {
-        _ := sys.eprint("Usage: measure DUNDER_BENCH RATATUI_BENCH [PTY_DRIVER]")
+    args := sys.arg_count()
+    labeled := args >= 6 && sys.arg(args-3) == "--labels"
+    positional := if labeled { args-3 } else { args }
+    if positional != 3 && positional != 4 {
+        _ := sys.eprint("Usage: measure FIRST SECOND [PTY_DRIVER] [--labels FIRST_NAME SECOND_NAME]")
         return 1
     }
     programs := [sys.arg(1), sys.arg(2)]
-    names := ["dunder", "ratatui"]
-    modes := if sys.arg_count() == 4 { 2 } else { 1 }
+    names := if labeled { [sys.arg(args-2),sys.arg(args-1)] } else { ["dunder","ratatui"] }
+    modes := if positional == 4 { 2 } else { 1 }
     mut cases: []string = []
     for mode in 0..modes {
         label := if mode == 0 { "memory" } else { "pty" }

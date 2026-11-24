@@ -284,3 +284,16 @@ build/rust/release/examples/terminal --final-flush-error
 ```
 
 Median, p95, allokeringar, minne och antal terminalbyte för 1 100 bilder finns redovisade per plattform och arbetslast. [Mätning i 0.17.0](../benchmarks/buffers.md#ommätning-i-0170)
+
+## Sammanhängande kurvor och fyllda ytor i 0.18.0
+
+I 2 475 jämförelser ritar Dunder samma kurva med ett anrop som Ratatui ritar med `Points` följt av en `Line` eller `FilledLine` per segment. Provet kombinerar nio markörer, fem ytstorlekar och fyra baslinjer med tomma kurvor, enstaka och upprepade punkter, riktningsbyten och linjer som korsar diagrammet med båda ändarna utanför. Det jämför symboler, färger, attribut och kantceller efter att ytterligare en färg lagts ovanpå. Ett separat prov kontrollerar breda egna markörer och uppehåll i kurvan vid icke-ändliga koordinater.
+
+För en sammanhängande serie återanvänder ritaren föregående skärmpunkt. Fyllda segment räknar ut första och sista cellens punktmask och fyller de hela cellerna däremellan. Diagrammet kan skriva varje färdigt lager till bilden direkt. Detta kräver inga sparade kopior av appens koordinatserier mellan bilder. [Dunderprov](../tests/plot_reference.ddr) · [Ratatui-referens](../benchmarks/reference/examples/plot.rs) · [Bildtid före och efter samt mot Ratatui](../benchmarks/buffers.md#ommätning-i-0180)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/plot_reference.ddr -o build/plot-check
+cargo build --locked --release --manifest-path benchmarks/reference/Cargo.toml --features layout-cache --example plot --target-dir build/rust
+build/plot-check --paths | build/rust/release/examples/plot --paths
+```
