@@ -1,0 +1,34 @@
+import std.json
+import ..src.tui
+import ..src.tailwind
+import ..src.block as box
+import ..src.text as rich
+import ..src.layout
+
+@derive(Decode)
+pub struct View {
+    colors: tailwind.Palette, horizontal: rich.Alignment, vertical: layout.VerticalAlignment,
+    edges: box.BorderMask, border: box.BorderType, label: string,
+}
+
+pub fn views() -> []View {
+    mut colors := tailwind.Palette::from_family(.Sky)
+    colors.c500 = .Yellow
+    first := json.to_string(&colors).unwrap()
+    colors.c500 = .Cyan
+    second := json.to_string(&colors).unwrap()
+    return [
+        json.from_str<View>("{\"colors\":" + first + ",\"horizontal\":\"Left\",\"vertical\":\"Top\",\"edges\":\"ALL\",\"border\":\"Rounded\",\"label\":\"IS\"}").unwrap(),
+        json.from_str<View>("{\"colors\":" + second + ",\"horizontal\":\"Right\",\"vertical\":\"Bottom\",\"edges\":\"ALL | 0x80\",\"border\":\"Double\",\"label\":\"KAJ\"}").unwrap(),
+    ]
+}
+
+pub fn paint(frame: &mut tui.Frame, view: &mut View) {
+    mut panel := box.Block::new().border_type(view.border)
+    panel.borders = view.edges.edges()
+    inner := panel.render(&mut frame,frame.area())
+    mut layout := layout.Layout::vertical([.Length(1)]).flex(view.vertical.flex())
+    row := layout.split(inner)[0]
+    line := rich.Line::raw(view.label.clone()).align(view.horizontal).styled(tui.ink(view.colors.c500))
+    frame.render_widget(&line,row)
+}

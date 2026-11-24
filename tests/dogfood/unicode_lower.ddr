@@ -1,0 +1,5 @@
+import std.text
+
+fn main() {
+    for value in ["Blue","blacK","İ","ΟΣ"] { print(text.lower(value)) }
+}

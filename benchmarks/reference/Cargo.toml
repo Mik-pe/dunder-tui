@@ -22,6 +22,10 @@ theme-oracle = ["ratatui/serde", "ratatui/underline-color", "dep:serde_json"]
 backend-oracle = ["theme-oracle", "ratatui/scrolling-regions"]
 
 [[example]]
+name = "palette_json"
+required-features = ["theme-oracle"]
+
+[[example]]
 name = "backend_json"
 required-features = ["backend-oracle"]
 

@@ -6,6 +6,29 @@ import std.cmp as cmp
 
 @derive(Encode)
 pub enum Direction { Horizontal, Vertical }
+
+@derive(Encode, Eq, Hash)
+pub enum VerticalAlignment { Top, Center, Bottom }
+
+impl Default for VerticalAlignment { fn default() -> Self { .Top } }
+impl Display for VerticalAlignment {
+    fn str(&self) -> string { match self { .Top => "Top", .Center => "Center", .Bottom => "Bottom", } }
+}
+impl VerticalAlignment {
+    pub fn parse(name: string) -> Option<Self> {
+        match name { "Top" => .Some(.Top), "Center" => .Some(.Center), "Bottom" => .Some(.Bottom), _ => .None, }
+    }
+    pub fn flex(&self) -> Flex { match self { .Top => .Start, .Center => .Center, .Bottom => .End, } }
+}
+impl json.Decode for VerticalAlignment {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        name := json_format.unit_name(&doc,node)?
+        match VerticalAlignment::parse(name) {
+            .Some(a) => .Ok(a), .None => .Err(json.JsonError::new("unknown vertical alignment",doc.node_offset(node))),
+        }
+    }
+}
+
 @derive(Encode)
 pub enum Flex { Start, Center, End, SpaceBetween, SpaceAround, SpaceEvenly, Legacy }
 @derive(Encode, Decode)

@@ -8,6 +8,7 @@ import .saved_layout
 import .saved_buffer
 import .saved_widgets
 import .saved_backend
+import .saved_palette
 import .meter_cells
 import ..src.tui
 import ..src.calendar as cal
@@ -314,6 +315,17 @@ unsafe fn shadow_and_meter_screen(out: ptr, x: i32, y: i32) -> i32 {
     saved_backend.advance(&mut replay)
     if term.draw(&mut replay,saved_backend.paint).is_err() { return 188 }
     if unit_at(out,x+2,y+2) != 75 || unit_at(out,x+2,y+3) != 83 { return 189 }
+    mut views := saved_palette.views()
+    mut attr: u16 = 0
+    mut count: u32 = 0
+    if term.draw(&mut views[0],saved_palette.paint).is_err() { return 190 }
+    if unit_at(out,x+2,y+2) != 0x256d || unit_at(out,x+3,y+3) != 73 { return 191 }
+    first := u32(x+3).bit_or(u32(y+3).shl(16))
+    if read_attr(out,addr(&mut attr),1,first,addr(&mut count)) == 0 || count != 1 || attr.bit_and(15) != 6 { return 192 }
+    if term.draw(&mut views[1],saved_palette.paint).is_err() { return 193 }
+    if unit_at(out,x+2,y+2) != 0x2554 || unit_at(out,x+3,y+3) != 32 || unit_at(out,x+10,y+5) != 75 { return 194 }
+    last := u32(x+10).bit_or(u32(y+5).shl(16))
+    if read_attr(out,addr(&mut attr),1,last,addr(&mut count)) == 0 || count != 1 || attr.bit_and(15) != 3 { return 195 }
     0
 }
 

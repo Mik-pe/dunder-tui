@@ -1,4 +1,6 @@
 import .tui
+import .json_format
+import std.json
 
 pub enum Family {
     Red, Pink, Purple, DeepPurple, Indigo, Blue, LightBlue,
@@ -113,3 +115,116 @@ pub fn accent(family: AccentFamily, shade: AccentShade) -> tui.Color {
 
 pub fn black() -> tui.Color { tui.rgb(0x000000) }
 pub fn white() -> tui.Color { tui.rgb(0xffffff) }
+
+@derive(Encode, Eq, Hash)
+pub struct NonAccentedPalette {
+    c50: tui.Color, c100: tui.Color, c200: tui.Color, c300: tui.Color,
+    c400: tui.Color, c500: tui.Color, c600: tui.Color, c700: tui.Color,
+    c800: tui.Color, c900: tui.Color,
+}
+
+impl NonAccentedPalette {
+    pub fn from_family(family: Family) -> Self {
+        Self {
+            c50:color(family,.C50), c100:color(family,.C100), c200:color(family,.C200),
+            c300:color(family,.C300), c400:color(family,.C400), c500:color(family,.C500),
+            c600:color(family,.C600), c700:color(family,.C700), c800:color(family,.C800),
+            c900:color(family,.C900),
+        }
+    }
+
+    pub fn from_variants(variants: &[u32;10]) -> Self {
+        Self {
+            c50:tui.rgb(variants[0]), c100:tui.rgb(variants[1]), c200:tui.rgb(variants[2]),
+            c300:tui.rgb(variants[3]), c400:tui.rgb(variants[4]), c500:tui.rgb(variants[5]),
+            c600:tui.rgb(variants[6]), c700:tui.rgb(variants[7]), c800:tui.rgb(variants[8]),
+            c900:tui.rgb(variants[9]),
+        }
+    }
+
+    pub fn get(&self, shade: Shade) -> tui.Color {
+        match shade {
+            .C50 => self.c50, .C100 => self.c100, .C200 => self.c200,
+            .C300 => self.c300, .C400 => self.c400, .C500 => self.c500,
+            .C600 => self.c600, .C700 => self.c700, .C800 => self.c800,
+            .C900 => self.c900,
+        }
+    }
+}
+
+impl json.Decode for NonAccentedPalette {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        f := json_format.fields(&doc,node,&["c50","c100","c200","c300","c400","c500","c600","c700","c800","c900"],10,10)?
+        .Ok(Self {
+            c50:tui.Color::decode_json(&doc,f[0])?, c100:tui.Color::decode_json(&doc,f[1])?,
+            c200:tui.Color::decode_json(&doc,f[2])?, c300:tui.Color::decode_json(&doc,f[3])?,
+            c400:tui.Color::decode_json(&doc,f[4])?, c500:tui.Color::decode_json(&doc,f[5])?,
+            c600:tui.Color::decode_json(&doc,f[6])?, c700:tui.Color::decode_json(&doc,f[7])?,
+            c800:tui.Color::decode_json(&doc,f[8])?, c900:tui.Color::decode_json(&doc,f[9])?,
+        })
+    }
+}
+
+@derive(Encode, Eq, Hash)
+pub struct AccentedPalette {
+    c50: tui.Color, c100: tui.Color, c200: tui.Color, c300: tui.Color,
+    c400: tui.Color, c500: tui.Color, c600: tui.Color, c700: tui.Color,
+    c800: tui.Color, c900: tui.Color, a100: tui.Color, a200: tui.Color,
+    a400: tui.Color, a700: tui.Color,
+}
+
+impl AccentedPalette {
+    pub fn from_family(family: AccentFamily) -> Self {
+        index := accent_row(family)
+        base := index*10
+        acc := index*4
+        Self {
+            c50:tui.rgb(SHADES[base+0]), c100:tui.rgb(SHADES[base+1]), c200:tui.rgb(SHADES[base+2]),
+            c300:tui.rgb(SHADES[base+3]), c400:tui.rgb(SHADES[base+4]), c500:tui.rgb(SHADES[base+5]),
+            c600:tui.rgb(SHADES[base+6]), c700:tui.rgb(SHADES[base+7]), c800:tui.rgb(SHADES[base+8]),
+            c900:tui.rgb(SHADES[base+9]), a100:tui.rgb(ACCENTS[acc+0]), a200:tui.rgb(ACCENTS[acc+1]),
+            a400:tui.rgb(ACCENTS[acc+2]), a700:tui.rgb(ACCENTS[acc+3]),
+        }
+    }
+
+    pub fn from_variants(variants: &[u32;14]) -> Self {
+        Self {
+            c50:tui.rgb(variants[0]), c100:tui.rgb(variants[1]), c200:tui.rgb(variants[2]),
+            c300:tui.rgb(variants[3]), c400:tui.rgb(variants[4]), c500:tui.rgb(variants[5]),
+            c600:tui.rgb(variants[6]), c700:tui.rgb(variants[7]), c800:tui.rgb(variants[8]),
+            c900:tui.rgb(variants[9]), a100:tui.rgb(variants[10]), a200:tui.rgb(variants[11]),
+            a400:tui.rgb(variants[12]), a700:tui.rgb(variants[13]),
+        }
+    }
+
+    pub fn get(&self, shade: Shade) -> tui.Color {
+        match shade {
+            .C50 => self.c50, .C100 => self.c100, .C200 => self.c200,
+            .C300 => self.c300, .C400 => self.c400, .C500 => self.c500,
+            .C600 => self.c600, .C700 => self.c700, .C800 => self.c800,
+            .C900 => self.c900,
+        }
+    }
+
+    pub fn accent(&self, shade: AccentShade) -> tui.Color {
+        match shade {
+            .A100 => self.a100, .A200 => self.a200, .A400 => self.a400,
+            .A700 => self.a700,
+        }
+    }
+}
+
+impl json.Decode for AccentedPalette {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        f := json_format.fields(&doc,node,&["c50","c100","c200","c300","c400","c500","c600","c700","c800","c900","a100","a200","a400","a700"],14,14)?
+        .Ok(Self {
+            c50:tui.Color::decode_json(&doc,f[0])?, c100:tui.Color::decode_json(&doc,f[1])?,
+            c200:tui.Color::decode_json(&doc,f[2])?, c300:tui.Color::decode_json(&doc,f[3])?,
+            c400:tui.Color::decode_json(&doc,f[4])?, c500:tui.Color::decode_json(&doc,f[5])?,
+            c600:tui.Color::decode_json(&doc,f[6])?, c700:tui.Color::decode_json(&doc,f[7])?,
+            c800:tui.Color::decode_json(&doc,f[8])?, c900:tui.Color::decode_json(&doc,f[9])?,
+            a100:tui.Color::decode_json(&doc,f[10])?, a200:tui.Color::decode_json(&doc,f[11])?,
+            a400:tui.Color::decode_json(&doc,f[12])?, a700:tui.Color::decode_json(&doc,f[13])?,
+        })
+    }
+}

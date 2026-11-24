@@ -52,32 +52,64 @@ impl Color {
         rgb(colorspace.hsluv(hue, saturation, lightness))
     }
 
+    fn named(value: string) -> Option<Color> {
+        match value {
+            "Reset" | "reset" => .Some(.Default),
+            "Black" | "black" => .Some(.Black),
+            "Red" | "red" => .Some(.Red),
+            "Green" | "green" => .Some(.Green),
+            "Yellow" | "yellow" => .Some(.Yellow),
+            "Blue" | "blue" => .Some(.Blue),
+            "Magenta" | "magenta" => .Some(.Magenta),
+            "Cyan" | "cyan" => .Some(.Cyan),
+            "Gray" | "gray" | "grey" | "silver" => .Some(.Gray),
+            "DarkGray" | "darkgray" | "darkgrey" | "darksilver" | "lightblack" | "brightblack" => .Some(.DarkGray),
+            "LightRed" | "lightred" | "brightred" => .Some(.LightRed),
+            "LightGreen" | "lightgreen" | "brightgreen" => .Some(.LightGreen),
+            "LightYellow" | "lightyellow" | "brightyellow" => .Some(.LightYellow),
+            "LightBlue" | "lightblue" | "brightblue" => .Some(.LightBlue),
+            "LightMagenta" | "lightmagenta" | "brightmagenta" => .Some(.LightMagenta),
+            "LightCyan" | "lightcyan" | "brightcyan" => .Some(.LightCyan),
+            "White" | "white" | "lightwhite" | "lightgray" | "lightgrey" | "lightsilver" | "brightwhite" | "brightgray" | "brightgrey" | "brightsilver" => .Some(.BrightWhite),
+            _ => .None,
+        }
+    }
+
     pub fn parse(value: string) -> Option<Color> {
-        if value.len == 7 && value[0] == b'#' {
-            mut channels: [u8; 3] = [0, 0, 0]
-            for i in 0..3 {
-                pos := 1 + i * 2
-                start := if value[pos] == b'+' { pos + 1 } else { pos }
-                channel := parse.hex_u64_range(value, start, pos + 2)
-                if !channel.ok { return .None }
-                channels[i] = u8(channel.value)
+        if value.len == 0 { return .None }
+        if value[0] == b'#' {
+            if value.len != 7 { return .None }
+            mut packed: u32 = 0
+            for i in 1..7 {
+                b := value[i]
+                digit := if b >= b'0' && b <= b'9' { i32(b-b'0') }
+                    else if b >= b'A' && b <= b'F' { 10+i32(b-b'A') }
+                    else if b >= b'a' && b <= b'f' { 10+i32(b-b'a') }
+                    else if b == b'+' && i%2 == 1 { 0 } else { return .None }
+                packed = packed.shl(4).bit_or(u32(digit))
             }
-            return .Some(.Rgb(channels[0], channels[1], channels[2]))
+            return .Some(rgb(packed))
         }
-        start := if value.len > 0 && value[0] == b'+' { 1 } else { 0 }
-        index := parse.u64_range(value, start, value.len)
-        if index.ok && index.value < 256 { return .Some(.Indexed(u8(index.value))) }
-        mut name := strings.lower(value)
-        for separator in [" ", "-", "_"] { name = strings.replace(name, separator, "") }
-        name = strings.replace(strings.replace(strings.replace(name, "bright", "light"), "grey", "gray"), "silver", "gray")
-        if name == "reset" { return .Some(.Default) }
-        if name == "lightblack" { return .Some(.DarkGray) }
-        if name == "lightwhite" || name == "lightgray" { return .Some(.BrightWhite) }
-        for i in 0..16 {
-            named := Color::decoded(i)
-            if strings.lower(named.str()) == name { return .Some(named) }
+        if value[0] == b'+' || (value[0] >= b'0' && value[0] <= b'9') {
+            start := if value[0] == b'+' { 1 } else { 0 }
+            index := parse.u64_range(value,start,value.len)
+            if index.ok && index.value < 256 { return .Some(.Indexed(u8(index.value))) }
+            return .None
         }
-        .None
+        match Color::named(value) { .Some(color) => { return .Some(color) }, .None => {}, }
+        mut name: []u8 = []
+        mut i := 0
+        while i < value.len {
+            mut b := value[i]
+            i += 1
+            if b == b' ' || b == b'-' || b == b'_' { continue }
+            if b >= b'A' && b <= b'Z' { b += 32 }
+            else if b == 0xe2 && value.len-i >= 2 && value[i-1..i+2] == "K" { b = b'k'; i += 2 }
+            else if b < b'a' || b > b'z' { return .None }
+            if name.len == 13 { return .None }
+            name.push(b)
+        }
+        Color::named(bytes.decode(&name).unwrap())
     }
 
     fn encoded(&self) -> i32 {
@@ -120,6 +152,10 @@ impl Display for Color {
 
 impl Eq for Color {
     fn eq(&self, other: &Self) -> bool { self.encoded() == other.encoded() }
+}
+
+impl Hash for Color {
+    fn hash(&self) -> u64 { self.encoded().hash() }
 }
 
 impl json.Encode for Color {

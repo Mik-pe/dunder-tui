@@ -2,6 +2,8 @@
 
 ## Omprov med den publicerade 0.12.0
 
+Färgnamnet `blacK` innehåller Kelvin-tecknet U+212A. Ratatui läser det som svart. `std.text.lower` i Dunder använder ASCII och lämnar tecknet intakt. TUI-biblioteket hanterar nu detta färgnamn. Ett separat Unicode-anrop i standardbiblioteket skulle också kunna hantera att `İ` blir två skalärer och att versalt sigma får olika gemener beroende på sin plats i ordet. Samma resultat från 0.12.0 kontrollerades på macOS, Linux och Win64 under Wine. [Minimiprov](../tests/dogfood/unicode_lower.ddr) · [Färgprovet](../tests/palette_json.ddr)
+
 Testterminalens sparade markör har formatet `[kolumn,rad]`. Både skrivning och läsning av `(u16,u16)` med `std.json` ger E3004 i 0.12.0. Testbackenden skriver de två heltalen direkt och avvisar andra arraylängder vid läsning. [Minimiprov för tupelstöd](../tests/dogfood/json_tuple.ddr)
 
 Navigering med 64-bitarsindex behöver kunna stanna vid noll och maxvärdet. För 65 536 index gav `math.checked_add_u64`, `checked_sub_u64` och `checked_mul_u64` följda av `unwrap_or` 155 393 allokeringsanrop. Med samma gränser direkt i heltalsuttryck blev det 11. Båda gav kontrollsumman 23 392 260 på macOS ARM64 och i Linuxgästerna. [Mätprogram](../benchmarks/language/saturating_indices.ddr)

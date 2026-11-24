@@ -24,6 +24,10 @@ På macOS ARM64 mättes dessa tider per operation. Värdena är p50 / p95 i mikr
 
 Tomma rader delar lagring i Dunder. Vid gränsen på 65 535 tomma rader var högsta RSS 1 712 KiB för Dunder och 26 576 KiB för Ratatui på Macen. När testbackenden flyttade målade rader direkt i den befintliga bildbufferten gick Dunders allokeringsanrop i 256-radersprovet från 7 271 till 3 943. Ratatui använde 25 anrop för samma prov. [Versionen med mellanbuffert](https://github.com/Mik-pe/dunder-tui/tree/d2303bb3b38ec28cc1306b7e14c9c29b3286b2b3) · [Resursmätningar](results/scrollback-dunder-0.12.0-resources.tsv)
 
+## Återställning efter ändringen i färgläsaren
+
+Efter ändringen i färgläsaren gick resursprovet för `restore` från 136 924 till 118 204 allokeringsanrop och från 4 267 808 till 3 625 088 begärda byte på alla tre Unix-mål. I den nya parkörningen på macOS tog återställningen 1,774 ms i median och 1,999 ms vid p95 i Dunder. Ratatui tog 1,049 respektive 1,271 ms. Provet läste samma 120 795 byte och återställde 128 historikrader. [Tider, spridning, allokeringar och RSS per plattform](results/palette-restore-dunder-0.12.0-local.tsv)
+
 ## Kör lokalt
 
 ```sh
@@ -37,6 +41,8 @@ dunder build --locked --offline --runtime-profile benchmarks/scrollback.ddr -o b
 cargo build --locked --offline --release --manifest-path benchmarks/reference/Cargo.toml --features backend-oracle,allocation-counts --example scrollback --target-dir build/rust-profile
 build/scrollback-profile --resources painted
 build/rust-profile/release/examples/scrollback --resources painted
+build/scrollback-profile --resources restore
+build/rust-profile/release/examples/scrollback --resources restore
 ```
 
 För RSS, kör de två tidsmätta binärerna med `--resources` och provets namn under `/usr/bin/time -l` på macOS eller `/usr/bin/time -v` på Linux. Cargo behöver den fristående referensens låsta paket i sin lokala cache.

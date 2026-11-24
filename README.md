@@ -58,6 +58,8 @@ fn heading() -> tui.Style {
 }
 ```
 
+För ett sparat tema kan du läsa hela skalan med `json.from_str<tailwind.Palette>(data)?` och använda exempelvis `tui.ink(colors.c500)`. Utgå från `tailwind.Palette::from_family(.Sky)` för att ändra enstaka nyanser. Material har motsvarande typer med och utan accentfärger. [Två sparade teman med olika färg, ram och justering](tests/saved_palette.ddr)
+
 ### Signal
 
 Växla mellan vågform och frekvensspektrum med Tab. Piltangenterna ändrar frekvens och amplitud. Den turkosa mätaren visar signalens effektivvärde. Varje stapel i spektrumet beräknas från samma 128 sampel som vågformen. Mellanslag fryser bilden.

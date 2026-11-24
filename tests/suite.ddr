@@ -25,6 +25,36 @@ import ..src.width
 import ..src.material
 import ..src.tailwind
 
+@test fn saved_palette_preserves_family_and_custom_shades() {
+    mut colors := tailwind.Palette::from_family(.Sky)
+    assert(colors.c950 == tailwind.color(.Sky,.C950))
+    colors.c500 = .White
+    loaded := json.from_str<tailwind.Palette>(json.to_string(&colors).unwrap()).unwrap()
+    assert(loaded == colors && loaded.hash() == colors.hash() && loaded.get(.C500) == .Gray)
+    assert(loaded.get(.C500) != .Indexed(7))
+    variants: [u32;14] = [0x123456;14]
+    custom := material.AccentedPalette::from_variants(&variants)
+    assert(custom.c900 == tui.rgb(0x123456) && custom.accent(.A100) == custom.get(.C900))
+    assert(tui.Color::parse("blacK") == .Some(.Black))
+}
+
+@test fn border_masks_roundtrip_extension_bits_and_padding_rejects_overflow() {
+    mask := json.from_str<box.BorderMask>("\"ALL | 0xf0\"").unwrap()
+    assert(mask.bits == 255 && mask.edges() == box.Borders::all() && mask.edges().mask().bits == 15)
+    assert(json.from_str<box.BorderMask>(json.to_string(&mask).unwrap()).unwrap() == mask)
+    assert(json.from_str<box.Borders>("\"0xf0\"").is_err())
+    assert(json.to_string(&box.Padding::uniform(-1)).is_err())
+    assert(json.from_str<box.Padding>("[0,0,65536,0]").is_err())
+}
+
+@test fn optional_alignment_represents_inheritance_in_saved_layouts() {
+    explicit: rich.Alignment = .Inherit
+    inherited: Option<rich.Alignment> = .None
+    assert(json.to_string(&explicit).is_err() && json.to_string(&inherited).unwrap() == "null")
+    assert(json.from_str<Option<rich.Alignment>>("null").unwrap().is_none())
+    assert(rich.Alignment::default() == .Left && layout.VerticalAlignment::default() == .Top)
+}
+
 @test fn restored_backend_keeps_the_next_scrolled_line_and_cursor() {
     mut device := saved_backend.open()
     assert(device.scrollback().row(0).line(0) == "LOGG" && device.buffer().line(0) == "KAJ ")

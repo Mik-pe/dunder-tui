@@ -26,7 +26,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | `layout-cache` | `Layout.cache_capacity` styr antal sparade uppdelningar. Layoutproven återanvänder tidigare storlekar efter regelbyten. |
 | `scrolling-regions` | Backendens regionskrollning och reservvägen med radmatning jämförs genom skrollhistorik och terminalutdata. |
 | `macros` | Konstruktorer för spann, rader, text och layout finns. Jämförelse per dokumenterad makroform återstår. |
-| `serde` | Färger, stilar, attribut, celler, diffregler, buffertar, layouter och geometri läses och skrivs med `std.json`. Testbackenden, list-, tabell- och skrolltillstånd samt deras riktningsval stöds. Bland annat paletter och justering återstår. Referensens `Span`, `Line` och `Text` saknar Serde-format. |
+| `serde` | Färger, stilar, attribut, celler, diffregler, buffertar, layouter och geometri läses och skrivs med `std.json`. Detsamma gäller testbackenden, widgettillstånden, Tailwind- och Materialpaletter, horisontell och vertikal justering, kanttyper, kantflaggor och utfyllnad. Formatet för celler, stilar och deras behållare när Ratatui byggs utan `underline-color` återstår. Referensens `Span`, `Line` och `Text` saknar Serde-format. |
 | `crossterm`, `crossterm_0_28`, `crossterm_0_29`, `termina`, `termion`, `termwiz` | Dunder använder POSIX och Win32 direkt. Den låsta Crossterm-referensen och de faktiska terminalproven täcker bland annat ritning, markör och återställning. Skillnader mellan referensens övriga backendval är öppna. |
 | `std`, `portable-atomic`, `default` | Dunder bygger offline med sitt standardbibliotek. `portable-atomic` gäller referensens mål utan atomära typer. `default` väljer kalender, Crossterm, layoutcache, makron och understrykningsfärg. |
 
@@ -51,6 +51,26 @@ diff -u build/ratatui-colors build/dunder-colors
 ```
 
 Fler körbara prov täcker ändrade bildrader, delade SGR-återställningar, överlappande text, färgade understreck och terminalåterställning. [Bibliotekstester](../tests/suite.ddr) · [Unix-terminal](../tests/posix_terminal.ddr) · [Win32-konsol](../tests/windows_console.ddr) · [Prestandamätningar](../benchmarks/README.md)
+
+### Återställ paletter, justering och kanter
+
+Av 1 893 indata gav båda biblioteken samma sparade värde i 1 108 fall och avvisade övriga 785. Provet jämför varje cell i 492 bilder, totalt 21 014 celler. Det täcker alla inbyggda färgskalor, egna färger, äldre RGB- och indexobjekt, saknade och dubbla fält, alla 256 kantmasker, tolv kanttyper och placering av bred text vid tre rutstorlekar. [Dunderprov](../tests/palette_json.ddr) · [Ratatui-prov med indata](../benchmarks/reference/examples/palette_json.rs)
+
+Läs en kantmask som `block.BorderMask` för att spara även okända bitar. Anropa `edges()` när du ritar ramen. Sparad horisontell justering har tre riktningar. Använd `Option<text.Alignment>` för ett tema där riktningen kan ärvas.
+
+Samma resultat kontrollerades på macOS ARM64, Linux ARM64, översatt Linux x86-64 och Win64 under Wine. I en pseudoterminal bytte en gul etikett i övre vänstra hörnet plats till en cyan etikett nere till höger och ramen bytte till dubbel linje. Win32-provet läste tillbaka tecken och färgattribut från konsolbufferten. Nativ Windows x64 återstår för dessa prov. [Pseudoterminal](../tests/palette_json_terminal.ddr) · [Win32](../tests/windows_console.ddr)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/palette_json.ddr -o build/palette-json
+cargo build --release --locked --offline --manifest-path benchmarks/reference/Cargo.toml \
+  --features theme-oracle --example palette_json --target-dir build/reference
+build/reference/release/examples/palette_json --cases >build/palette-input
+build/reference/release/examples/palette_json <build/palette-input >build/palette-rust
+build/palette-json build/palette-input >build/palette-dunder
+cmp build/palette-dunder build/palette-rust
+dunder run --locked --offline tests/palette_json_terminal.ddr
+```
 
 ### Färger och stilar i JSON
 

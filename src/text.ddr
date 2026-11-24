@@ -5,8 +5,38 @@ import std.array as array
 import std.cmp as cmp
 import .width
 import std.hash as hashing
+import std.json
+import .json_format
 
+@derive(Eq, Hash)
 pub enum Alignment { Inherit, Left, Center, Right }
+
+impl Default for Alignment { fn default() -> Self { .Left } }
+impl Display for Alignment {
+    fn str(&self) -> string {
+        match self { .Inherit => "Inherit", .Left => "Left", .Center => "Center", .Right => "Right", }
+    }
+}
+impl Alignment {
+    pub fn parse(name: string) -> Option<Self> {
+        match name { "Left" => .Some(.Left), "Center" => .Some(.Center), "Right" => .Some(.Right), _ => .None, }
+    }
+}
+impl json.Encode for Alignment {
+    fn encode_json(&self, out: &mut json.Writer) {
+        if self == .Inherit { json_format.reject(&mut out,"an inherited alignment has no explicit direction"); return }
+        out.string(self.str())
+    }
+}
+impl json.Decode for Alignment {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        name := json_format.unit_name(&doc,node)?
+        match Alignment::parse(name) {
+            .Some(a) => .Ok(a), .None => .Err(json.JsonError::new("unknown horizontal alignment",doc.node_offset(node))),
+        }
+    }
+}
+
 pub enum Wrap { Clip, Preserve, Trim }
 pub enum WideWrap { NextLine, Overhang }
 

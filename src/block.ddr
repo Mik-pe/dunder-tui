@@ -2,11 +2,58 @@ import .tui
 import .text as rich
 import .lines
 import std.cmp as cmp
+import std.json
+import .json_format
+import .theme_format
 
+@derive(Eq, Hash)
 pub enum BorderType {
     Plain, Rounded, Double, Thick, LightDoubleDashed, HeavyDoubleDashed, LightTripleDashed, HeavyTripleDashed,
     LightQuadrupleDashed, HeavyQuadrupleDashed, QuadrantInside, QuadrantOutside, OneEighthWide, OneEighthTall,
     ProportionalWide, ProportionalTall, Full, Empty,
+}
+
+impl Default for BorderType { fn default() -> Self { .Plain } }
+impl BorderType {
+    pub fn parse(name: string) -> Option<Self> {
+        match name {
+            "Plain" => .Some(.Plain), "Rounded" => .Some(.Rounded), "Double" => .Some(.Double),
+            "Thick" => .Some(.Thick), "LightDoubleDashed" => .Some(.LightDoubleDashed), "HeavyDoubleDashed" => .Some(.HeavyDoubleDashed),
+            "LightTripleDashed" => .Some(.LightTripleDashed), "HeavyTripleDashed" => .Some(.HeavyTripleDashed), "LightQuadrupleDashed" => .Some(.LightQuadrupleDashed),
+            "HeavyQuadrupleDashed" => .Some(.HeavyQuadrupleDashed), "QuadrantInside" => .Some(.QuadrantInside), "QuadrantOutside" => .Some(.QuadrantOutside),
+            _ => .None,
+        }
+    }
+}
+impl Display for BorderType {
+    fn str(&self) -> string {
+        match self {
+            .Plain => "Plain", .Rounded => "Rounded", .Double => "Double",
+            .Thick => "Thick", .LightDoubleDashed => "LightDoubleDashed", .HeavyDoubleDashed => "HeavyDoubleDashed",
+            .LightTripleDashed => "LightTripleDashed", .HeavyTripleDashed => "HeavyTripleDashed", .LightQuadrupleDashed => "LightQuadrupleDashed",
+            .HeavyQuadrupleDashed => "HeavyQuadrupleDashed", .QuadrantInside => "QuadrantInside", .QuadrantOutside => "QuadrantOutside",
+            .OneEighthWide => "OneEighthWide", .OneEighthTall => "OneEighthTall", .ProportionalWide => "ProportionalWide",
+            .ProportionalTall => "ProportionalTall", .Full => "Full", .Empty => "Empty",
+        }
+    }
+}
+impl json.Encode for BorderType {
+    fn encode_json(&self, out: &mut json.Writer) {
+        match self {
+            .OneEighthWide | .OneEighthTall | .ProportionalWide | .ProportionalTall | .Full | .Empty => {
+                json_format.reject(&mut out,"this symbol set has no Ratatui border type")
+            },
+            _ => { out.string(self.str()) },
+        }
+    }
+}
+impl json.Decode for BorderType {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        name := json_format.unit_name(&doc,node)?
+        match BorderType::parse(name) {
+            .Some(t) => .Ok(t), .None => .Err(json.JsonError::new("unknown border type",doc.node_offset(node))),
+        }
+    }
 }
 
 pub struct BorderSet { tl: rune, tr: rune, bl: rune, br: rune, left: rune, right: rune, top: rune, bottom: rune }
@@ -65,13 +112,82 @@ impl BorderSet {
     }
 }
 
+@derive(Eq, Hash)
+pub struct BorderMask { bits: u8 }
+
+impl BorderMask {
+    pub fn edges(&self) -> Borders {
+        Borders { top:self.bits.bit_and(1) != 0, right:self.bits.bit_and(2) != 0,
+            bottom:self.bits.bit_and(4) != 0, left:self.bits.bit_and(8) != 0 }
+    }
+}
+
+const EDGE_NAMES: [string;4] = ["TOP","RIGHT","BOTTOM","LEFT"]
+fn edge_name(i: i32) -> string { EDGE_NAMES[i] }
+fn edge_flag(name: string) -> Option<i32> {
+    if name == "ALL" { return .Some(15) }
+    for i in 0..4 { if name == EDGE_NAMES[i] { return .Some(i32(1).shl(i)) } }
+    .None
+}
+
+impl json.Encode for BorderMask {
+    fn encode_json(&self, out: &mut json.Writer) { out.string(theme_format.format_flags(i32(self.bits),4,edge_name)) }
+}
+impl json.Decode for BorderMask {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        bits := theme_format.read_flag_set(&doc,node,255,edge_flag)?
+        .Ok(Self { bits:u8(bits) })
+    }
+}
+
+@derive(Eq, Hash)
 pub struct Borders { left: bool, right: bool, top: bool, bottom: bool }
 impl Borders {
+    pub fn mask(&self) -> BorderMask {
+        mut bits: u8 = 0
+        if self.top { bits += 1 }
+        if self.right { bits += 2 }
+        if self.bottom { bits += 4 }
+        if self.left { bits += 8 }
+        BorderMask { bits:bits }
+    }
     pub fn all() -> Self { Self { left: true, right: true, top: true, bottom: true } }
     pub fn none() -> Self { Self { left: false, right: false, top: false, bottom: false } }
 }
 
+impl json.Encode for Borders {
+    fn encode_json(&self, out: &mut json.Writer) { self.mask().encode_json(&mut out) }
+}
+impl json.Decode for Borders {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        mask := BorderMask::decode_json(&doc,node)?
+        if mask.bits > 15 { return .Err(json.JsonError::new("use BorderMask to retain unknown bits",doc.node_offset(node))) }
+        .Ok(mask.edges())
+    }
+}
+
+@derive(Eq, Hash)
 pub struct Padding { left: i32, right: i32, top: i32, bottom: i32 }
+impl json.Encode for Padding {
+    fn encode_json(&self, out: &mut json.Writer) {
+        for n in [self.left,self.right,self.top,self.bottom] {
+            if n < 0 || n > 65535 { json_format.reject(&mut out,"padding exceeds the 16-bit range"); return }
+        }
+        out.object()
+        json.field_value(&mut out,"left",&self.left)
+        json.field_value(&mut out,"right",&self.right)
+        json.field_value(&mut out,"top",&self.top)
+        json.field_value(&mut out,"bottom",&self.bottom)
+        out.end()
+    }
+}
+impl json.Decode for Padding {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self,json.JsonError> {
+        f := json_format.fields(&doc,node,&["left","right","top","bottom"],4,4)?
+        .Ok(Self { left:i32(u16::decode_json(&doc,f[0])?), right:i32(u16::decode_json(&doc,f[1])?),
+            top:i32(u16::decode_json(&doc,f[2])?), bottom:i32(u16::decode_json(&doc,f[3])?) })
+    }
+}
 impl Padding {
     pub fn uniform(amount: i32) -> Self { Padding::axes(amount, amount) }
     pub fn axes(horizontal: i32, vertical: i32) -> Self { Self { left: horizontal, right: horizontal, top: vertical, bottom: vertical } }

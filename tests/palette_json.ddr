@@ -1,0 +1,138 @@
+capability filesystem, stdio
+import sys
+import std.json
+import std.text
+import ..src.tailwind
+import ..src.material
+import ..src.block as box
+import ..src.layout
+import ..src.text as rich
+import ..src.tui
+
+fn swatches(saved: string, shades: &[]tui.Color) -> Result<string,json.JsonError> {
+    w := shades.len
+    mut frame := tui.Frame::at(tui.Rect::new(1,2,w,2))
+    for y in 0..2 {
+        for x in 0..w {
+            style := tui.ink(shades[(x+y)%w]).background(shades[(x+3+y)%w]).underlined().underline_color(shades[(x+7+y)%w])
+            _ := frame.set_cell(1+x,2+y,if y == 0 { "▀" } else { "·" },style)
+        }
+    }
+    .Ok(saved + "\t" + json.to_string(&frame)?)
+}
+
+fn aligned(move saved: string, h: rich.Alignment, v: layout.VerticalAlignment) -> Result<string,json.JsonError> {
+    mut output := move saved
+    line := rich.Line::raw("茶IS").styled(tui.ink(.LightCyan)).align(h)
+    mut rows := layout.Layout::vertical([.Length(1)]).flex(v.flex())
+    for size in [(2,3),(7,5),(10,4)] {
+        area := tui.Rect::new(1,2,size.0,size.1)
+        row := rows.split(area)[0]
+        mut frame := tui.Frame::at(area)
+        frame.render_widget(&line,row)
+        output += "\t" + json.to_string(&frame)?
+    }
+    .Ok(output)
+}
+
+fn bordered(saved: string, edges: box.Borders, kind: box.BorderType, pad: box.Padding) -> Result<string,json.JsonError> {
+    area := tui.Rect::new(2,2,7,4)
+    mut panel := box.Block::new().border_type(kind)
+    panel.borders = edges
+    panel.padding = pad
+    panel.border_style = tui.ink(.Cyan)
+    mut frame := tui.Frame::at(tui.Rect::new(1,1,9,6))
+    inner := panel.render(&mut frame,area)
+    far := panel.inner(tui.Rect::new(65532,65530,2,4))
+    zero := panel.inner(tui.Rect::new(3,3,0,0))
+    .Ok(saved + "\t" + json.to_string(&inner)? + "\t" + json.to_string(&far)? + "\t" + json.to_string(&zero)? + "\t" + json.to_string(&frame)?)
+}
+
+fn tail(kind: u8, data: string) -> Result<string,json.JsonError> {
+    families: [tailwind.Family;22] = [.Slate,.Gray,.Zinc,.Neutral,.Stone,.Red,.Orange,.Amber,.Yellow,.Lime,.Green,.Emerald,.Teal,.Cyan,.Sky,.Blue,.Indigo,.Violet,.Purple,.Fuchsia,.Pink,.Rose]
+    palette := if kind == b'T' { json.from_str<tailwind.Palette>(data)? }
+        else { tailwind.Palette::from_family(families[json.from_str<i32>(data)?]) }
+    mut colors: []tui.Color = []
+    shades: [tailwind.Shade;11] = [.C50,.C100,.C200,.C300,.C400,.C500,.C600,.C700,.C800,.C900,.C950]
+    for s in shades { colors.push(palette.get(s)) }
+    swatches(json.to_string(&palette)?,&colors)
+}
+
+fn material_base(kind: u8, data: string) -> Result<string,json.JsonError> {
+    families: [material.Family;19] = [.Red,.Pink,.Purple,.DeepPurple,.Indigo,.Blue,.LightBlue,.Cyan,.Teal,.Green,.LightGreen,.Lime,.Yellow,.Amber,.Orange,.DeepOrange,.Brown,.Gray,.BlueGray]
+    palette := if kind == b'M' { json.from_str<material.NonAccentedPalette>(data)? }
+        else if kind == b'N' {
+            values := json.from_str<[]u32>(data)?
+            if values.len != 10 { return .Err(json.JsonError::new("expected ten shades",0)) }
+            mut variants: [u32;10] = [0;10]
+            for i in 0..10 { variants[i] = values[i] }
+            material.NonAccentedPalette::from_variants(&variants)
+        } else { material.NonAccentedPalette::from_family(families[json.from_str<i32>(data)?]) }
+    mut colors: []tui.Color = []
+    shades: [material.Shade;10] = [.C50,.C100,.C200,.C300,.C400,.C500,.C600,.C700,.C800,.C900]
+    for s in shades { colors.push(palette.get(s)) }
+    swatches(json.to_string(&palette)?,&colors)
+}
+
+fn material_accents(kind: u8, data: string) -> Result<string,json.JsonError> {
+    families: [material.AccentFamily;16] = [.Red,.Pink,.Purple,.DeepPurple,.Indigo,.Blue,.LightBlue,.Cyan,.Teal,.Green,.LightGreen,.Lime,.Yellow,.Amber,.Orange,.DeepOrange]
+    palette := if kind == b'A' { json.from_str<material.AccentedPalette>(data)? }
+        else if kind == b'U' {
+            values := json.from_str<[]u32>(data)?
+            if values.len != 14 { return .Err(json.JsonError::new("expected fourteen shades",0)) }
+            mut variants: [u32;14] = [0;14]
+            for i in 0..14 { variants[i] = values[i] }
+            material.AccentedPalette::from_variants(&variants)
+        } else { material.AccentedPalette::from_family(families[json.from_str<i32>(data)?]) }
+    mut colors: []tui.Color = []
+    shades: [material.Shade;10] = [.C50,.C100,.C200,.C300,.C400,.C500,.C600,.C700,.C800,.C900]
+    accents: [material.AccentShade;4] = [.A100,.A200,.A400,.A700]
+    for s in shades { colors.push(palette.get(s)) }
+    for s in accents { colors.push(palette.accent(s)) }
+    swatches(json.to_string(&palette)?,&colors)
+}
+
+fn check(kind: u8, data: string) -> Result<string,json.JsonError> {
+    match kind {
+        b'C' => json.to_string(&json.from_str<tui.Color>(data)?),
+        b'H' => {
+            a := json.from_str<rich.Alignment>(data)?
+            assert(rich.Alignment::parse(a.str()).unwrap() == a)
+            aligned(json.to_string(&a)?,a,.Center)
+        },
+        b'V' => {
+            a := json.from_str<layout.VerticalAlignment>(data)?
+            assert(layout.VerticalAlignment::parse(a.str()).unwrap() == a)
+            aligned(json.to_string(&a)?,.Center,a)
+        },
+        b'B' => {
+            mask := json.from_str<box.BorderMask>(data)?
+            saved := json.to_string(&mask)?
+            if mask.bits <= 15 {
+                edges := json.from_str<box.Borders>(data)?
+                assert(json.to_string(&edges)? == saved && edges == mask.edges())
+            } else { assert(json.from_str<box.Borders>(data).is_err()) }
+            bordered(saved,mask.edges(),.Rounded,box.Padding { left:1,right:0,top:0,bottom:1 })
+        },
+        b'K' => {
+            kind := json.from_str<box.BorderType>(data)?
+            bordered(json.to_string(&kind)?,box.Borders::all(),kind,box.Padding::uniform(0))
+        },
+        b'P' => {
+            pad := json.from_str<box.Padding>(data)?
+            bordered(json.to_string(&pad)?,box.BorderMask { bits:3 }.edges(),.Double,pad)
+        },
+        b'T' | b't' => tail(kind,data),
+        b'M' | b'm' | b'N' => material_base(kind,data),
+        _ => material_accents(kind,data),
+    }
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 2 }
+    for line in text.split(sys.read(sys.arg(1)).unwrap(),"\n") {
+        if line.len == 0 { continue }
+        match check(line[0],line[2..line.len]) { .Ok(s) => { print(s) }, .Err(_) => { print("error") }, }
+    }
+    0
+}
