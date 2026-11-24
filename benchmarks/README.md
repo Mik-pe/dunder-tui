@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Körlista i 0.23.0
+
+Körlistan flyttar stiliserade rader och byter hela det visade programmet. Efter kontroll av 1 100 terminalbilder mäts median, p95, allokeringar, minne och utdata på fyra målplattformar. [Mätvärden och körinstruktioner](collections.md)
+
 ## Logotyp och maskot i 0.22.0
 
 Affischen ritar logotyp, maskot och en skrollande programlista. Jämförelsen omfattar fem arbetslaster med faktisk terminalutdata på macOS ARM64, Linux ARM64 och x64 samt Windows x64. [Bildtider, minne och allokeringar](artwork.md)

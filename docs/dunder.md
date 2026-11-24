@@ -132,6 +132,10 @@ dunder run --locked --offline tests/pty_handles.ddr
 
 I körlistan följer stil och status med när en programpunkt flyttas. Ett fristående prov i Dunder 0.11.2 visar vad som händer när flera poster ska ändras på plats. För `for cue in &mut cues` föreslår kompilatorn ett delat lån (E4003). Då misslyckas tilldelningen till `cue.played` (E4002). En indexloop ändrar båda posterna och profileringen registrerar noll array- och postkloner. Dunders nästa steg innehåller både en konkret diagnosförbättring och ett prov för direkt iteration med ett muterbart lån per varv. [Reproduktion](../tests/dogfood/compiler/mutable_elements.ddr) · [Indexloopen](../tests/dogfood/compiler/indexed_mutable_elements.ddr) · [Dunders nästa steg](https://github.com/Mik-pe/dunder/blob/ec524f5/docs/next-steps.md#visa-hur-en-loop-kan-ändra-elementen-i-en-lånad-array)
 
+## Byta plats på två ägda poster
+
+Två anrop till `replace` låter två separat ägda poster byta plats. Det första anropet behöver ett mellanvärde. I ett prov med två arrayer per post gav 4 095 byten 12 304 allokeringsanrop. Kontrollen gav 19 och arrayens `swap` gav 21. Alla tre varianterna kontrollerar både titlar, heltalsarrayer och summan 16 383. Resultaten var identiska på macOS och Linux ARM64 med Dunder 0.11.2. [Mätprogram](../benchmarks/language/swap_storage.ddr) · [Föreslaget språkstöd och acceptansprov](https://github.com/Mik-pe/dunder/blob/c340de1/docs/next-steps.md#byt-två-ägda-värden-utan-ett-mellanvärde)
+
 ## Jämförelse av lånade arrayintervall
 
 Två lånade intervall av heltal går att jämföra med `==` när de först binds till lokala namn. Skriver man båda intervallen direkt som operander föreslår Dunder 0.11.2 att lägga till ett `&` trots att det redan finns. Den namngivna varianten kördes med noll arraykloner och noll kopierade byte. [Båda fallen och föreslagen uppföljning](https://github.com/Mik-pe/dunder/blob/a08b0e3/docs/next-steps.md#jämför-två-lånade-arrayintervall-direkt)
