@@ -52,3 +52,23 @@ ref=build/rust/release/examples/terminal_bench
 build/collections --verify | "$ref" --verify
 build/measure build/collections "$ref" build/pty
 ```
+
+## Körlistan i 0.23.1
+
+Med den publicerade korrigeringen hade Dunder lägre median och p95 än Ratatui i alla fem arbetslaster på båda ARM64-systemen. Ratatui hade lägre tider i alla fem på båda x64-systemen. Tabellen visar en oförändrad bild i terminalen, i µs. För alla fem arbetslaster finns även motsvarande mätningar i minnet och minsta och största p50 och p95 över sju processpar. [Samtliga mätvärden för 0.23.1](results/collections-0.23.1.tsv)
+
+| Värd | Dunder median / p95 | Ratatui median / p95 |
+| --- | ---: | ---: |
+| macOS ARM64 | 10 / 11 | 33 / 36 |
+| Linux ARM64 | 12 / 15 | 52 / 57 |
+| Linux x64 | 151 / 164 | 56 / 66 |
+| Windows x64 | 657 / 810 | 160 / 193 |
+
+| Värd | Högsta minne i KiB | Allokeringsanrop | Begärda byte |
+| --- | ---: | ---: | ---: |
+| macOS ARM64 | 1 888 / 2 544 | 8 319 / 47 589 | 480 874 / 1 316 509 |
+| Linux ARM64 | 316 / 1 952 | 8 319 / 47 585 | 480 874 / 1 316 310 |
+| Linux x64 | 640 / 2 688 | 8 319 / 47 585 | 480 874 / 1 316 397 |
+| Windows x64 | 3 980 / 4 244 | saknas / 47 628 | saknas / 1 318 768 |
+
+Samtliga fyra terminaler fick 1 349 574 byte från Dunder och 1 602 753 byte från Ratatui. Minnesparen anges som Dunder / Ratatui och mättes på samma sätt som i 0.23.0. Kör kommandona ovan från taggen `v0.23.1`. De publicerade körlistorna, maskotarna och animationsgallerierna drevs även med riktiga tangenthändelser i terminalproven. [Linux x64](https://github.com/Mik-pe/dunder-tui/actions/runs/45331074419/job/138232169189) · [Windows x64](https://github.com/Mik-pe/dunder-tui/actions/runs/45331074419/job/138232168889) · [Bildtider före och efter korrigeringen för ligaturer](ligatures.md#vanlig-textritning-i-0231)

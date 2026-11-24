@@ -43,3 +43,16 @@ Dunders profil räknade 82 996 allokeringsanrop och 1 839 634 begärda byte. 265
 Följ [bygg- och mätkommandona för loggvyn](emoji.md#upprepa-mätningen) med `TUI_BENCH_SCENE=ligatures` före verifiering och tidtagning. Mätningen ovan använder Dunder 0.11.2 och Rust 1.99.1 i releaseprofil.
 
 Kör `gh workflow run native.yml` i det publika repot för att upprepa x64-serierna med den publicerade kompilatorn. Arbetsflödet skriver verktygsversioner, bildtider, bytesummor och minnesvärden till körloggen. Med `-f profile=true` räknar Callgrind dessutom exekverade instruktioner på Linux för den oförändrade vyn. [Bygg- och mätkommandon](../.github/workflows/native.yml)
+
+## Vanlig textritning i 0.23.1
+
+I 0.23.0 delade en fristående textrad ritloop med stycken som tillåter ett brett tecken i sista kolumnen. På Linux x64 steg medianen för en oförändrad ligaturbild från 224 till 232 µs mot 0.22.0 i en parad mätning. I 0.23.1 har den vanliga raden en egen utskriftsloop och återanvänder spannets bredd. [Jämförelse med 0.22.0](https://github.com/Mik-pe/dunder-tui/actions/runs/45329696568/job/138227651497)
+
+| Terminal | 0.23.0 median / p95 i µs | 0.23.1 median / p95 i µs |
+| --- | ---: | ---: |
+| macOS ARM64 | 17 / 18 | 16 / 18 |
+| Linux ARM64 | 17,8 / 19,8 | 17,1 / 19,5 |
+| Linux x64 | 232 / 245 | 217 / 230 |
+| Windows x64 | 764 / 940 | 754 / 879 |
+
+Tabellen visar den oförändrade bilden. Rådata omfattar även en celländring, skrollning, storleksändring och full omritning för båda versionerna i minnet och i terminalen. Varje mätpar kördes på samma värd. Båda Dunderprogrammen matchade referensens 1 100 bilder och skrev 1 382 478 byte till terminalen. [Spridning och samtliga bildtider](results/ligatures-before-after-0.23.1.tsv) · [Nativ Linux och Windows](https://github.com/Mik-pe/dunder-tui/actions/runs/45330521588)

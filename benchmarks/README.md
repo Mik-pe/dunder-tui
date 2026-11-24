@@ -1,8 +1,8 @@
 # Rendering mot Ratatui 0.30.2
 
-## Körlista i 0.23.0
+## Körlista i 0.23
 
-Körlistan flyttar stiliserade rader och byter hela det visade programmet. Efter kontroll av 1 100 terminalbilder mäts median, p95, allokeringar, minne och utdata på fyra målplattformar. [Mätvärden och körinstruktioner](collections.md)
+Körlistan flyttar stiliserade rader och byter hela det visade programmet. Efter kontroll av 1 100 terminalbilder mäts median, p95, allokeringar, minne och utdata på fyra målplattformar. [0.23.1 och rådata](collections.md#körlistan-i-0231) · [Körinstruktioner](collections.md#kör-provet)
 
 ## Logotyp och maskot i 0.22.0
 

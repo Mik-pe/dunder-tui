@@ -134,7 +134,7 @@ I körlistan följer stil och status med när en programpunkt flyttas. Ett frist
 
 ## Byta plats på två ägda poster
 
-Två anrop till `replace` låter två separat ägda poster byta plats. Det första anropet behöver ett mellanvärde. I ett prov med två arrayer per post gav 4 095 byten 12 304 allokeringsanrop. Kontrollen gav 19 och arrayens `swap` gav 21. Alla tre varianterna kontrollerar både titlar, heltalsarrayer och summan 16 383. Resultaten var identiska på macOS och Linux ARM64 med Dunder 0.11.2. [Mätprogram](../benchmarks/language/swap_storage.ddr) · [Föreslaget språkstöd och acceptansprov](https://github.com/Mik-pe/dunder/blob/c340de1/docs/next-steps.md#byt-två-ägda-värden-utan-ett-mellanvärde)
+Med tre flyttar kan två lokalt ägda poster byta plats. Bakom två muterbara lån avvisas motsvarande flytt med E4003. Där går det att använda två anrop till `replace` och en tom post. Vid 4 095 byten av poster med två arrayer gav den varianten 12 304 allokeringsanrop. Både kontrollen och lokala flyttar gav 19, och arrayens `swap` gav 21. Alla fyra körningar kontrollerade slutordningen och summan 16 383 på både macOS och Linux ARM64 med Dunder 0.11.2. [Mätprogram](../benchmarks/language/swap_storage.ddr) · [Avvisat lån](../tests/dogfood/compiler/swap_borrowed.ddr) · [Föreslaget språkstöd](https://github.com/Mik-pe/dunder/blob/a82c7d2/docs/next-steps.md#byt-två-ägda-värden-utan-ett-mellanvärde)
 
 ## Jämförelse av lånade arrayintervall
 
