@@ -1,0 +1,44 @@
+capability stdio
+import ..src.tui
+import ..src.testing
+import .raw_cells
+import sys
+
+fn capture(terminal: &tui.Terminal<testing.TestBackend>) {
+    backend := terminal.backend()
+    blank := tui.Frame::at(backend.buffer().area())
+    screen := backend.buffer().clone()
+    raw_cells.compare(&screen,&blank)
+    row := tui.Frame::new(blank.area().w,1)
+    for y in 0..backend.scrollback().len() {
+        line := backend.scrollback().row(y).clone()
+        raw_cells.compare(&line,&row)
+    }
+}
+
+fn main() {
+    regions := sys.arg_count() == 2 && sys.arg(1) == "--regions"
+    for height in [1,3,5] {
+        for start in [0,2,4] {
+            mut device := testing.TestBackend::new(10,5)
+            device.set_scrolling_regions(regions)
+            device.set_cursor_position(1,start)
+            mut term := tui.Terminal<testing.TestBackend>::with_viewport(move device,.Inline(height)).unwrap()
+            a := term.viewport_area()
+            term.get_frame().fill(a,`v`,tui.ink(.Green))
+            assert(term.apply_buffer().is_ok())
+            for count in [1,0,2,7,4] {
+                mut lines := tui.Frame::at(tui.Rect::new(3,5,10,count))
+                for y in 0..count {
+                    lines.text(tui.Rect::new(3,5+y,10,1),"A界é",tui.ink(.Red).italic().underlined().underline_index(127))
+                    assert(lines.set_cell(7,5+y,"S",tui.ink(.Blue)) && lines.set_diff_option(7,5+y,.Skip))
+                    assert(lines.set_cell(8,5+y,y.str(),tui.ink(.Yellow)) && lines.set_diff_option(8,5+y,.AlwaysUpdate))
+                    assert(lines.set_cell_with_width(9,5+y,"X",2,tui.ink(.Cyan)))
+                    assert(lines.set_cell(10,5+y,"z",tui.ink(.Magenta)))
+                }
+                assert(term.insert_before(&lines).is_ok())
+                capture(&term)
+            }
+        }
+    }
+}

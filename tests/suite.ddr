@@ -10,6 +10,7 @@ import ..src.block as box
 import ..src.lines as borders
 import ..src.text as rich
 import .grapheme_cases as cases
+import .scroll_errors
 import std.parse as parse
 import std.text as words
 import std.bytes as bytes
@@ -21,6 +22,10 @@ import ..src.input
 import ..src.width
 import ..src.material
 import ..src.tailwind
+
+@test fn inserted_rows_are_flushed_in_order_and_the_viewport_recovers_after_each_backend_error() {
+    scroll_errors.regions()
+}
 
 @test fn moving_text_collections_updates_width_and_preserves_the_outer_style() {
     mut doc := rich.Text::raw("longest\nx").styled(tui.ink(.Cyan)).align(.Right)

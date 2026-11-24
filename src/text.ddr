@@ -1,6 +1,7 @@
 import .tui
 import .text_lines as scanning
 import std.bytes as bytes
+import std.array as array
 import std.cmp as cmp
 import .width
 import std.hash as hashing
@@ -318,8 +319,7 @@ impl Text {
         }
         if other.lines.len == 0 { return }
         if self.columns >= 0 { self.columns = cmp.max<i32>(self.columns, other.width()) }
-        self.lines.reserve(self.lines.len + other.lines.len)
-        for line in move other.lines { self.lines.push(move line) }
+        array.append_move<Line>(&mut self.lines,move other.lines)
     }
     pub fn push_span(&mut self, move span: Span) {
         if self.lines.len == 0 { self.lines.push(Line::new([])) }

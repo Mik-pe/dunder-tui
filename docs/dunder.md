@@ -1,5 +1,13 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Omprov med 0.11.3
+
+Biblioteket använder nu `std.terminal.window_size` för Unix-terminalens cell- och pixelmått, `std.array.resize` i bildbufferten, `std.array.append_move` för ägda textrader och `std.utf16.append` i Win32-konsolen. De tidigare minimiproven för två skilda fältlån, tilldelning i en matchgren, härledd generisk mottagare, två generiska mottagartyper, direkt jämförelse av arrayvyer och uppackning av `Result<(),string>` går nu att bygga och köra på macOS. Två samtidigt levande grafem från samma iterator och två olika ägare i en lokal post ger fortfarande E4003. [Minimiproven](../tests/dogfood/compiler) · [Dunder 0.11.3](https://github.com/Mik-pe/dunder/releases/tag/v0.11.3)
+
+Kalendern använder även `std.time.local_from_unix` på macOS och Linux. Åtta tidpunkter gav samma datum i tre tidszoner med båda Unixbyggena och på Macen. I Win32-provet under Wine gav systemets kalenderomvandling 1969-12-31 för tidsstämpeln −1 i UTC, medan standardbiblioteket gav `.None`. Windowsversionen av kalendern behåller därför sitt Win32-anrop. [Jämför med `--compare -315619200 -1 0 1711924200 32535216000`](../tests/calendar_clock.ddr)
+
+Ett bildrutnät med 24 rader om 96 heltal jämförs med `==`, `std.array.equal` och `std.bytes.equal_memory`. Varannan bild skiljer sig i en rads sista kolumn. På macOS ARM64 tog jämförelserna 9,85, 9,91 och 1,53 µs per bild. På Linux ARM64 i lokal VM tog de 8,43, 10,12 och 1,14 µs. Tiderna är medianer av sex processmedianer med växlande ordning. Varje process kontrollerar summan 330 880. Därför använder renderaren fortfarande bytejämförelse för de tätt lagrade heltalen. [Körbart prov med lägena `eq`, `array` och `memory`](../benchmarks/language/row_equality.ddr)
+
 ## Arraykrympning och bildtid
 
 När en bildbuffert blir mindre kan biblioteket kapa arrayerna med `truncate`. På Linux ARM64 tog krympning från 65 536 till 16 heltal 0,32 µs i median. `std.array.resize` tog 136 µs för samma innehåll. Provet kontrollerar prefix, kapacitet och att det går att lägga till ett nytt värde. [Körbart prov](../benchmarks/language/shrink_arrays.ddr) · [Förslag i Dunder](https://github.com/Mik-pe/dunder/blob/e896509250e36d5f275c18b71713790228a18edd/docs/next-steps.md#krymp-arrayer-med-truncate-i-stdarrayresize)

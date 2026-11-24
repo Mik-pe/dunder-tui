@@ -57,14 +57,14 @@ impl Scrollback {
 }
 
 pub opaque struct TestBackend {
-    screen: tui.Frame, history: Scrollback, x: i32, y: i32, visible: bool,
+    screen: tui.Frame, history: Scrollback, x: i32, y: i32, visible: bool, scrolling_regions: bool,
 }
 
 impl TestBackend {
     pub fn new(width: i32, height: i32) -> Self {
         screen := tui.Frame::new(width,height)
         history := Scrollback::new(screen.area().w)
-        Self { screen: move screen, history: move history, x: 0, y: 0, visible: false }
+        Self { screen: move screen, history: move history, x: 0, y: 0, visible: false, scrolling_regions:true }
     }
 
     pub fn buffer(&self) -> &tui.Frame from self { &self.screen }
@@ -73,6 +73,7 @@ impl TestBackend {
     pub fn cursor_position(&self) -> (i32,i32) { (self.x,self.y) }
     pub fn show_cursor(&mut self) { self.visible = true }
     pub fn hide_cursor(&mut self) { self.visible = false }
+    pub fn set_scrolling_regions(&mut self, enabled: bool) { self.scrolling_regions = enabled }
 
     pub fn set_cursor_position(&mut self, x: i32, y: i32) {
         self.x = cmp.clamp<i32>(x,0,65535)
@@ -142,6 +143,7 @@ impl TestBackend {
 }
 
 impl tui.Backend for TestBackend {
+    fn supports_scrolling_regions(&self) -> bool { self.scrolling_regions }
     fn clear_screen(&mut self, area: tui.Rect) -> Result<(),string> { self.clear_region(.All); .Ok }
 
     fn size(&mut self) -> (i32,i32) { (self.screen.area().w,self.screen.area().h) }
@@ -154,12 +156,18 @@ impl tui.Backend for TestBackend {
     fn move_to(&mut self, x: i32, y: i32) -> Result<(),string> { self.set_cursor_position(x,y); .Ok }
     fn extend_lines(&mut self, rows: i32) -> Result<(),string> { self.append_lines(rows); .Ok }
     fn shift_rows(&mut self, top: i32, bottom: i32, delta: i32) -> Result<(),string> {
+        if !self.scrolling_regions { return .Err("Scrolling regions are disabled.") }
         if delta < 0 { self.scroll_up(top,bottom,-delta) } else { self.scroll_down(top,bottom,delta) }
         .Ok
     }
     fn write_region(&mut self, frame: &tui.Frame) -> Result<(),string> {
         unknown := tui.Frame::new(0,0)
         self.screen.apply_region_diff(&frame,&unknown)
+        .Ok
+    }
+    fn overwrite_region(&mut self, frame: &tui.Frame) -> Result<(),string> {
+        area := frame.area()
+        self.screen.copy_region(&frame,area,area.x,area.y)
         .Ok
     }
     fn draw_cells(&mut self, frame: &tui.Frame, previous: &tui.Frame) -> Result<(),string> {

@@ -7,6 +7,7 @@ import .input
 import .posix
 import .windows
 import sys
+import std.array as array
 import std.bytes as bytes
 import std.time as clock
 import std.cmp as cmp
@@ -1239,10 +1240,10 @@ impl Frame {
             }
             if kept < self.glyphs.len { self.split_at_index(kept) }
         }
-        if self.options.len > 0 { resize_storage(&mut self.options,n,0) }
-        if self.clusters.len > 0 { resize_storage(&mut self.clusters,n,"") }
-        resize_storage(&mut self.glyphs,n,0)
-        resize_storage(&mut self.styles,n,i64(0))
+        if self.options.len > 0 { array.resize<i32>(&mut self.options,n,0) }
+        if self.clusters.len > 0 { array.resize<string>(&mut self.clusters,n,"") }
+        array.resize<i32>(&mut self.glyphs,n,0)
+        array.resize<i64>(&mut self.styles,n,i64(0))
         if self.row_flags.len > 0 {
             self.reshape_flags(bounds,kept)
         }
@@ -1270,7 +1271,7 @@ impl Frame {
     fn reshape_flags(&mut self, bounds: Rect, kept: i32) {
         if kept == 0 { self.row_flags.clear(); self.has_options = false; return }
         old_width := self.bounds.w
-        if self.row_flags.len < bounds.h { resize_storage(&mut self.row_flags,bounds.h,u8(0)) }
+        if self.row_flags.len < bounds.h { array.resize<u8>(&mut self.row_flags,bounds.h,u8(0)) }
         if old_width != bounds.w {
             for step in 0..bounds.h {
                 row := if bounds.w > old_width { step } else { bounds.h-1-step }
@@ -1798,15 +1799,11 @@ fn valid_area(area: Rect) -> bool {
         i64(area.x)+i64(area.w) <= 65535 && i64(area.y)+i64(area.h) <= 65535
 }
 
-fn resize_storage<T: Clone + Storable>(values: &mut []T, length: i32, fill: T) {
-    if length < values.len { values.truncate(length) }
-    else { for _ in values.len..length { values.push(fill.clone()) } }
-}
-
 const CURSOR_UNSUPPORTED: string = "Backend cannot change cursor visibility."
 
 pub trait Backend {
     fn size(&mut self) -> (i32,i32)
+    fn viewport_changed(&mut self, area: Rect) {}
     fn window_size(&mut self) -> Result<WindowSize,string> {
         (w,h) := self.size()
         .Ok(WindowSize { columns:w, rows:h, pixel_width:0, pixel_height:0 })
@@ -1820,6 +1817,7 @@ pub trait Backend {
         self.present(&blank,&unknown)
     }
     fn scrollback_needs_full_screen(&self) -> bool { false }
+    fn supports_scrolling_regions(&self) -> bool { true }
     fn read_cursor(&mut self) -> Result<(i32,i32),string> { .Err("Backend cannot read the cursor.") }
     fn set_cursor_visible(&mut self, visible: bool) -> Result<(),string> { .Err(CURSOR_UNSUPPORTED) }
     fn restore_cursor(&mut self) -> Result<(),string> {
@@ -1832,11 +1830,30 @@ pub trait Backend {
     fn extend_lines(&mut self, rows: i32) -> Result<(),string> { .Err("Backend cannot append lines.") }
     fn shift_rows(&mut self, top: i32, bottom: i32, delta: i32) -> Result<(),string> { .Err("Backend cannot scroll a region.") }
     fn write_region(&mut self, frame: &Frame) -> Result<(),string> { .Err("Backend cannot write a region.") }
+    fn overwrite_region(&mut self, frame: &Frame) -> Result<(),string> {
+        if !frame.has_options { return self.write_region(&frame) }
+        area := frame.area()
+        mut raw := Frame::try_at(area)?
+        raw.copy_region(&frame,area,area.x,area.y)
+        raw.options.clear()
+        raw.has_options = false
+        self.write_region(&raw)
+    }
 }
 
 @resource(dispose)
 pub opaque struct Terminal<B> where B: Backend {
     device: B, viewport: Viewport, area: Rect, screen: Rect, last_y: i32, buffers: [Frame;2], front: i32, number: u64, invalid: bool, staged: bool, hidden_cursor: bool,
+}
+
+enum RowWrite { All, OverCleared }
+
+fn write_terminal_rows<B: Backend>(device: &mut B, frame: &Frame, rows: RowWrite) -> Result<(),string> {
+    match rows {
+        .All => { device.overwrite_region(&frame)? },
+        .OverCleared => { device.write_region(&frame)? },
+    }
+    device.flush()
 }
 
 enum Renderer<S> {
@@ -1874,6 +1891,7 @@ impl Terminal<B> {
     fn initialize_buffers(&mut self) {
         self.buffers[0].reset_area(self.area)
         self.buffers[0].cursor_x = -2
+        self.device.viewport_changed(self.area)
         self.invalid = false
     }
 
@@ -1960,11 +1978,10 @@ impl Terminal<B> {
 
     pub fn clear(&mut self) -> Result<(),string> {
         pos := self.device.read_cursor()?
-        self.clear_surface()?
-        self.device.move_to(pos.0,pos.1)
+        self.clear_surface(.Some(pos))
     }
 
-    fn clear_surface(&mut self) -> Result<(),string> {
+    fn clear_surface(&mut self, cursor: Option<(i32,i32)>) -> Result<(),string> {
         self.invalid = true
         area := match self.viewport {
             .Inline(_) => Rect { x:0,y:self.area.y,w:self.screen.w,h:self.screen.h-self.area.y },
@@ -1974,6 +1991,8 @@ impl Terminal<B> {
             .Fullscreen => { self.device.clear_screen(area)? },
             _ => { blank := Frame::try_at(area)?; self.device.write_region(&blank)? },
         }
+        match cursor { .Some(p) => { self.device.move_to(p.0,p.1)? }, .None => {}, }
+        self.device.flush()?
         previous := &mut self.buffers[self.front]
         previous.reset_area(self.area)
         previous.cursor_x = -2
@@ -2007,66 +2026,109 @@ impl Terminal<B> {
             self.invalid = true
             self.device.write_region(&blank)?
         }
+        self.device.viewport_changed(self.area)
         if self.staged {
             pending := &mut self.buffers[1-self.front]
             pending.try_resize(self.area)?
         }
-        result := self.clear_surface()
-        if result.is_err() { self.screen.w = -1; return result }
-        match cursor { .Some(p) => self.device.move_to(p.0,p.1), .None => .Ok, }
+        result := self.clear_surface(cursor)
+        if result.is_err() { self.screen.w = -1 }
+        move result
     }
 
     pub fn insert_before(&mut self, lines: &Frame) -> Result<(),string> {
         viewport := self.viewport
         match viewport { .Inline(_) => {}, _ => { return .Ok }, }
         source := lines.area()
-        if source.h == 0 || self.area.is_empty() { return .Ok }
+        if self.area.is_empty() { return .Ok }
+        regions := self.device.supports_scrolling_regions()
+        if source.h == 0 && regions { return .Ok }
         if source.w != self.area.w { return .Err("Inserted lines must match the viewport width.") }
         invalid_before := self.invalid
         self.invalid = true
+        if !regions { return self.insert_with_line_feeds(&lines) }
         mut row := 0
         free := cmp.min<i32>(source.h,self.screen.h-self.area.bottom())
         if free > 0 {
             self.device.shift_rows(self.area.y,self.area.bottom()+free,free)?
             top := self.area.y
-            self.area.y += free
-            self.buffers[self.front].bounds.y = self.area.y
-            if self.staged { self.buffers[1-self.front].bounds.y = self.area.y }
+            self.relocate_inline(top+free)
             block := lines.rows_at(0,top,free)
-            self.device.write_region(&block)?
+            write_terminal_rows(&mut self.device,&block,.OverCleared)?
             row = free
         }
         if row < source.h && self.device.scrollback_needs_full_screen() {
             while row < source.h {
                 block := lines.rows_at(row,self.area.y,1)
-                self.device.write_region(&block)?
+                write_terminal_rows(&mut self.device,&block,.All)?
                 self.device.move_to(0,self.screen.h-1)?
                 self.device.extend_lines(1)?
                 row += 1
             }
-            self.device.write_region(&self.buffers[self.front])?
+            write_terminal_rows(&mut self.device,&self.buffers[self.front],.OverCleared)?
         } else if self.area.h == self.screen.h {
             for line in row..source.h {
                 block := lines.rows_at(line,0,1)
-                self.device.write_region(&block)?
+                mode := if line == row { RowWrite.All } else { RowWrite.OverCleared }
+                write_terminal_rows(&mut self.device,&block,mode)?
                 self.device.shift_rows(0,1,-1)?
             }
             top := self.buffers[self.front].rows_at(0,0,1)
-            self.device.write_region(&top)?
+            write_terminal_rows(&mut self.device,&top,.OverCleared)?
         } else {
             while row < source.h {
                 count := cmp.min<i32>(self.area.y,source.h-row)
                 if count < 1 { return .Err("No space above the viewport.") }
                 self.device.shift_rows(0,self.area.y,-count)?
                 block := lines.rows_at(row,self.area.y-count,count)
-                self.device.write_region(&block)?
+                write_terminal_rows(&mut self.device,&block,.OverCleared)?
                 row += count
             }
         }
         cursor := self.buffers[self.front].cursor_position()
-        match cursor { .Some(p) => { self.device.move_to(p.0,p.1)? }, .None => {}, }
+        match cursor { .Some(p) => { self.device.move_to(p.0,p.1)?; self.device.flush()? }, .None => {}, }
         self.invalid = invalid_before
         .Ok
+    }
+
+    fn relocate_inline(&mut self, top: i32) {
+        self.area.y = top
+        self.device.viewport_changed(self.area)
+        self.buffers[self.front].bounds.y = top
+        if self.staged { self.buffers[1-self.front].bounds.y = top }
+    }
+
+    fn insert_with_line_feeds(&mut self, lines: &Frame) -> Result<(),string> {
+        height := self.screen.h
+        mut remaining := lines.area().h
+        mut top := self.area.y
+        mut row := 0
+        while remaining > height-self.area.h {
+            count := cmp.min<i32>(remaining,height)
+            shift := cmp.max<i32>(0,top+count-height)
+            self.scroll_screen_up(shift)?
+            top -= shift
+            block := lines.rows_at(row,top,count)
+            write_terminal_rows(&mut self.device,&block,.All)?
+            top += count
+            row += count
+            remaining -= count
+        }
+        shift := cmp.max<i32>(0,top+remaining+self.area.h-height)
+        self.scroll_screen_up(shift)?
+        top -= shift
+        if remaining > 0 {
+            block := lines.rows_at(row,top,remaining)
+            write_terminal_rows(&mut self.device,&block,.All)?
+        }
+        self.relocate_inline(top+remaining)
+        self.clear()
+    }
+
+    fn scroll_screen_up(&mut self, rows: i32) -> Result<(),string> {
+        if rows == 0 { return .Ok }
+        self.set_cursor_position(0,self.screen.h-1)?
+        self.device.extend_lines(rows)
     }
 
     pub fn backend(&self) -> &B from self { &self.device }
@@ -2198,13 +2260,16 @@ impl Terminal<B> {
 }
 
 @resource(dispose)
-pub opaque struct LiveBackend { session: terminal.Session, output: []u8, active: bool, width: i32, height: i32, inline_end: i32, fixed: bool, original_x: i32, original_y: i32 }
+pub opaque struct LiveBackend { session: terminal.Session, output: []u8, active: bool, width: i32, height: i32, inline_end: i32, fixed: bool, original_x: i32, original_y: i32, scrolling_regions: bool, scroll_region_dirty: bool }
 
 impl LiveBackend {
+    pub fn set_scrolling_regions(&mut self, enabled: bool) { self.scrolling_regions = enabled }
+
     fn dispose(&mut self) { self.close() }
 
     pub fn close(&mut self) {
         if !self.active { return }
+        if self.scroll_region_dirty { _ := self.reset_scroll_region() }
         if self.inline_end > 0 && self.height > 0 {
             _ := self.move_to(0,cmp.min<i32>(self.height-1,self.inline_end))
             if self.inline_end >= self.height { _ := self.extend_lines(1) }
@@ -2227,7 +2292,14 @@ impl LiveBackend {
     }
 
     fn control(&mut self, value: string) -> Result<(),string> {
+        if self.scroll_region_dirty && !self.reset_scroll_region() { return .Err("Could not reset the scrolling region.") }
         if self.bytes(&value.as_bytes()) { .Ok } else { .Err("Could not write to the terminal.") }
+    }
+
+    fn reset_scroll_region(&mut self) -> bool {
+        if !self.bytes(&"\x1b[r".as_bytes()) { return false }
+        self.scroll_region_dirty = false
+        true
     }
 
     fn visible(&self, frame: &Frame) -> Rect {
@@ -2236,7 +2308,6 @@ impl LiveBackend {
 
     fn present_region(&mut self, frame: &Frame, previous: &Frame, cursor: bool) -> Result<(),string> {
         if !self.active { return .Err("The terminal is closed.") }
-        if self.inline_end >= 0 { self.inline_end = frame.bounds.bottom() }
         visible := self.visible(&frame)
         if visible == frame.bounds {
             if self.draw_region(&frame,&previous,cursor) { return .Ok }
@@ -2258,6 +2329,7 @@ impl LiveBackend {
     }
 
     fn draw_region(&mut self, frame: &Frame, previous: &Frame, cursor: bool) -> bool {
+        if self.scroll_region_dirty && !self.reset_scroll_region() { return false }
         if cursor { return frame.present(&self.session,&previous,&mut self.output) }
         if target_is("windows") {
             if !self.session.win.vt { return frame.paint_windows(&previous,&self.session) }
@@ -2270,7 +2342,7 @@ impl LiveBackend {
 
 pub fn open(viewport: Viewport) -> Result<Terminal<LiveBackend>,string> {
     alternate := match viewport { .Fullscreen => true, _ => false, }
-    mut backend := LiveBackend { session:terminal.session(), output:[], active:false,width:0,height:0,inline_end:-1,fixed:false,original_x:0,original_y:0 }
+    mut backend := LiveBackend { session:terminal.session(), output:[], active:false,width:0,height:0,inline_end:-1,fixed:false,original_x:0,original_y:0,scrolling_regions:true,scroll_region_dirty:false }
     (w,h) := backend.size()
     if w <= 0 || h <= 0 || !backend.session.open(alternate) { return .Err("An interactive terminal is required on stdin and stdout.") }
     backend.active = true
@@ -2291,6 +2363,9 @@ pub fn open(viewport: Viewport) -> Result<Terminal<LiveBackend>,string> {
 }
 
 impl Backend for LiveBackend {
+    fn viewport_changed(&mut self, area: Rect) {
+        if self.inline_end >= 0 { self.inline_end = area.bottom() }
+    }
     fn restore_cursor(&mut self) -> Result<(),string> { self.close(); .Ok }
     fn clear_screen(&mut self, area: Rect) -> Result<(),string> {
         if target_is("windows") {
@@ -2300,6 +2375,7 @@ impl Backend for LiveBackend {
     }
 
     fn scrollback_needs_full_screen(&self) -> bool { true }
+    fn supports_scrolling_regions(&self) -> bool { self.scrolling_regions }
     fn window_size(&mut self) -> Result<WindowSize,string> { window_size() }
     fn size(&mut self) -> (i32,i32) {
         (w,h) := self.session.size()
@@ -2310,6 +2386,7 @@ impl Backend for LiveBackend {
 
     fn read_cursor(&mut self) -> Result<(i32,i32),string> {
         if !self.active { return .Err("The terminal is closed.") }
+        if self.scroll_region_dirty && !self.reset_scroll_region() { return .Err("Could not reset the scrolling region.") }
         if target_is("windows") { return windows.read_position(&self.session.win) }
         else { return posix.read_cursor(&mut self.session.unix) }
     }
@@ -2337,6 +2414,8 @@ impl Backend for LiveBackend {
     }
 
     fn extend_lines(&mut self, rows: i32) -> Result<(),string> {
+        if !self.active { return .Err("The terminal is closed.") }
+        if self.scroll_region_dirty && !self.reset_scroll_region() { return .Err("Could not reset the scrolling region.") }
         if target_is("windows") {
             if !self.session.win.vt {
                 if windows.append_rows(&mut self.session.win,rows) { return .Ok }
@@ -2349,17 +2428,28 @@ impl Backend for LiveBackend {
     }
 
     fn shift_rows(&mut self, top: i32, bottom: i32, delta: i32) -> Result<(),string> {
-        if self.inline_end >= 0 && delta > 0 && bottom == self.inline_end+delta { self.inline_end = bottom }
+        if !self.active { return .Err("The terminal is closed.") }
+        if !self.scrolling_regions { return .Err("Scrolling regions are disabled.") }
         if delta == 0 { return .Ok }
+        mut native := false
         if target_is("windows") {
             if !self.session.win.vt {
-                if windows.shift_rows(&mut self.session.win,top,bottom,delta) { return .Ok }
-                return .Err("Could not scroll the console.")
+                if !windows.shift_rows(&mut self.session.win,top,bottom,delta) { return .Err("Could not scroll the console.") }
+                native = true
             }
         }
-        if bottom == top+1 { return self.control(f"\x1b[{top+1};1H\x1b[2K") }
-        direction := if delta < 0 { "S" } else { "T" }
-        self.control(f"\x1b[{top+1};{bottom}r\x1b[{delta.abs()}{direction}\x1b[r")
+        if !native {
+            if bottom == top+1 { self.control(f"\x1b[{top+1};1H\x1b[2K")? } else {
+                direction := if delta < 0 { "S" } else { "T" }
+                written := self.control(f"\x1b[{top+1};{bottom}r\x1b[{delta.abs()}{direction}\x1b[r")
+                if written.is_err() {
+                    self.scroll_region_dirty = true
+                    _ := self.reset_scroll_region()
+                    return written
+                }
+            }
+        }
+        .Ok
     }
 
     fn write_region(&mut self, frame: &Frame) -> Result<(),string> {

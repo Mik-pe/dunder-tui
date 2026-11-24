@@ -8,7 +8,7 @@ Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i 
 
 På Linux använder den färdigbyggda almanackan systemets glibc (`libc.so.6`) för lokal tid. Övriga åtta Linuxappar i paketet har inga dynamiska biblioteksberoenden.
 
-Bygg från källkod med Dunder 0.11.2. Riktextmodulen använder lånade iteratorresultat som 0.11.0 och 0.11.1 avvisar. På Windows fungerar de färdigbyggda apparna direkt. Dunder 0.11.2 ger ett fel när kompilatorn öppnar ett paketmanifest på Windows, även för ett paket utan beroenden. [Installera Dunder](https://github.com/Mik-pe/dunder#installera-och-kör) · [Windowsprovet](https://github.com/Mik-pe/dunder-tui/actions/runs/45302071651/job/138136790534)
+Bygg `main` med Dunder 0.11.3. Biblioteket använder standardbibliotekets terminalmått, arrayoperationer och UTF-16-kodning. De färdigbyggda apparna i v0.24.0 använder Dunder 0.11.2. [Installera Dunder 0.11.3](https://github.com/Mik-pe/dunder/releases/tag/v0.11.3)
 
 ```sh
 git clone https://github.com/Mik-pe/dunder-tui.git
@@ -205,6 +205,8 @@ För grafik kan `terminal.window_size()` även ge `pixel_width` och `pixel_heigh
 Kör `dunder run --example loggbok`. Appen visar två rader under skalets tidigare utmatning. Enter lägger en händelse ovanför vyn. När terminalen är full hamnar de äldsta raderna i skrollhistoriken. Tryck **q** för att fortsätta i skalet under loggboken. [Hela exemplet](examples/loggbok/main.ddr)
 
 Använd `tui.run_in(.Fixed(area), &mut state, draw, update)` för en interaktiv vy på en bestämd plats. `frame.area()` ger terminalens absoluta koordinater. Text, widgets, cellkopior och markören använder samma koordinater. För en inbäddad vy med egen händelseloop öppnar du terminalen med `tui.open(.Inline(2))?`. Skicka en `Frame` med vyportens bredd till `term.insert_before(&lines)` när du vill lägga till färgsatta loggrader. Terminalen återställer sitt läge när den går ur räckvidd.
+
+Om terminalen bara stöder radmatningar, anropa `term.backend_mut().set_scrolling_regions(false)` efter öppning. Då skriver `insert_before` loggraderna och tömmer ytan för nästa bild. Vid ett skrivfel kan delar av loggen redan ha hamnat i skalets historik. Rita om vyn innan du lägger till nya händelser. Funktionen finns på `main`. [Skrollning och felprov](docs/parity.md#loggrader-i-en-inbäddad-vy)
 
 ## Bygg en vy
 
@@ -414,4 +416,4 @@ Korsbygg exempelvis en Windowsapp med `dunder build examples/counter/main.ddr --
 
 Text delas vid grafemgränserna i Unicode 17.0. För enskilda teckens cellbredd används Unicode 18.0 med Ratatuis terminalanpassningar. Emoji, kombinerande tecken och flaggor hålls ihop vid radbrytning och klippning. Terminalens typsnitt och Unicode-stöd påverkar hur de visas. [Unicode 17](https://www.unicode.org/Public/17.0.0/ucd/) · [Unicode 18](https://www.unicode.org/Public/18.0.0/ucd/) · [Licens för tabellerna](src/UNICODE-LICENSE.txt)
 
-Biblioteket, exemplen och terminalproven byggs med Dunder 0.11.2. [Reproducerade språk- och standardbiblioteksfynd](docs/dunder.md)
+Språkfynden har egna reproduktionsfall som går att bygga med den publicerade kompilatorn. [Reproducerade språk- och standardbiblioteksfynd](docs/dunder.md)

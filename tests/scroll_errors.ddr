@@ -1,0 +1,133 @@
+import ..src.tui
+import ..src.testing as test
+
+struct Buffered {
+    device: test.TestBackend, pending: []tui.Frame, full_history: bool, operation: i32,
+    fail_at: i32, after: bool, presented_full: bool,
+}
+
+impl Buffered {
+    fn begin(&mut self) -> Result<(),string> {
+        self.operation += 1
+        if self.fail_at == self.operation && !self.after { return .Err("interrupted") }
+        .Ok
+    }
+
+    fn end(&self) -> Result<(),string> {
+        if self.fail_at == self.operation && self.after { return .Err("interrupted") }
+        .Ok
+    }
+
+    fn deliver(&mut self) {
+        for i in 0..self.pending.len { assert(self.device.write_region(&self.pending[i]).is_ok()) }
+        self.pending.clear()
+    }
+}
+
+impl tui.Backend for Buffered {
+    fn size(&mut self) -> (i32,i32) { self.device.size() }
+    fn read_cursor(&mut self) -> Result<(i32,i32),string> {
+        self.begin()?
+        p := self.device.read_cursor()?
+        self.end()?
+        .Ok(p)
+    }
+    fn scrollback_needs_full_screen(&self) -> bool { self.full_history }
+    fn supports_scrolling_regions(&self) -> bool { self.device.supports_scrolling_regions() }
+    fn move_to(&mut self, x:i32,y:i32) -> Result<(),string> {
+        self.begin()?
+        self.device.move_to(x,y)?
+        self.end()
+    }
+    fn extend_lines(&mut self, n:i32) -> Result<(),string> {
+        self.begin()?
+        self.device.extend_lines(n)?
+        self.end()
+    }
+    fn shift_rows(&mut self, top:i32,bottom:i32,n:i32) -> Result<(),string> {
+        self.begin()?
+        self.device.shift_rows(top,bottom,n)?
+        self.end()
+    }
+    fn write_region(&mut self, f:&tui.Frame) -> Result<(),string> {
+        self.begin()?
+        mut saved := tui.Frame::at(f.area())
+        saved.copy_region(&f,f.area(),f.area().x,f.area().y)
+        self.pending.push(move saved)
+        self.end()
+    }
+    fn flush(&mut self) -> Result<(),string> {
+        self.begin()?
+        self.deliver()
+        self.end()
+    }
+    fn present(&mut self, f:&tui.Frame, previous:&tui.Frame) -> Result<(),string> {
+        self.deliver()
+        self.presented_full = previous.area().is_empty()
+        self.device.present(&f,&previous)
+    }
+}
+
+enum Scrolling { Regions, ScreenHistory, LineFeeds }
+
+fn make(height:i32, mode:Scrolling) -> tui.Terminal<Buffered> {
+    mut screen := test.TestBackend::new(4,5)
+    screen.set_scrolling_regions(mode != .LineFeeds)
+    device := Buffered { device:move screen,pending:[],full_history:mode == .ScreenHistory,
+        operation:0,fail_at:-1,after:false,presented_full:false }
+    mut t := tui.Terminal<Buffered>::with_viewport(move device,.Inline(height)).unwrap()
+    a := t.viewport_area()
+    t.get_frame().fill(a,`A`,tui.ink(.Blue))
+    assert(t.apply_buffer_with_cursor(.Some((1,a.y))).is_ok())
+    t.get_frame().fill(a,`B`,tui.ink(.Green))
+    t.backend_mut().operation = 0
+    move t
+}
+
+pub fn regions() {
+    mut lines := tui.Frame::at(tui.Rect::new(7,9,4,7))
+    for y in 9..16 { lines.fill(tui.Rect::new(7,y,4,1),rune(65+y-9),tui.ink(.Red).bold()) }
+    for height in [2,5] {
+        for mode in [Scrolling.Regions,Scrolling.ScreenHistory,Scrolling.LineFeeds] {
+            mut t := make(height,mode)
+            assert(t.insert_before(&lines).is_ok() && t.backend().pending.len == 0)
+            steps := t.backend().operation
+            past := t.backend().device.scrollback()
+            count := 7-(5-height)
+            assert(past.len() == count)
+            for i in 0..count {
+                cell := past.row(i).cell_at(0,0).unwrap()
+                assert(cell.symbol == rune(65+i).str() && cell.style.has(.Bold))
+            }
+            for y in 0..5-height {
+                assert(t.backend().device.buffer().symbol_at(0,y) == .Some(rune(65+count+y).str()))
+            }
+            visible := if mode == .LineFeeds { "    " } else { "AAAA" }
+            for y in 5-height..5 { assert(t.backend().device.buffer().line(y) == visible) }
+            for n in 1..steps+1 {
+                for after in [false,true] {
+                    mut interrupted := make(height,mode)
+                    interrupted.backend_mut().fail_at = n
+                    interrupted.backend_mut().after = after
+                    assert(interrupted.insert_before(&lines).unwrap_err() == "interrupted")
+                    assert(interrupted.completed().count() == 0)
+                    a := interrupted.viewport_area()
+                    assert(interrupted.completed().line(a.y) == "AAAA")
+                    assert(interrupted.current_buffer_mut().line(a.y) == "BBBB")
+                    assert(interrupted.current_buffer_mut().count() == 1)
+                    saved := interrupted.backend().device.scrollback().len()
+                    interrupted.backend_mut().fail_at = -1
+                    assert(interrupted.apply_buffer_with_cursor(.Some((2,a.y))).is_ok())
+                    assert(interrupted.backend().presented_full && interrupted.backend().pending.len == 0)
+                    assert(interrupted.backend().device.scrollback().len() == saved)
+                    for y in a.y..a.bottom() {
+                        assert(interrupted.backend().device.buffer().line(y) == "BBBB")
+                        assert(interrupted.backend().device.buffer().style_at(0,y).unwrap().get_foreground() == .Some(.Green))
+                    }
+                    assert(interrupted.backend().device.cursor_position() == (2,a.y) && interrupted.backend().device.cursor_visible())
+                    assert(interrupted.completed().count() == 1)
+                }
+            }
+        }
+    }
+}

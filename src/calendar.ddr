@@ -72,13 +72,6 @@ impl Eq for Date {
     }
 }
 
-@c_layout
-struct LocalTime {
-    second:i32, minute:i32, hour:i32, day:i32, month:i32, year:i32, weekday:i32, yearday:i32, dst:i32,
-    offset:i64, zone:ptr,
-}
-@extern("c","localtime_r")
-unsafe fn posix_local(seconds:ptr, output:ptr) -> ptr
 @extern("kernel32.dll","SystemTimeToTzSpecificLocalTime")
 unsafe fn win_local(zone:ptr, utc:ptr, output:ptr) -> i32
 
@@ -86,8 +79,8 @@ pub fn local_date(seconds: i64) -> Option<Date> {
     first := Date { year:-9999,month:1,day:1 }
     last := Date { year:9999,month:12,day:31 }
     if seconds < first.midnight()-86400 || seconds >= last.midnight()+172800 { return .None }
-    unsafe {
-        if target_is("windows") {
+    if target_is("windows") {
+        unsafe {
             utc := time.utc_from_unix(seconds)
             if utc.year < 1601 { return .None }
             mut source: [u16;8] = [u16(utc.year),u16(utc.month),u16(utc.weekday),u16(utc.day),
@@ -95,11 +88,11 @@ pub fn local_date(seconds: i64) -> Option<Date> {
             mut local: [u16;8] = [0;8]
             if win_local(ptr(0),addr(&source[0]),addr(&mut local[0])) == 0 { return .None }
             return Date::new(i32(local[0]),i32(local[1]),i32(local[3]))
-        } else {
-            stamp := seconds
-            mut tm := LocalTime { second:0, minute:0, hour:0, day:0, month:0, year:0, weekday:0, yearday:0, dst:0, offset:0, zone:ptr(0) }
-            if posix_local(addr(&stamp),addr(&mut tm)) == ptr(0) { return .None }
-            return Date::new(tm.year+1900,tm.month+1,tm.day)
+        }
+    } else {
+        match time.local_from_unix(seconds) {
+            .Some(d) => { return Date::new(d.year,d.month,d.day) },
+            .None => { return .None },
         }
     }
     .None

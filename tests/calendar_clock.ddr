@@ -1,5 +1,6 @@
 import ..src.calendar as cal
 import std.parse as parse
+import std.time as time
 import sys
 
 fn main() -> i32 {
@@ -8,9 +9,16 @@ fn main() -> i32 {
         print(f"{d.year()} {d.month()} {d.day()}")
         return 0
     }
-    for i in 1..sys.arg_count() {
+    compare := sys.arg(1) == "--compare"
+    for i in (if compare { 2 } else { 1 })..sys.arg_count() {
         n := parse.integer(sys.arg(i))
         if !n.ok { return 1 }
+        if compare {
+            toolkit := match cal.local_date(n.value) { .Some(d) => f"{d.year()}-{d.month()}-{d.day()}", .None => "none", }
+            library := match time.local_from_unix(n.value) { .Some(d) => f"{d.year}-{d.month}-{d.day}", .None => "none", }
+            print(f"{n.value} {toolkit} {library}")
+            continue
+        }
         match cal.local_date(n.value) {
             .Some(d) => { print(f"{d.year()} {d.month()} {d.day()}") },
             .None => { return 2 },

@@ -84,10 +84,12 @@ fn main() {
     windows := sys.arg_count() == 2 && sys.arg(1) == "--window"
     direct := sys.arg_count() == 2 && sys.arg(1) == "--direct-cursor"
     manual_mode := sys.arg_count() == 2 && sys.arg(1) == "--manual"
+    line_feeds := sys.arg_count() == 2 && sys.arg(1) == "--line-feeds"
     for seed in 0..90 {
         w := 9+seed%3
         h := 5+seed%4
         mut device := test.TestBackend::new(w,h)
+        if line_feeds { device.set_scrolling_regions(false) }
         mut backing := tui.Frame::new(w,h)
         for y in 0..h { backing.fill(tui.Rect {x:0,y:y,w:w,h:1},rune(48+y),tui.plain()) }
         assert(device.write_region(&backing).is_ok())

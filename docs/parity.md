@@ -13,7 +13,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna tecken, individuella kanter, justerade titlar, utfyllnad och skuggor. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
 | Övriga widgets | Fristående Clear och Fill med cellvisa symboler, stil och klippning, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, månadskalender med händelser och egna datumstilar, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. Ratatuis båda logotyper och maskot med två ögonfärger. | Se beteendeproven per widget nedan. |
 | Egna widgets och tester | Frame ritar egna och inbyggda widgets med `render_widget` och `render_stateful_widget`. Tillstånd kan uppdateras vid ritning med `run_stateful`. Egna backends kan anslutas till Terminal. TestBackend har skrollhistorik, markör, fem rensningslägen och regionskrollning. | Bredare testning av specialiserade terminalbackends. |
-| Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, markörstyrning från Frame och Terminal, bildräknare, ANSI och Win32. Fast och inbäddad vyport, explicit storleksanpassning, terminalens tecken- och pixelmått, manuell cellutmatning och byte av arbetsbuffert, loggrader, rensning och regionskrollning. Marköråterställning för egna backends samt återhämtning efter skrivfel och uteblivet markörsvar. | Fel mitt i regionskrollning. |
+| Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, markörstyrning från Frame och Terminal, bildräknare, ANSI och Win32. Fast och inbäddad vyport, explicit storleksanpassning, terminalens tecken- och pixelmått, manuell cellutmatning och byte av arbetsbuffert, loggrader, rensning och regionskrollning. Marköråterställning för egna backends samt återhämtning efter skrivfel och uteblivet markörsvar. Regionskrollning och radmatningsbaserad infogning jämförs separat. | Nativ Windows x64 för de senaste ändringarna i logginfogning. |
 | Stabil Rust-integration | Jämförelseprogrammen använder den låsta Rustreferensen. Dunder-appar byggs offline. | Kontrollera Dunder-motsvarigheter till bekvämlighetsmakron, serialisering, cachning och backendval där dessa påverkar appens beteende. |
 | Effektivitet och plattformar | Tid, minne, allokeringar och terminalbyte på macOS och Linux. Pseudoterminal på macOS ARM64, Linux ARM64 och nativ Linux x86-64. Win32-prov på Windows Server 2025 x64 och under Wine. | Fler arbetslaster med komplex layout, lägre kostnad för dynamiska färgvärden och likvärdig bildtid på x86-64. |
 
@@ -36,6 +36,37 @@ diff -u build/ratatui-colors build/dunder-colors
 ```
 
 Fler körbara prov täcker ändrade bildrader, delade SGR-återställningar, överlappande text, färgade understreck och terminalåterställning. [Bibliotekstester](../tests/suite.ddr) · [Unix-terminal](../tests/posix_terminal.ddr) · [Win32-konsol](../tests/windows_console.ddr) · [Prestandamätningar](../benchmarks/README.md)
+
+## Loggrader i en inbäddad vy
+
+Med och utan skrollregioner jämförs vardera 1 440 vyportstillstånd mot Ratatui 0.30.2. Två ytterligare serier om 45 bilder jämför varje rå cell i skärmen och historiken, inklusive färgat understreck, kombinerande tecken, breda symboler, diffregler och ordningen på ritade celler. Vid överskrivning av en befintlig rad skriver båda biblioteken även celler märkta `Skip`. [Vyportprov](../tests/viewport_reference.ddr) · [Cellprov](../tests/insert_cells.ddr) · [Ratatuis implementation](https://github.com/ratatui/ratatui/blob/ratatui-v0.30.2/ratatui-core/src/terminal/inline.rs)
+
+En buffrad backend provar skrivfel före och efter varje operation vid två vyhöjder och tre skrollsätt. Nästa lyckade ritning återställer vyn och markören. I pseudoterminalen sätts först en begränsad skrollregion. Sedan stängs utmatningsfilen under ett skrollanrop. Efter att filen öppnats igen provas ritning, radmatning, markörflytt, markörfråga och avslut var för sig. Ett separat prov avslutar direkt efter nio loggrader och kontrollerar var skalet får tillbaka markören. [Buffrat felprov](../tests/scroll_errors.ddr) · [Pseudoterminalprov](../tests/scroll_terminal.ddr) · [Win32-konsolprov](../tests/windows_console.ddr)
+
+Kör lokalt med Dunder 0.11.3. Rustkommandona använder referensprogrammets låsta paket från den lokala Cargo-cachen.
+
+```sh
+mkdir -p build
+dunder test --locked --offline
+dunder build --locked --offline tests/scroll_terminal.ddr -o build/scroll-terminal
+build/scroll-terminal
+dunder build --locked --offline tests/viewport_reference.ddr -o build/views
+dunder build --locked --offline tests/insert_cells.ddr -o build/cells
+for mode in feeds regions; do
+  features=style-oracle
+  view_arg=--line-feeds
+  cell_arg=
+  if [ "$mode" = regions ]; then
+    features=style-oracle,terminal-oracle
+    view_arg=
+    cell_arg=--regions
+  fi
+  cargo build --locked --offline --release --manifest-path benchmarks/reference/Cargo.toml \
+    --features "$features" --example viewports --example insert_cells --target-dir build/rust
+  build/views $view_arg >build/view-states && build/rust/release/examples/viewports <build/view-states || exit 1
+  build/cells $cell_arg >build/insert-states && build/rust/release/examples/insert_cells <build/insert-states || exit 1
+done
+```
 
 ## Stora buffertar i 0.24.0
 

@@ -1,0 +1,119 @@
+capability unsafe, stdio, process
+import .terminal_driver as driver
+import ..src.tui
+import ..src.posix
+import sys
+
+@extern("c","dup")
+unsafe fn duplicate(fd:i32) -> i32
+@extern("c","dup2")
+unsafe fn restore(fd:i32, target:i32) -> i32
+
+fn key(term: &mut tui.Terminal<tui.LiveBackend>) -> bool {
+    match term.backend_mut().next(3000) { .Press(_) => true, _ => false, }
+}
+
+fn app(mode:string) -> i32 {
+    mut term := tui.open(.Fullscreen).unwrap()
+    area := term.viewport_area()
+    term.get_frame().label(area,mode)
+    if term.apply_buffer().is_err() || !posix.write("\x1b[2;4r") || !key(&mut term) { return 2 }
+    unsafe {
+        fd := duplicate(1)
+        if fd < 0 || sys.fd_close(1) != 0 { return 3 }
+        result := term.backend_mut().shift_rows(1,4,-1)
+        if restore(fd,1) != 1 || sys.fd_close(fd) != 0 || result.is_ok() { return 4 }
+    }
+    match mode {
+        "draw" => { term.get_frame().label(area,"recovered"); if term.apply_buffer().is_err() { return 5 } },
+        "append" => { if term.backend_mut().extend_lines(1).is_err() { return 6 } },
+        "cursor" => { if term.set_cursor_position(2,4).is_err() { return 7 } },
+        "query" => { if term.cursor_position().unwrap() != (0,0) { return 8 } },
+        "close" => { term.backend_mut().close(); return 0 },
+        _ => { return 9 },
+    }
+    if !posix.write("\x1b[5;1HDONE") || !key(&mut term) { return 10 }
+    0
+}
+
+fn exercise(master:i32,slave:i32,screen:&mut driver.Screen) -> bool {
+    unsafe {
+        if !driver.wait_for(master,&mut screen,0,"","\x1b[2;4r") || screen.top != 1 || screen.bottom != 4 { return false }
+        closing := screen.contains(0,"close")
+        query := screen.contains(0,"query")
+        if !driver.send(master,"a") { return false }
+        if query {
+            if !driver.wait_for(master,&mut screen,0,"","\x1b[6n") || screen.top != 0 || screen.bottom != screen.h { return false }
+            if !driver.send(master,"\x1b[1;1R") { return false }
+        }
+        if !closing {
+            if !driver.wait_for(master,&mut screen,4,"DONE","") || screen.top != 0 || screen.bottom != screen.h { return false }
+            if !driver.send(master,"q") { return false }
+        }
+        return driver.wait_for(master,&mut screen,0,"","\x1b[?1049l") && screen.top == 0 && screen.bottom == screen.h
+    }
+    false
+}
+
+fn log_app(close_after_insert: bool) -> i32 {
+    mut term := tui.open(.Inline(2)).unwrap()
+    term.backend_mut().set_scrolling_regions(false)
+    area := term.viewport_area()
+    term.get_frame().label(area,"Logg")
+    if term.apply_buffer().is_err() || !key(&mut term) { return 1 }
+    mut lines := tui.Frame::new(area.w,9)
+    for i in 0..9 {
+        lines.text(tui.Rect::new(0,i,area.w,1),f"L{i}",tui.ink(.Red).bold())
+        assert(lines.set_cell(4,i,"S",tui.ink(.Blue)) && lines.set_diff_option(4,i,.Skip))
+        assert(lines.set_cell_with_width(6,i,"X",2,tui.ink(.Cyan)))
+        assert(lines.set_cell(7,i,"z",tui.ink(.Magenta)))
+    }
+    if term.insert_before(&lines).is_err() { return 2 }
+    if close_after_insert { return 0 }
+    a := term.viewport_area()
+    term.get_frame().label(a,"Logg\n9 rader")
+    if term.apply_buffer().is_err() || !key(&mut term) { return 3 }
+    0
+}
+
+fn log_input(master:i32,screen:&mut driver.Screen) -> bool {
+    unsafe {
+        if !driver.wait_for(master,&mut screen,0,"","\x1b[6n") || !driver.send(master,"\x1b[2;1R") { return false }
+        if !driver.wait_for(master,&mut screen,1,"Logg","") || !driver.send(master,"a") { return false }
+        if !driver.wait_for(master,&mut screen,0,"","\x1b[6n") { return false }
+        return driver.send(master,f"\x1b[{screen.y+1};{screen.x+1}R")
+    }
+    false
+}
+
+fn log_close(master:i32,slave:i32,screen:&mut driver.Screen) -> bool {
+    unsafe {
+        return log_input(master,&mut screen) &&
+            driver.wait_state(master,&mut screen,0,"L7","\x1b[?25h",0,4,1)
+    }
+    false
+}
+
+fn log_screen(master:i32,slave:i32,screen:&mut driver.Screen) -> bool {
+    unsafe {
+        if !log_input(master,&mut screen) { return false }
+        if !driver.wait_for(master,&mut screen,4,"9 rader","") { return false }
+        if !screen.contains(0,"L6") || !screen.contains(1,"L7") || !screen.contains(2,"L8") || !screen.contains(3,"Logg") { return false }
+        for y in 0..3 { if !screen.contains(y,"S Xz") { return false } }
+        return driver.send(master,"q")
+    }
+    false
+}
+
+fn main() -> i32 {
+    if sys.arg_count() == 2 && sys.arg(1) == "log" { return log_app(false) }
+    if sys.arg_count() == 2 && sys.arg(1) == "log-close" { return log_app(true) }
+    if sys.arg_count() == 2 { return app(sys.arg(1)) }
+    for mode in ["draw","append","cursor","query","close"] {
+        unsafe { if !driver.test_with_args(sys.arg(0),[mode.clone()],20,6,exercise) { _ := sys.eprint(mode); return 1 } }
+    }
+    unsafe { if !driver.test_with_args(sys.arg(0),["log"],20,5,log_screen) { _ := sys.eprint("line feeds"); return 1 } }
+    unsafe { if !driver.test_with_args(sys.arg(0),["log-close"],20,5,log_close) { _ := sys.eprint("close after insert"); return 1 } }
+    print("Scroll margins recovered on five paths and nine inline log rows inserted using line feeds")
+    0
+}

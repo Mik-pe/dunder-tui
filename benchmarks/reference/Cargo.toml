@@ -31,6 +31,10 @@ name = "large_buffers"
 required-features = ["style-oracle"]
 
 [[example]]
+name = "insert_cells"
+required-features = ["style-oracle"]
+
+[[example]]
 name = "styles"
 required-features = ["style-oracle"]
 
@@ -57,10 +61,6 @@ required-features = ["layout-cache"]
 
 [[example]]
 name = "terminal"
-required-features = ["terminal-oracle"]
-
-[[example]]
-name = "viewports"
 required-features = ["terminal-oracle"]
 
 [[example]]

@@ -72,3 +72,15 @@ Med den publicerade korrigeringen hade Dunder lägre median och p95 än Ratatui 
 | Windows x64 | 3 980 / 4 244 | saknas / 47 628 | saknas / 1 318 768 |
 
 Samtliga fyra terminaler fick 1 349 574 byte från Dunder och 1 602 753 byte från Ratatui. Minnesparen anges som Dunder / Ratatui och mättes på samma sätt som i 0.23.0. Kör kommandona ovan från taggen `v0.23.1`. De publicerade körlistorna, maskotarna och animationsgallerierna drevs även med riktiga tangenthändelser i terminalproven. [Linux x64](https://github.com/Mik-pe/dunder-tui/actions/runs/45331074419/job/138232169189) · [Windows x64](https://github.com/Mik-pe/dunder-tui/actions/runs/45331074419/job/138232168889) · [Bildtider före och efter korrigeringen för ligaturer](ligatures.md#vanlig-textritning-i-0231)
+
+## Lokalt med Dunder 0.11.3
+
+Standardbibliotekets nya arrayoperationer används för att ändra buffertstorlek och flytta textrader. Kör samma kommandon som ovan från den här revisionen. Sju processpar per läge gav följande tider för en oförändrad bild i pseudoterminalen. I mätfilen finns alla fem arbetslaster i minne och terminal, inklusive spannet mellan lägsta och högsta p50 och p95. [Alla 60 mätvärden](results/collections-dunder-0.11.3-local.tsv)
+
+| Värd på Apple M5 | Dunder median / p95, µs | Ratatui median / p95, µs |
+| --- | ---: | ---: |
+| macOS ARM64 | 11,0 / 13,0 | 32,4 / 72,3 |
+| Linux ARM64 i lokal VM | 14,8 / 32,8 | 53,8 / 82,2 |
+| Linux x86-64 med översättning i samma VM | 111,0 / 132,9 | 58,0 / 74,8 |
+
+På varje system matchade alla 1 100 bilder. Terminalerna fick 1 349 574 byte från Dunder och 1 602 753 från Ratatui. På macOS gav separata profiler 8 962 respektive 47 589 allokeringsanrop och 442 362 respektive 1 316 587 begärda byte. Medianen av tre mätningar med `/usr/bin/time -l` var 1 872 respektive 2 768 KiB i högsta residenta minne. Kör Dunderbygget med `--runtime-profile` och bygg Rustreferensen med `layout-cache,allocation-counts` för att jämföra allokeringar med `--allocations`. Mät minnet på de vanliga byggena. För den här revisionen återstår tidsmätningar på nativa x64-system.

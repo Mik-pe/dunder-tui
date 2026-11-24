@@ -323,6 +323,15 @@ unsafe fn embedded(out: ptr) -> i32 {
     if embedded.insert_before(&line).is_err() || unit_at(out,x,y+1) != 76 || unit_at(out,x,y+2) != 86 { return 54 }
     embedded.backend_mut().close()
     if info(out,addr(&mut bounds[0])) == 0 || i32(bounds[3]) != y+4 || unit_at(out,0,0) != 35 { return 55 }
+    if position(out,u32(x).bit_or(u32(y+1).shl(16))) == 0 { return 163 }
+    mut feeds := tui.open(.Inline(2)).unwrap()
+    feeds.backend_mut().set_scrolling_regions(false)
+    if feeds.draw(&mut count,embedded_frame).is_err() || feeds.insert_before(&line).is_err() { return 164 }
+    if unit_at(out,x,y+1) != 76 || unit_at(out,x,y+2) != 32 || feeds.viewport_area().y != 2 { return 165 }
+    if feeds.draw(&mut count,embedded_frame).is_err() || unit_at(out,x,y+2) != 86 { return 166 }
+    if feeds.insert_before(&line).is_err() { return 168 }
+    feeds.backend_mut().close()
+    if unit_at(out,0,0) != 35 || info(out,addr(&mut bounds[0])) == 0 || i32(bounds[3]) != y+5 { return 167 }
     0
 }
 

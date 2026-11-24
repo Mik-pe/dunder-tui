@@ -3,6 +3,7 @@ capability unsafe, stdio
 import .input
 import .paint as palette
 import std.bytes as bytes
+import std.utf16 as utf16
 
 @extern("kernel32.dll", "GetStdHandle")
 unsafe fn handle(channel: i32) -> ptr
@@ -262,15 +263,7 @@ pub fn write(state: &State, output: &[]u8) -> bool { write_text(&state, bytes.de
 fn write_text(state: &State, value: string) -> bool {
     mut units: []u16 = []
     units.reserve(value.len)
-    for r in value.runes() {
-        cp := i32(r)
-        if cp < 65536 { units.push(u16(cp)) }
-        else {
-            pair := cp - 65536
-            units.push(u16(55296 + pair / 1024))
-            units.push(u16(56320 + pair % 1024))
-        }
-    }
+    utf16.append(&mut units,value.as_str())
     mut sent := 0
     unsafe {
         while sent < units.len {
