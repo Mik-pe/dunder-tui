@@ -1,0 +1,98 @@
+capability stdio, unsafe
+
+import ..src.testing
+import ..src.tui
+import std.json
+import sys
+
+pub fn modes() -> []tui.ClearType { [.All,.AfterCursor,.BeforeCursor,.CurrentLine,.UntilNewLine] }
+
+pub fn grid(w:i32, h:i32) -> tui.Frame {
+    mut frame := tui.Frame::new(w,h)
+    for y in 0..h {
+        for x in 0..w {
+            frame.fill(tui.Rect::new(x,y,1,1),rune(65+(y*w+x)%26),tui.ink(.Red).background(.Blue).bold())
+        }
+    }
+    move frame
+}
+
+pub fn viewport(i:i32, w:i32, h:i32) -> tui.Rect {
+    match i {
+        0 => tui.Rect::new(0,0,w,h), 1 => tui.Rect::new(0,1,w,h-1),
+        2 => tui.Rect::new(0,1,w,2), 3 => tui.Rect::new(1,1,w-2,h-2),
+        4 => tui.Rect::new(0,h-1,w,1), 5 => tui.Rect::new(0,1,0,2),
+        _ => tui.Rect::new(0,1,w,0),
+    }
+}
+
+fn decorated() -> testing.TestBackend {
+    mut frame := tui.Frame::new(8,2)
+    brush := tui.ink(.Red).italic().underlined().underline_index(127)
+    frame.text(tui.Rect::new(0,0,8,1),"A界é",brush)
+    symbols := ["🦊","B","é","界","S","a","X","!"]
+    for x in 0..8 {
+        mut cell := tui.RawCell::new(symbols[x].clone())
+        _ := cell.set_style(brush)
+        if x == 4 { _ := cell.set_diff_option(.Skip) }
+        if x == 5 { _ := cell.set_diff_option(.AlwaysUpdate) }
+        if x == 6 { _ := cell.set_diff_option(.ForcedWidth(2)) }
+        assert(frame.set_raw_cell(x,1,&cell))
+    }
+    mut device := testing.TestBackend::new(8,2)
+    device.overwrite_region(&frame).unwrap()
+    move device
+}
+
+fn snapshot(device:&testing.TestBackend) {
+    (x,y) := device.cursor_position()
+    print(f"{x} {y} {json.to_string(device.buffer()).unwrap()}")
+}
+
+fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--terminal" {
+        mut t := tui.open(.Fullscreen).unwrap()
+        mut col := 1
+        for mode in modes() {
+            t.set_cursor_position(col,2).unwrap()
+            t.backend_mut().erase(mode).unwrap()
+            col += 1
+        }
+        t.backend_mut().close()
+        return
+    }
+    for w in [1,5,8] { for h in [1,4] {
+        pattern := grid(w,h)
+        for y in 0..h { for x in 0..w { for mode in modes() {
+            mut device := testing.TestBackend::new(w,h)
+            device.write_region(&pattern).unwrap()
+            device.set_cursor_position(x,y)
+            device.erase(mode).unwrap()
+            snapshot(&device)
+        } } }
+    } }
+    pattern := grid(8,5)
+    for i in 0..7 {
+        mut device := testing.TestBackend::new(8,5)
+        device.write_region(&pattern).unwrap()
+        device.set_cursor_position(3,2)
+        mut t := tui.Terminal<testing.TestBackend>::with_viewport(move device,.Fixed(viewport(i,8,5))).unwrap()
+        t.clear().unwrap()
+        snapshot(t.backend())
+        t.get_frame().fill(t.viewport_area(),`+`,tui.ink(.Green))
+        t.apply_buffer().unwrap()
+        snapshot(t.backend())
+        t.backend_mut().write_region(&pattern).unwrap()
+        t.set_cursor_position(3,2).unwrap()
+        t.resize(viewport(i,8,5)).unwrap()
+        snapshot(t.backend())
+    }
+    original := decorated()
+    snapshot(&original)
+    for y in 0..2 { for x in 0..8 { for kind in modes() {
+        mut b := decorated()
+        b.set_cursor_position(x,y)
+        b.erase(kind).unwrap()
+        snapshot(&b)
+    } } }
+}

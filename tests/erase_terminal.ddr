@@ -1,0 +1,147 @@
+capability stdio, process, unsafe
+import ..src.tui
+import ..src.testing
+import .terminal_driver as driver
+import .erase
+import sys
+
+fn child() {
+    grid := erase.grid(8,5)
+    mut t := tui.open(.Fullscreen).unwrap()
+    for (x,y) in [(0,0),(7,4),(3,2),(7,1),(0,3)] { for mode in erase.modes() {
+        t.backend_mut().write_region(&grid).unwrap()
+        t.set_cursor_position(x,y).unwrap()
+        t.backend_mut().erase(mode).unwrap()
+        assert(t.cursor_position().unwrap() == (x,y))
+    } }
+    t.backend_mut().close()
+    for i in 0..7 {
+        area := erase.viewport(i,8,5)
+        mut view := tui.open(.Fixed(area)).unwrap()
+        view.backend_mut().write_region(&grid).unwrap()
+        view.set_cursor_position(3,2).unwrap()
+        view.clear().unwrap()
+        assert(view.cursor_position().unwrap() == (3,2))
+        view.get_frame().fill(area,`+`,tui.ink(.Green))
+        view.apply_buffer().unwrap()
+        _ := view.cursor_position().unwrap()
+        view.backend_mut().write_region(&grid).unwrap()
+        view.set_cursor_position(3,2).unwrap()
+        view.resize(area).unwrap()
+        _ := view.cursor_position().unwrap()
+        view.backend_mut().close()
+    }
+    mut inline := tui.open(.Inline(1)).unwrap()
+    assert(inline.viewport_area() == tui.Rect::new(0,3,8,1))
+    inline.backend_mut().write_region(&grid).unwrap()
+    inline.set_cursor_position(3,2).unwrap()
+    inline.clear().unwrap()
+    assert(inline.cursor_position().unwrap() == (3,2))
+    inline.backend_mut().close()
+}
+
+unsafe fn report(master:i32, screen:&mut driver.Screen) -> bool {
+    driver.send(master,f"\x1b[{screen.y+1};{screen.x+1}R")
+}
+
+unsafe fn requested(master:i32, screen:&mut driver.Screen) -> bool {
+    driver.wait_for(master,&mut screen,0,"","\x1b[6n")
+}
+
+fn matches(screen:&driver.Screen, expected:&tui.Frame) -> bool {
+    for y in 0..screen.h { for x in 0..screen.w {
+        value := expected.raw_cell_at(x,y).unwrap().symbol_text()
+        if i32(screen.cells[y*screen.w+x]) != i32(value[0]) { return false }
+    } }
+    true
+}
+
+fn mismatch(stage:string, x:i32, y:i32) -> bool {
+    _ := sys.eprint(f"{stage}: terminal cursor ({x},{y})")
+    false
+}
+
+fn exercise(master:i32, slave:i32, screen:&mut driver.Screen) -> bool {
+    grid := erase.grid(8,5)
+    mut expected := testing.TestBackend::new(8,5)
+    unsafe {
+        for (x,y) in [(0,0),(7,4),(3,2),(7,1),(0,3)] { for mode in erase.modes() {
+            expected.write_region(&grid).unwrap()
+            expected.set_cursor_position(x,y)
+            expected.erase(mode).unwrap()
+            if !requested(master,&mut screen) || screen.x != x || screen.y != y ||
+                !matches(&screen,expected.buffer()) || !report(master,&mut screen) { return mismatch(f"erase {x},{y}",screen.x,screen.y) }
+        } }
+        for i in 0..7 {
+            area := erase.viewport(i,8,5)
+            expected.write_region(&grid).unwrap()
+            if !requested(master,&mut screen) || !matches(&screen,expected.buffer()) || !report(master,&mut screen) { return mismatch(f"fixed {i} before clear",screen.x,screen.y) }
+            expected.clear_rect(area).unwrap()
+            if !requested(master,&mut screen) || screen.x != 3 || screen.y != 2 ||
+                !matches(&screen,expected.buffer()) || !report(master,&mut screen) { return mismatch(f"fixed {i} after clear",screen.x,screen.y) }
+            mut painted := tui.Frame::at(area)
+            painted.fill(area,`+`,tui.ink(.Green))
+            expected.write_region(&painted).unwrap()
+            if !requested(master,&mut screen) || !matches(&screen,expected.buffer()) || !report(master,&mut screen) { return mismatch(f"fixed {i} redraw",screen.x,screen.y) }
+            expected.write_region(&grid).unwrap()
+            expected.clear_rect(area).unwrap()
+            mut x := 3
+            mut y := 2
+            if !area.is_empty() {
+                x = if area.w == 8 { 0 } else { area.right() }
+                y = if area.w == 8 && area.bottom() == 5 { area.y } else { area.bottom()-1 }
+            }
+            if !requested(master,&mut screen) || screen.x != x || screen.y != y ||
+                !matches(&screen,expected.buffer()) || !report(master,&mut screen) { return mismatch(f"fixed {i} resize, expected ({x},{y})",screen.x,screen.y) }
+        }
+        if !requested(master,&mut screen) || screen.x != 0 || screen.y != 3 || !report(master,&mut screen) { return mismatch("inline placement",screen.x,screen.y) }
+        expected.write_region(&grid).unwrap()
+        if !requested(master,&mut screen) || !matches(&screen,expected.buffer()) || !report(master,&mut screen) { return mismatch("inline before clear",screen.x,screen.y) }
+        expected.clear_rect(tui.Rect::new(0,3,8,2)).unwrap()
+        if !requested(master,&mut screen) || screen.x != 3 || screen.y != 2 ||
+            !matches(&screen,expected.buffer()) || !report(master,&mut screen) { return mismatch("inline after clear",screen.x,screen.y) }
+        return driver.wait_for(master,&mut screen,0,"","\x1b[?25h")
+    }
+    false
+}
+
+fn wide_child() {
+    mut t := tui.open(.Fixed(tui.Rect::new(1,0,1400,65))).unwrap()
+    mut pattern := tui.Frame::new(1402,65)
+    pattern.fill(pattern.area(),`X`,tui.plain())
+    t.backend_mut().write_region(&pattern).unwrap()
+    t.set_cursor_position(4,2).unwrap()
+    t.clear().unwrap()
+    assert(t.cursor_position().unwrap() == (4,2))
+    t.backend_mut().close()
+}
+
+fn wide_area(master:i32, slave:i32, screen:&mut driver.Screen) -> bool {
+    unsafe {
+        for pass in 0..2 {
+            if !requested(master,&mut screen) || screen.x != 4 || screen.y != 2 { return false }
+            for y in 0..screen.h { for x in 0..screen.w {
+                expected := if pass == 0 || x == 0 || x == screen.w-1 { `X` } else { ` ` }
+                if screen.cells[y*screen.w+x] != expected { return mismatch(f"wide cell ({x},{y}), pass {pass}",screen.x,screen.y) }
+            } }
+            if !report(master,&mut screen) { return false }
+        }
+        return driver.wait_for(master,&mut screen,0,"","\x1b[?25h")
+    }
+    false
+}
+
+fn main() -> i32 {
+    if sys.arg_count() > 1 {
+        if sys.arg(1) == "wide" { wide_child() } else { child() }
+        return 0
+    }
+    unsafe {
+        if driver.test_with_args(sys.arg(0),["child"],8,5,exercise) &&
+            driver.test_with_args(sys.arg(0),["wide"],1402,65,wide_area) {
+            print("25 cursor erases and 7 fixed viewports, inline clear, 91000-cell clear and terminal restoration OK")
+            return 0
+        }
+    }
+    1
+}

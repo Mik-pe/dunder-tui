@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Rensa en vyport vid storleksändring
+
+Fyra vyer jämför Dunder med föregående revision och Ratatuis två Unix-backends Crossterm och Termion. [Bildtider, terminalbyte, allokeringar och minne](clear-viewport.md)
+
 ## Formatera och slå upp etiketter
 
 Provet formaterar eller maskerar 128 etiketter och slår upp redigerbara textvärden i en hashtabell. [Tider, allokeringar och resident minne](text-labels.md)

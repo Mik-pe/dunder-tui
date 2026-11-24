@@ -1976,6 +1976,15 @@ impl tui.Backend for BufferedOutput {
         f.ansi_diff(&previous,&mut self.pending)
         self.device.present(&f,&previous)
     }
+    fn read_cursor(&mut self) -> Result<(i32,i32),string> { .Ok(self.device.cursor_position()) }
+    fn move_to(&mut self, x:i32, y:i32) -> Result<(),string> { self.device.move_to(x,y) }
+    fn write_region(&mut self, frame:&tui.Frame) -> Result<(),string> {
+        self.writes += 1
+        self.device.write_region(&frame)?
+        self.device.set_cursor_position(frame.area().x,frame.area().y)
+        if self.fail_write { return .Err("region write") }
+        .Ok
+    }
     fn flush(&mut self) -> Result<(),string> {
         self.flushes += 1
         if self.fail_flush { return .Err("backend flush") }
@@ -2302,4 +2311,32 @@ impl tui.Backend for BufferedOutput {
     field := rich.Masked::new("東\r\n🦊",`●`)
     assert(field.str() == "●●●●" && field.source() == "東\r\n🦊")
     assert(rich.Masked::default().mask_char() == rune(0))
+}
+
+@test fn clearing_a_full_width_fixed_viewport_restores_the_cursor_and_resizing_leaves_it_at_the_erased_row() {
+    mut device := testing.TestBackend::with_lines(&["AAAA","BBBB","CCCC","DDDD"])
+    device.set_cursor_position(2,3)
+    middle := tui.Rect::new(0,1,4,2)
+    mut t := tui.Terminal<testing.TestBackend>::with_viewport(move device,.Fixed(middle)).unwrap()
+    t.clear().unwrap()
+    assert(t.cursor_position().unwrap() == (2,3))
+    t.backend().assert_buffer_lines(&["AAAA","    ","    ","DDDD"])
+    t.resize(middle).unwrap()
+    assert(t.cursor_position().unwrap() == (0,2))
+    t.resize(tui.Rect::new(0,1,4,3)).unwrap()
+    assert(t.cursor_position().unwrap() == (0,1))
+    t.backend().assert_buffer_lines(&["AAAA","    ","    ","    "])
+}
+
+@test fn default_backend_erase_restores_the_cursor_after_a_partial_write() {
+    mut b := BufferedOutput { device:testing.TestBackend::with_lines(&["AAAA","BBBB"]), pending:[], sent:[],
+        writes:0, flushes:0, fail_write:true, fail_flush:true }
+    b.move_to(2,0).unwrap()
+    assert(b.erase(.AfterCursor).unwrap_err() == "region write")
+    assert(b.device.cursor_position() == (2,0) && b.writes == 1 && b.flushes == 1)
+    b.device.assert_buffer_lines(&["AA  ","BBBB"])
+    b.fail_write = false
+    assert(b.erase(.AfterCursor).unwrap_err() == "backend flush")
+    assert(b.device.cursor_position() == (2,0) && b.writes == 3 && b.flushes == 2)
+    b.device.assert_buffer_lines(&["AA  ","    "])
 }

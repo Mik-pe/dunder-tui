@@ -145,21 +145,41 @@ pub fn move_to(state: &State, x: i32, y: i32) -> bool {
     false
 }
 
+unsafe fn fill_cells(state: &State, x:i32, y:i32, count:u32) -> bool {
+    at := u32(x).bit_or(u32(y).shl(16))
+    mut written: u32 = 0
+    fill_char(state.screen,32,count,at,addr(&mut written)) != 0 && written == count &&
+        fill_attr(state.screen,u16(state.palette),count,at,addr(&mut written)) != 0 && written == count
+}
+
+pub fn clear_rect(state: &State, x:i32, y:i32, width:i32, height:i32) -> bool {
+    if x < 0 || y < 0 || width < 0 || height < 0 { return false }
+    if width == 0 || height == 0 { return true }
+    mut info: [i16;11] = [0;11]
+    unsafe {
+        if buffer_info(state.screen,addr(&mut info[0])) == 0 { return false }
+        columns := i32(info[7])-i32(info[5])+1
+        rows := i32(info[8])-i32(info[6])+1
+        if x > columns-width || y > rows-height { return false }
+        left := i32(info[5])+x
+        top := i32(info[6])+y
+        if left == 0 && width == i32(info[0]) {
+            return fill_cells(&state,left,top,u32(width)*u32(height))
+        }
+        for row in top..top+height {
+            if !fill_cells(&state,left,row,u32(width)) { return false }
+        }
+    }
+    true
+}
+
 pub fn shift_rows(state: &mut State, first: i32, end: i32, delta: i32) -> bool {
     (w,h) := size(&mut state)
     if first < 0 || end > h || end <= first || w <= 0 { return false }
     n := delta.abs()
     if n == 0 { return true }
-    mut written: u32 = 0
+    if n >= end-first { return clear_rect(&state,0,first,w,end-first) }
     unsafe {
-        if n >= end-first {
-            for y in first..end {
-                at := coord(&state,0,y)
-                if fill_char(state.screen,32,u32(w),at,addr(&mut written)) == 0 || written != u32(w) ||
-                    fill_attr(state.screen,u16(state.palette),u32(w),at,addr(&mut written)) == 0 || written != u32(w) { return false }
-            }
-            return true
-        }
         mut clip: [i16;4] = [i16(state.left),i16(state.top+first),i16(state.left+w-1),i16(state.top+end-1)]
         mut source := clip.clone()
         if delta > 0 { source[3] -= i16(n) } else { source[1] += i16(n) }

@@ -66,13 +66,15 @@ impl Screen {
                     } else if v == `S` || v == `T` {
                         count := if number > 0 { number } else { 1 }
                         self.scroll(if v == `S` { -count } else { count })
-                    } else if v == `K` && number == 2 && self.y < self.h {
-                        for col in 0..self.w { self.cells[self.y*self.w+col] = ` ` }
+                    } else if (v == `J` || v == `K`) && number <= 2 && self.y < self.h {
+                        row := self.y*self.w
+                        cursor := row + if self.x >= self.w { self.w-1 } else { self.x }
+                        start := if number == 0 { cursor } else if v == `K` { row } else { 0 }
+                        end := if number == 1 { cursor+1 } else if v == `K` { row+self.w } else { self.cells.len }
+                        for n in start..end { self.cells[n] = ` ` }
                     } else if v == `H` {
                         self.y = if previous > 0 { previous - 1 } else { 0 }
                         self.x = if number > 0 { number - 1 } else { 0 }
-                    } else if v == `J` && number == 2 {
-                        for n in 0..self.cells.len { self.cells[n] = ` ` }
                     }
                     break
                 }

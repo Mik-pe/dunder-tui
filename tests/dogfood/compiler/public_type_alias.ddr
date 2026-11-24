@@ -1,0 +1,4 @@
+import std.time
+pub type Clock = time.MonotonicClock
+fn sample(clock: Clock) -> bool { clock == .Raw }
+fn main() { assert(sample(time.MonotonicClock.Raw)) }

@@ -13,7 +13,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna strängar för hörn och sidor, individuella kanter, justerade titlar, utfyllnad och skuggor. För skuggor jämförs 85 050 råa celler och celldiffarnas ordning med referensen. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
 | Övriga widgets | Fristående Clear och Fill med cellvisa symboler, stil och klippning, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, månadskalender med händelser och egna datumstilar, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. Ratatuis båda logotyper och maskot med två ögonfärger. | Se beteendeproven per widget nedan. |
 | Egna widgets och tester | Frame ritar egna och inbyggda widgets med `render_widget` och `render_stateful_widget`. Tillstånd kan uppdateras vid ritning med `run_stateful`. Egna backends kan anslutas till Terminal. TestBackend har skrollhistorik, markör, fem rensningslägen och regionskrollning. | Bredare testning av specialiserade terminalbackends. |
-| Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, markörstyrning från Frame och Terminal, bildräknare, ANSI och Win32. Fast och inbäddad vyport, explicit storleksanpassning, terminalens tecken- och pixelmått, manuell cellutmatning och byte av arbetsbuffert, loggrader, rensning och regionskrollning. Marköråterställning för egna backends samt återhämtning efter skrivfel och uteblivet markörsvar. Regionskrollning och radmatningsbaserad infogning jämförs separat. | Nativ Windows x64 för de senaste ändringarna i logginfogning. |
+| Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, markörstyrning från Frame och Terminal, bildräknare, ANSI och Win32. Fast och inbäddad vyport, explicit storleksanpassning, terminalens tecken- och pixelmått, manuell cellutmatning och byte av arbetsbuffert, loggrader, fem rensningslägen med bevarad markör och regionskrollning. Marköråterställning för egna backends samt återhämtning efter skrivfel och uteblivet markörsvar. Regionskrollning och radmatningsbaserad infogning jämförs separat. | Nativ Windows x64 för de senaste ändringarna i rensning och logginfogning. |
 | Stabil Rust-integration | Dunders konstruktorer jämförs med alla åtta makron för rik text, tabellrader och layout. Jämförelseprogrammen använder den låsta Rustreferensen. Dunder-appar byggs offline. | Skillnader mellan terminalbackends och exakta gränsfall för layout beskrivs nedan. |
 | Effektivitet och plattformar | Tid, minne, allokeringar och terminalbyte på macOS och Linux. Pseudoterminal på macOS ARM64, Linux ARM64 och nativ Linux x86-64. Win32-prov på Windows Server 2025 x64 och under Wine. | Fler arbetslaster med komplex layout, lägre kostnad för dynamiska färgvärden och likvärdig bildtid på x86-64. |
 
@@ -27,7 +27,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | `scrolling-regions` | Backendens regionskrollning och reservvägen med radmatning jämförs genom skrollhistorik och terminalutdata. |
 | `macros` | Alla åtta makron körs i referensen. Deras tomma, uppräknade, formaterade och upprepade former jämförs med Dunder där respektive makro stöder formen. [Konstruktorprov](#bygg-text-tabellrader-och-layout) |
 | `serde` | Färger, stilar, attribut, celler, diffregler, buffertar, layouter och geometri läses och skrivs med `std.json`. Detsamma gäller testbackenden, widgettillstånden, Tailwind- och Materialpaletter, horisontell och vertikal justering, kanttyper, kantflaggor och utfyllnad. Stilar, celler, buffertar och testterminaler jämförs med och utan `underline-color`. Referensens `Span`, `Line` och `Text` saknar Serde-format. |
-| `crossterm`, `crossterm_0_28`, `crossterm_0_29`, `termina`, `termion`, `termwiz` | Dunder använder POSIX och Win32 direkt. Den låsta Crossterm-referensen och de faktiska terminalproven täcker bland annat ritning, markör och återställning. Skillnader mellan referensens övriga backendval är öppna. |
+| `crossterm`, `crossterm_0_28`, `crossterm_0_29`, `termina`, `termion`, `termwiz` | Dunder använder POSIX och Win32 direkt. Den låsta Crossterm-referensen och de faktiska terminalproven täcker bland annat ritning, markör och återställning. Alla fem rensningslägen jämförs även med Termion, Termina och Termwiz. Andra backendbeteenden återstår att jämföra. |
 | `std`, `portable-atomic`, `default` | Dunder bygger offline med sitt standardbibliotek. `portable-atomic` gäller referensens mål utan atomära typer. `default` väljer kalender, Crossterm, layoutcache, makron och understrykningsfärg. |
 
 Flaggorna och deras kopplingar kommer från [det låsta manifestet](https://docs.rs/crate/ratatui/0.30.2/source/Cargo.toml.orig). [Layoutprov](../tests/layout_reference.ddr) · [Färgprov](../tests/style_reference.ddr) · [Kalenderprov](../tests/calendar_reference.ddr) · [Terminalprov](../tests/viewport_reference.ddr)
@@ -572,6 +572,29 @@ cargo build --locked --release --manifest-path benchmarks/reference/Cargo.toml -
 build/terminal-states | build/rust/release/examples/terminal
 build/cursor-pty build/cursor-app
 build/cursor-pty build/rust/release/examples/terminal --live
+```
+
+## Rensa från markören och inom en vyport
+
+På testbackenden matchar 452 skärmtillstånd Ratatuis tecken, stilar, diffregler och markör. Förutom 350 rensningar på färgade bokstäver ingår en startbild och 80 rensningar med breda symboler, kombinerande tecken, färgat understreck och tre diffregler. De sju vyerna omfattar helskärm, fullbredd till nederkant, rader mitt på skärmen, en smal rektangel och två tomma ytor. `clear()` återställer markören. Efter en `resize()` av en fullbred vy vid nederkanten står den i vyportens övre vänstra hörn. För fullbreda rader mitt på skärmen står den i början av den sista rensade raden. Provet jämför även nästa omritning. [Dunder](../tests/erase.ddr) · [Ratatui 0.30.2](../benchmarks/reference/examples/erase.rs)
+
+På macOS ARM64, Linux ARM64 och översatt Linux x64 körs rensningarna även i pseudoterminal. Provet svarar på appens markörfrågor och läser tillbaka vilka celler som ändrats. En inbäddad vy lämnar raderna ovanför vyn orörda. Ett prov rensar 91 000 celler över flera skrivningar och läser tillbaka båda kantkolumnerna. Win64 under Wine matchade samma 452 referensbilder. Konsolprovet läste dessutom tillbaka tecken, färgattribut och markör efter 25 partiella och fullständiga rensningar. Nativ Windows x64 återstår för den här ändringen. [Terminalprov](../tests/erase_terminal.ddr) · [Win32-konsol](../tests/windows_console.ddr) · [Tid, terminalbyte och minne](../benchmarks/clear-viewport.md)
+
+Dunders fem rensningskommandon överensstämmer med Crossterm och Termion när ett utelämnat nollargument i CSI räknas som noll. Den låsta Termina-backenden skriver `CSI J` för `BeforeCursor`, vilket på terminalen rensar *efter* markören. Dunder skickar `CSI 1 J` och rensar före markören inklusive dess cell. Termwiz klarade helskärmsrensning och returnerade fel för samtliga fyra delrensningar. Skillnaderna kontrolleras mot de verkliga backendarnas utdata eller returvärden. [Referensprogram](../benchmarks/reference/examples/erase.rs) · [Låsta backendversioner](../benchmarks/reference/Cargo.lock)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/erase.ddr -o build/erase
+dunder build --locked --offline tests/erase_terminal.ddr -o build/erase-pty
+dunder build --locked --offline benchmarks/pty.ddr -o build/pty
+cargo build --release --locked --offline --manifest-path benchmarks/reference/Cargo.toml \
+  --no-default-features --features other-erase-backends --example erase --target-dir build/rust
+ref="$PWD/build/rust/release/examples/erase"
+"$ref" >build/expected && build/erase >build/actual && cmp build/expected build/actual
+build/erase-pty
+build/pty "$PWD/build/erase" build/commands && "$ref" --commands <build/commands
+TERM=xterm-256color build/pty "$ref" build/termina.ansi -- termina && "$ref" --termina-commands <build/termina.ansi
+TERM=xterm-256color build/pty "$ref" build/termwiz.ansi -- termwiz && "$ref" --termwiz-commands <build/termwiz.ansi
 ```
 
 ## Fasta och inbäddade vyportar i 0.11.0

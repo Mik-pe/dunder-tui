@@ -3160,6 +3160,31 @@ pub enum Key { Char(rune), Up, Down, Left, Right, Home, End, Delete, Backspace, 
 
 pub enum Viewport { Fullscreen, Fixed(Rect), Inline(i32) }
 
+pub enum ClearType { All, AfterCursor, BeforeCursor, CurrentLine, UntilNewLine }
+
+impl ClearType {
+    fn sequence(&self) -> string {
+        match self {
+            .All => "\x1b[2J", .AfterCursor => "\x1b[J", .BeforeCursor => "\x1b[1J",
+            .CurrentLine => "\x1b[2K", .UntilNewLine => "\x1b[K",
+        }
+    }
+
+    fn parts(&self, w:i32, h:i32, x:i32, y:i32) -> (Rect,Rect) {
+        empty := Rect::new(0,0,0,0)
+        if w <= 0 || h <= 0 { return (empty,empty) }
+        col := cmp.clamp<i32>(x,0,w-1)
+        row := cmp.clamp<i32>(y,0,h-1)
+        match self {
+            .All => (Rect::new(0,0,w,h),empty),
+            .AfterCursor => (Rect::new(col,row,w-col,1),Rect::new(0,row+1,w,h-row-1)),
+            .BeforeCursor => (Rect::new(0,0,w,row),Rect::new(0,row,col+1,1)),
+            .CurrentLine => (Rect::new(0,row,w,1),empty),
+            .UntilNewLine => (Rect::new(col,row,w-col,1),empty),
+        }
+    }
+}
+
 pub struct WindowSize { columns: i32, rows: i32, pixel_width: i32, pixel_height: i32 }
 
 impl Eq for WindowSize {
@@ -3199,6 +3224,25 @@ pub trait Backend {
         blank := Frame::try_at(area)?
         unknown := Frame::new(0,0)
         self.present(&blank,&unknown)
+    }
+    fn clear_rect(&mut self, area: Rect) -> Result<(),string> {
+        if area.is_empty() { return .Ok }
+        blank := Frame::try_at(area)?
+        self.write_region(&blank)
+    }
+    fn erase(&mut self, kind: ClearType) -> Result<(),string> {
+        (w,h) := self.size()
+        if w <= 0 || h <= 0 { return .Ok }
+        if kind == .All { return self.clear_screen(Rect::new(0,0,w,h)) }
+        (x,y) := self.read_cursor()?
+        (first,second) := kind.parts(w,h,x,y)
+        result := self.clear_rect(first)
+        after := if result.is_ok() { self.clear_rect(second) } else { move result }
+        restored := self.move_to(x,y)
+        flushed := self.flush()
+        after?
+        restored?
+        move flushed
     }
     fn scrollback_needs_full_screen(&self) -> bool { false }
     fn supports_scrolling_regions(&self) -> bool { true }
@@ -3373,7 +3417,7 @@ impl Terminal<B> {
         }
         match self.viewport {
             .Fullscreen => { self.device.clear_screen(area)? },
-            _ => { blank := Frame::try_at(area)?; self.device.write_region(&blank)? },
+            _ => { self.device.clear_rect(area)? },
         }
         match cursor { .Some(p) => { self.device.move_to(p.0,p.1)? }, .None => {}, }
         self.device.flush()?
@@ -3646,8 +3690,37 @@ impl Terminal<B> {
 @resource(dispose)
 pub opaque struct LiveBackend { session: terminal.Session, output: []u8, active: bool, width: i32, height: i32, inline_end: i32, fixed: bool, original_x: i32, original_y: i32, scrolling_regions: bool, scroll_region_dirty: bool }
 
+const BLANK_COLUMNS: [u8;128] = [b' ';128]
+
 impl LiveBackend {
     pub fn set_scrolling_regions(&mut self, enabled: bool) { self.scrolling_regions = enabled }
+
+    fn prepare_erase(&mut self) -> Result<(),string> {
+        if !self.active { return .Err("The terminal is closed.") }
+        if self.scroll_region_dirty && !self.reset_scroll_region() { return .Err("Could not reset the scrolling region.") }
+        .Ok
+    }
+
+    fn blank_columns(&mut self, count:i32) {
+        mut left := count
+        while left > 0 {
+            n := cmp.min<i32>(left,BLANK_COLUMNS.len)
+            bytes.extend(&mut self.output,&BLANK_COLUMNS[0..n])
+            left -= n
+        }
+    }
+
+    fn write_erase(&mut self) -> Result<(),string> {
+        if !self.bytes(&self.output) { return .Err("Could not clear the terminal cells.") }
+        self.output.clear()
+        .Ok
+    }
+
+    fn clear_console_rect(&self, area: Rect) -> Result<(),string> {
+        if area.is_empty() { return .Ok }
+        if windows.clear_rect(&self.session.win,area.x,area.y,area.w,area.h) { return .Ok }
+        .Err("Could not clear the console cells.")
+    }
 
     fn dispose(&mut self) { self.close() }
 
@@ -3751,11 +3824,52 @@ impl Backend for LiveBackend {
         if self.inline_end >= 0 { self.inline_end = area.bottom() }
     }
     fn restore_cursor(&mut self) -> Result<(),string> { self.close(); .Ok }
-    fn clear_screen(&mut self, area: Rect) -> Result<(),string> {
+    fn clear_screen(&mut self, area: Rect) -> Result<(),string> { self.erase(.All) }
+
+    fn erase(&mut self, kind: ClearType) -> Result<(),string> {
+        self.prepare_erase()?
         if target_is("windows") {
-            if !self.session.win.vt { blank := Frame::try_at(area)?; return self.write_region(&blank) }
+            if !self.session.win.vt {
+                (w,h) := self.size()
+                if w <= 0 || h <= 0 { return .Err("Could not read the console dimensions.") }
+                (x,y) := if kind == .All { (0,0) } else { self.read_cursor()? }
+                (first,second) := kind.parts(w,h,x,y)
+                self.clear_console_rect(first)?
+                return self.clear_console_rect(second)
+            }
         }
-        self.control("\x1b[2J")
+        self.control(kind.sequence())
+    }
+
+    fn clear_rect(&mut self, area: Rect) -> Result<(),string> {
+        self.prepare_erase()?
+        if area.is_empty() { return .Ok }
+        (w,h) := self.size()
+        if w <= 0 || h <= 0 { return .Err("Could not read the terminal dimensions.") }
+        visible := area.intersection(Rect::new(0,0,w,h))
+        if visible.is_empty() { return .Ok }
+        if target_is("windows") {
+            if !self.session.win.vt {
+                self.clear_console_rect(visible)?
+                if visible.w == w {
+                    return self.move_to(0,if visible.bottom() == h { visible.y } else { visible.bottom()-1 })
+                }
+                return self.move_to(cmp.min<i32>(visible.right(),w-1),visible.bottom()-1)
+            }
+        }
+        self.output.clear()
+        if visible.w == w && visible.bottom() == h {
+            paint.cursor(&mut self.output,0,visible.y)
+            bytes.append_utf8(&mut self.output,ClearType.AfterCursor.sequence())
+            return self.write_erase()
+        }
+        for y in visible.y..visible.bottom() {
+            paint.cursor(&mut self.output,visible.x,y)
+            if visible.w == w { bytes.append_utf8(&mut self.output,ClearType.CurrentLine.sequence()) }
+            else { self.blank_columns(visible.w) }
+            if self.output.len >= 65536 { self.write_erase()? }
+        }
+        if self.output.len == 0 { .Ok } else { self.write_erase() }
     }
 
     fn scrollback_needs_full_screen(&self) -> bool { true }

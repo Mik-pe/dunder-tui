@@ -24,7 +24,17 @@ serde-oracle = ["ratatui/serde", "dep:serde_json"]
 theme-oracle = ["serde-oracle", "ratatui/underline-color"]
 serde-backend = ["serde-oracle", "ratatui/scrolling-regions"]
 backend-oracle = ["theme-oracle", "serde-backend"]
+other-erase-backends = ["erase-oracle", "ratatui/termina", "ratatui/termwiz"]
+erase-oracle = ["theme-oracle", "ratatui/crossterm", "ratatui/termion"]
 macro-oracle = ["theme-oracle", "ratatui/macros", "dep:ratatui-widgets"]
+
+[[example]]
+name = "clear_viewport"
+required-features = ["erase-oracle"]
+
+[[example]]
+name = "erase"
+required-features = ["erase-oracle"]
 
 [[example]]
 name = "rect_paint"

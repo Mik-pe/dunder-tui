@@ -1,0 +1,39 @@
+capability stdio, unsafe
+import ..src.tui
+import std.array
+import std.time
+import sys
+
+fn region(mode:string, shift:i32) -> tui.Rect {
+    match mode {
+        "bottom" => tui.Rect::new(0,8+shift,96,16-shift),
+        "rows" => tui.Rect::new(0,3+shift,96,8),
+        "partial" => tui.Rect::new(2+shift,3,91,8),
+        _ => tui.Rect::new(0,3+shift,96,0),
+    }
+}
+
+fn main() -> i32 {
+    if sys.arg_count() < 3 || sys.arg_count() > 4 || sys.arg(1) != "--terminal" { return 2 }
+    mode := sys.arg(2)
+    if mode != "bottom" && mode != "rows" && mode != "partial" && mode != "empty" { return 2 }
+    if sys.arg_count() == 4 && sys.arg(3) != "setup" { return 2 }
+    count := if sys.arg_count() > 3 { 0 } else { 110 }
+    mut t := tui.open(.Fixed(region(mode,0))).unwrap()
+    clock := time.MonotonicClock.Raw
+    mut samples: []i64 = []
+    if count > 0 { samples.reserve(100) }
+    for i in 0..count {
+        area := region(mode,i%2)
+        start := clock.now_ns()
+        t.resize(area).unwrap()
+        elapsed := clock.now_ns()-start
+        if i >= 10 { samples.push(elapsed) }
+    }
+    t.backend_mut().close()
+    if count > 0 {
+        array.sort<i64>(&mut samples)
+        _ := sys.eprint(f"{mode} {samples[49]} {samples[94]}")
+    }
+    0
+}

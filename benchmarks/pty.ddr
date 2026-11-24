@@ -4,7 +4,10 @@ import ..tools.pty
 import std.bytes as bytes
 import sys
 
-unsafe fn bench(program: string, capture: string, move args: []string) -> i32 {
+@extern("c","getrusage")
+unsafe fn getrusage(who: i32, storage: ptr) -> i32
+
+unsafe fn bench(program: string, capture: string, move args: []string, measure_memory: bool) -> i32 {
     mut master := -1
     mut slave := -1
     if !pty.open(&mut master, &mut slave, 96, 24) { return 1 }
@@ -28,6 +31,12 @@ unsafe fn bench(program: string, capture: string, move args: []string) -> i32 {
     }
     result := running.wait(-1)
     if !result.ok || !result.exited || result.code != 0 || result.signal != 0 { return 1 }
+    if measure_memory && !target_is("windows") {
+        mut usage: [i64;32] = [0;32]
+        if getrusage(-1,addr(&mut usage[0])) != 0 { return 1 }
+        kib := if target_is("macos") { usage[4]/1024 } else { usage[4] }
+        _ := sys.eprint(f"peak_rss_kib {kib}")
+    }
     if capture.len > 0 && sys.write_bytes(capture, &transcript).is_err() { return 1 }
     print(total)
     0
@@ -35,15 +44,17 @@ unsafe fn bench(program: string, capture: string, move args: []string) -> i32 {
 
 fn main() -> i32 {
     total := sys.arg_count()
+    measure_memory := total > 1 && sys.arg(1) == "--peak-rss"
+    start := if measure_memory { 2 } else { 1 }
     mut end := total
-    for i in 2..total { if sys.arg(i) == "--" { end = i; break } }
-    if !(target_is("macos") || target_is("linux")) || end < 2 || end > 3 {
-        _ := sys.eprint("Usage on macOS or Linux: pty BENCHMARK [OUTPUT.ansi] [-- BENCHMARK_ARGS...]")
+    for i in start+1..total { if sys.arg(i) == "--" { end = i; break } }
+    if !(target_is("macos") || target_is("linux")) || end <= start || end > start+2 {
+        _ := sys.eprint("Usage on macOS or Linux: pty [--peak-rss] BENCHMARK [OUTPUT.ansi] [-- BENCHMARK_ARGS...]")
         return 1
     }
-    capture := if end == 3 { sys.arg(2) } else { "" }
+    capture := if end == start+2 { sys.arg(start+1) } else { "" }
     mut args: []string = ["--terminal"]
     for i in end+1..total { args.push(sys.arg(i)) }
-    unsafe { return bench(sys.arg(1), capture, move args) }
+    unsafe { return bench(sys.arg(start), capture, move args, measure_memory) }
     1
 }

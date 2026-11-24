@@ -235,6 +235,8 @@ fn main() {
 
 `assert_buffer_lines` och `assert_scrollback_lines` tar strängar, `Span` eller `Line`. För byggda bilder tar `assert_buffer` och `assert_scrollback` både `Frame` och `Buffer`. Ett fel visar vilken cell som skiljer sig och vad testet förväntade sig, även när skillnaden bara gäller stil eller diffregel. [Körbara jämförelser](tests/backend_assertions.ddr)
 
+För att rensa vyn och rita om den, använd `terminal.clear()?`. För direkt styrning finns `terminal.backend_mut().erase(.UntilNewLine)?`. Det rensar från markören till radslutet och lämnar markören på plats. Samma anrop finns på testterminalen. Välj även `.All`, `.AfterCursor`, `.BeforeCursor` eller `.CurrentLine`. Anropa `terminal.invalidate()` om nästa diff ska rita tillbaka innehåll som du rensat direkt. [Exempel med alla fem lägen](tests/erase.ddr)
+
 Med `std.json` kan ett integrationstest spara skärm, skrollhistorik och markör och fortsätta rita från samma tillstånd. `testing.TestBackend::with_lines(&["Klar", "Nästa"])` bygger en testskärm direkt från strängar. Du kan också skicka en samling `Span` eller `Line` med stil. [Körbart exempel](tests/saved_backend.ddr)
 
 ```dunder

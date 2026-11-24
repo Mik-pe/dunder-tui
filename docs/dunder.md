@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Behåll samma typ när ett publikt namn flyttas
+
+De fem rensningslägena fanns först i testterminalen. När även den levande terminalen fick dem behövde biblioteket behålla `testing.ClearType` för befintliga appar. I Dunder 0.12.1 ger `pub type Clock = time.MonotonicClock` E2001. Med `time.MonotonicClock` direkt i parametern kompilerar provet och tar emot `.Raw`. Ett publikt typalias skulle låta båda modulvägarna använda samma enum och eliminera omvandlingen av fem varianter. [Minimiprov](../tests/dogfood/compiler/public_type_alias.ddr) · [Befintligt API](../src/testing.ddr)
+
 ## Flytta en markör som lånar från anroparen
 
 När en namngiven markör lånar från `self` godtar Dunder 0.12.1 `return result`. Samma retur med `return move result` ger E4003. För 8 192 markörer gjorde runtimeprofilen 8 193 postkloner vid direkt konstruktion, 16 385 med en fabriksmetod och 24 577 när ytterligare en metod returnerade samma resultat. Alla tre gav 598 016 på macOS ARM64 och Linux ARM64. Låt returvärdet flytta med sig lånets ursprung och behåll kontrollen att ägaren lever till sista läsningen. [Kompilatorprov](../tests/dogfood/compiler/return_moved_cursor.ddr) · [Mätprogram](../benchmarks/language/borrowed_cursor.ddr)

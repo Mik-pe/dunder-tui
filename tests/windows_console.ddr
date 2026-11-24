@@ -1,5 +1,6 @@
 capability unsafe, stdio
 
+import .erase as erase_cases
 import .buffer_app
 import .chart_cells
 import .bar_cells
@@ -383,6 +384,44 @@ unsafe fn shadow_and_meter_screen(out: ptr, x: i32, y: i32) -> i32 {
     0
 }
 
+unsafe fn erase_screen(out:ptr) -> i32 {
+    mut bounds: [i16;11] = [0;11]
+    if info(out,addr(&mut bounds[0])) == 0 { return 219 }
+    left := i32(bounds[5])
+    top := i32(bounds[6])
+    original_ink := u16(bounds[4]).bit_and(255)
+    pattern := erase_cases.grid(8,5)
+    mut t := tui.open(.Fixed(tui.Rect::new(0,0,8,5))).unwrap()
+    for (x,y) in [(0,0),(7,4),(3,2),(7,1),(0,3)] { for kind in erase_cases.modes() {
+        t.backend_mut().write_region(&pattern).unwrap()
+        t.set_cursor_position(x,y).unwrap()
+        t.backend_mut().erase(kind).unwrap()
+        if t.cursor_position().unwrap() != (x,y) { return 220 }
+        for row in 0..5 {
+            mut chars: [u16;8] = [0;8]
+            mut inks: [u16;8] = [0;8]
+            mut count: u32 = 0
+            at := u32(left).bit_or(u32(top+row).shl(16))
+            if read_text(out,addr(&mut chars[0]),8,at,addr(&mut count)) == 0 || count != 8 ||
+                read_attr(out,addr(&mut inks[0]),8,at,addr(&mut count)) == 0 || count != 8 { return 221 }
+            for col in 0..8 {
+                clear := match kind {
+                    .All => true, .AfterCursor => row > y || (row == y && col >= x),
+                    .BeforeCursor => row < y || (row == y && col <= x),
+                    .CurrentLine => row == y, .UntilNewLine => row == y && col >= x,
+                }
+                want := if clear { 32 } else { 65+(row*8+col)%26 }
+                if i32(chars[col]) != want { return 222 }
+                if clear && inks[col].bit_and(255) != original_ink { return 223 }
+                if !clear && inks[col].bit_and(255) == original_ink { return 224 }
+            }
+        }
+    } }
+    t.backend_mut().close()
+    if t.backend_mut().erase(.All).is_ok() { return 225 }
+    0
+}
+
 unsafe fn embedded(out: ptr) -> i32 {
     mut bounds: [i16;11] = [0;11]
     if info(out,addr(&mut bounds[0])) == 0 { return 50 }
@@ -604,6 +643,8 @@ fn verify() -> i32 {
         if set_cursor_info(active,addr(&saved[0])) == 0 { return 117 }
         probe_code := embedded(active)
         if probe_code != 0 { return probe_code }
+        erased := erase_screen(active)
+        if erased != 0 { return erased }
         if mode(stdin,addr(&mut new_in)) == 0 || mode(stdout,addr(&mut new_out)) == 0 || old_in != new_in || old_out != new_out { return 56 }
         _ := close_handle(active)
     }
