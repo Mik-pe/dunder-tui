@@ -86,7 +86,7 @@ Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.18.3", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.19.0", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.
@@ -249,6 +249,15 @@ level.render(&mut frame, area)
 | `tui.block` | Ramar med egna kanttecken, flera titlar, marginal innanför kanten och skuggor. Delade kanter kan slås ihop. |
 
 `area.take_rows(n)` tar ut de första raderna och låter `area` fortsätta direkt under dem. `take_cols(n)` gör motsvarande för kolumner. Använd `frame.fill_symbol(area, "🌊", style)` för att upprepa hela grafem eller `frame.clear_area(area)` för att tömma ytan före en överlagring. [Exempel med flikar, paneler och diagram](examples/signal/main.ddr)
+
+Med `import tui.widgets` får du även `Fill` och `Clear` som vanliga widgets. `Fill` lagrar samma sträng i varje cell och lägger sin stil ovanpå cellens befintliga stil. Det fungerar även för en tom sträng och för en symbol som upptar flera kolumner. `Clear` återställer symbol, stil och diffregel i rutan. Du kan spara en `Fill` i appens tillstånd och ändra färg eller symbol mellan bilder.
+
+```dunder
+mut paper := widgets.Fill::new("·")
+paper.style = tui.ink(.Cyan)
+frame.render_widget(&paper, area)
+frame.render_widget(widgets.Clear{}, dialog)
+```
 
 ## Rita i egna koordinater
 

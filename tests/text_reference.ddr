@@ -58,7 +58,7 @@ fn main() -> i32 {
             symbol := bytes.decode(&value).unwrap()
             run := tui.GlyphRun::new(symbol.clone())
             span := rich.Span::styled(symbol + "!", tui.ink(.Red).bold())
-            print(run.count().str() + " " + run.width().str() + " " + span.width().str())
+            print(f"{run.count()} {run.width()} {span.width()} {width.cell_columns(symbol)}")
             mut frame := tui.Frame::new(12, if ligatures { 20 } else { 8 })
             frame.fill(frame.area(), `.`, tui.ink(.Cyan))
             mut y := 0

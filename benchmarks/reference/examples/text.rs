@@ -105,7 +105,7 @@ fn main() {
                 .styled_graphemes(Style::default())
                 .map(|g| usize::from(g.symbol.cell_width()))
                 .sum();
-            let widths = format!("{glyphs} {cells} {}", span.width());
+            let widths = format!("{glyphs} {cells} {} {}", span.width(), symbol.cell_width());
             let mut buf = Buffer::empty(Rect::new(0, 0, 12, if ligatures { 20 } else { 8 }));
             for cell in &mut buf.content {
                 cell.set_symbol(".").set_fg(Color::Cyan);

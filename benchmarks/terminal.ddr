@@ -28,25 +28,24 @@ impl tui.Backend for Output {
 struct State<S> { scene: S, mode: string, step: i32, shared: bool }
 
 struct EmojiLog {}
-struct ScriptLog { lines: []rich.Line }
+struct ScriptLog { lines: []rich.Line, fill: widgets.Fill }
 impl ScriptLog {
     fn new() -> Self {
         mut lines: []rich.Line = []
         for sample in ["لَا  لا", "א‍ל  א‍ל", "ᨕᨗ‍ᨐ  ᨕᨗ‍ᨐ", "ꓹꓼ  ꓺꓽ", "𐰲‍𐰃  𐰲‍𐰃", "ល្ង  ង", "ⵏ‍ⴾ  ⵏ‍ⴾ"] {
             lines.push(rich.Line::new([rich.Span::raw("Prov    "), rich.Span::styled(sample.clone(), tui.ink(.Red).bold()), rich.Span::raw("    ✓")]).align(.Center))
         }
-        Self { lines: move lines }
+        Self { lines: move lines, fill: widgets.Fill::new(".") }
     }
 
     fn draw(&mut self, frame: &mut tui.Frame, mode: string, step: i32) {
         mut area := frame.area()
         offset := if mode == "scroll" { step } else { 0 }
         style := if mode == "repaint" && step % 2 == 1 { tui.ink(.Yellow).background(.Blue) } else { tui.ink(.Cyan) }
-        mut fill := widgets.Fill::new(".")
-        fill.style = style
+        self.fill.style = style
         for y in 0..23 {
             row := area.take_rows(1)
-            frame.render_widget(&fill,row)
+            frame.render_widget(&self.fill,row)
             self.lines[(y + offset) % self.lines.len].render(&mut frame, row)
         }
         frame.label(area, if mode == "cell" && step % 2 == 1 { "+" } else { "-" })
