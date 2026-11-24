@@ -1,0 +1,99 @@
+import std.bytes
+import std.json
+import std.parse
+import std.text
+import .width
+
+const MODIFIERS: [string; 9] = ["BOLD", "DIM", "ITALIC", "UNDERLINED", "SLOW_BLINK",
+    "RAPID_BLINK", "REVERSED", "HIDDEN", "CROSSED_OUT"]
+
+fn trim_flag(value: string) -> string {
+    mut first := value.len
+    mut last := 0
+    mut offset := 0
+    for ch in value.runes() {
+        end := offset + width.encoded(i32(ch))
+        if !width.whitespace(i32(ch)) {
+            if first == value.len { first = offset }
+            last = end
+        }
+        offset = end
+    }
+    if first > last { return "" }
+    value[first..last]
+}
+
+fn flag(value: string) -> Option<i32> {
+    if text.starts_with(value, "0x") {
+        start := if value.len > 2 && value[2] == b'+' { 3 } else { 2 }
+        n := parse.hex_u64_range(value, start, value.len)
+        if n.ok && n.value <= 65535 { return .Some(i32(n.value)) }
+    }
+    for i in 0..9 {
+        if value == MODIFIERS[i] { return .Some(i32(1).shl(i)) }
+    }
+    .None
+}
+
+pub fn read_flags(doc: &json.Doc, node: i32) -> Result<i32, json.JsonError> {
+    if node < 0 || doc.kind(node) == .Null { return .Ok(0) }
+    error := json.JsonError::new("expected modifier names separated by |", doc.node_offset(node))
+    value := match doc.as_str(node) { .Some(s) => s, .None => { return .Err(error) }, }
+    if trim_flag(value).len == 0 { return .Ok(0) }
+    mut mask := 0
+    for item in text.split(value, "|") {
+        match flag(trim_flag(item)) {
+            .Some(bits) => { mask = mask.bit_or(bits) },
+            .None => { return .Err(error) },
+        }
+    }
+    .Ok(mask)
+}
+
+pub fn write_flags(out: &mut json.Writer, field: string, mask: i32) {
+    if mask == 0 { return }
+    mut value: []u8 = []
+    for i in 0..9 {
+        if mask.bit_and(i32(1).shl(i)) == 0 { continue }
+        if value.len > 0 { bytes.append_utf8(&mut value, " | ") }
+        bytes.append_utf8(&mut value, MODIFIERS[i])
+    }
+    extra := mask.bit_and(0xfe00)
+    if extra != 0 {
+        if value.len > 0 { bytes.append_utf8(&mut value, " | ") }
+        bytes.append_utf8(&mut value, "0x")
+        digits := "0123456789abcdef"
+        for i in 0..4 {
+            shift := (3-i)*4
+            if extra.shr(shift) != 0 { value.push(digits[extra.shr(shift).bit_and(15)]) }
+        }
+    }
+    out.key(field)
+    out.string(bytes.decode(&value).unwrap())
+}
+
+pub fn style_fields(doc: &json.Doc, node: i32) -> Result<[i32; 5], json.JsonError> {
+    mut fields: [i32; 5] = [-1, -1, -1, -1, -1]
+    count := doc.count(node)
+    if doc.kind(node) == .Array && count >= 3 && count <= 5 {
+        for i in 0..count { fields[i] = doc.at(node, i) }
+        return .Ok(fields)
+    }
+    if doc.kind(node) != .Object {
+        return .Err(json.JsonError::new("expected a style object or a sequence of 3 to 5 fields", doc.node_offset(node)))
+    }
+    for i in 0..count {
+        key := doc.key_at(node, i).unwrap()
+        field := match key {
+            "fg" => 0, "bg" => 1, "underline_color" => 2,
+            "add_modifier" => 3, "sub_modifier" => 4, _ => -1,
+        }
+        if field < 0 { continue }
+        child := doc.val_at(node, i)
+        if fields[field] >= 0 {
+            return .Err(json.JsonError::new("duplicate style field " + key, doc.node_offset(child)))
+        }
+        fields[field] = child
+    }
+    .Ok(fields)
+}

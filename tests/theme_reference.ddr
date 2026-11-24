@@ -1,0 +1,39 @@
+capability filesystem, stdio
+
+import sys
+import std.json
+import std.text
+import ..src.tui
+
+fn check(line: string) -> Result<string, json.JsonError> {
+    value := line[2..line.len]
+    if line[0] == b'C' {
+        color := json.from_str<tui.Color>(value)?
+        return json.to_string(&color)
+    }
+    style := json.from_str<tui.Style>(value)?
+    saved := json.to_string(&style)?
+    loaded := json.from_str<tui.Style>(saved)?
+    assert(style == loaded)
+    seed := tui.ink(.Blue).background_index(7).bold().dim()
+    patched := seed.patch(loaded)
+    mut frame := tui.Frame::new(2, 1)
+    frame.apply_cell_style(tui.Rect { x: 1, y: 0, w: 1, h: 1 }, seed)
+    frame.text(frame.area(), "xx", loaded)
+    assert(frame.line(0) == "xx")
+    left := frame.cell_at(0, 0).unwrap()
+    right := frame.cell_at(1, 0).unwrap()
+    .Ok(saved + "\t" + json.to_string(&patched)? + "\t" + json.to_string(&left.style)? + "\t" + json.to_string(&right.style)?)
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 2 }
+    for line in text.split(sys.read(sys.arg(1)).unwrap(), "\n") {
+        if line.len == 0 { continue }
+        match check(line) {
+            .Ok(result) => { print(result) },
+            .Err(_) => { print("error") },
+        }
+    }
+    0
+}

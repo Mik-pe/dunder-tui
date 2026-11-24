@@ -7,7 +7,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | Område | Finns i Dunder | Återstår att leverera eller verifiera |
 | --- | --- | --- |
 | Buffer och Cell | Förskjutet origo, koordinater och linjära index, råa celler och stilar, celldiff och fyra diffregler. Kopiering, storleksändring och sammanslagning inom hela koordinatintervallet. | Minnesgränsen för sammanhängande Dunder-arrayer och avvikelsen i Ratatuis sammanslagning vid stora index beskrivs nedan. |
-| Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. Tailwind och Material ger 500 namngivna RGB-värden. | Beständiga dataformat och full täckning för konvertering mellan stilrepresentationer. |
+| Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. Tailwind och Material ger 500 namngivna RGB-värden. | JSON för färger och stilar jämförs nedan. Fler konverteringar mellan backendens stilrepresentationer återstår. |
 | Text | Span, Line, Text, Paragraph, byte och omordning av rad- och spannsamlingar, inkrementell redigering, sammanslagning av dokument och läsning av stiliserade grafem, stiländringar, läsning av textens delar, utskrift, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. Cellprov för Unicode 18:s emojitest, presentationsvarianter och skriftspecifika ligaturer inom och över grafemgränser. | Fler jämförelser av sammansatta dokument i listor och tabeller. Se de tolv gränsfallen vid fysisk högerkant nedan. |
 | Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering och cache. 21 124 jämförda layouter, 2 460 rektangelprov och 1 100 jämförda bilder. Omfattar upprepade regelbyten och upp till nio paneler i gränsprovet för minsta storlek. | Överbestämda system med fler paneler och kombinationer av layoutmarginaler vid koordinatgränsen. |
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna strängar för hörn och sidor, individuella kanter, justerade titlar, utfyllnad och skuggor. För skuggor jämförs 85 050 råa celler och celldiffarnas ordning med referensen. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
@@ -26,7 +26,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | `layout-cache` | `Layout.cache_capacity` styr antal sparade uppdelningar. Layoutproven återanvänder tidigare storlekar efter regelbyten. |
 | `scrolling-regions` | Backendens regionskrollning och reservvägen med radmatning jämförs genom skrollhistorik och terminalutdata. |
 | `macros` | Konstruktorer för spann, rader, text och layout finns. Jämförelse per dokumenterad makroform återstår. |
-| `serde` | Beständig representation för bland annat färg, stil och rektanglar återstår. Färgsträngar kan redan läsas med färgparsern. |
+| `serde` | Färg och stil läses och skrivs med `std.json`. Rektanglar och övriga serialiserbara typer återstår. |
 | `crossterm`, `crossterm_0_28`, `crossterm_0_29`, `termina`, `termion`, `termwiz` | Dunder använder POSIX och Win32 direkt. Den låsta Crossterm-referensen och de faktiska terminalproven täcker bland annat ritning, markör och återställning. Skillnader mellan referensens övriga backendval är öppna. |
 | `std`, `portable-atomic`, `default` | Dunder bygger offline med sitt standardbibliotek. `portable-atomic` gäller referensens mål utan atomära typer. `default` väljer kalender, Crossterm, layoutcache, makron och understrykningsfärg. |
 
@@ -51,6 +51,25 @@ diff -u build/ratatui-colors build/dunder-colors
 ```
 
 Fler körbara prov täcker ändrade bildrader, delade SGR-återställningar, överlappande text, färgade understreck och terminalåterställning. [Bibliotekstester](../tests/suite.ddr) · [Unix-terminal](../tests/posix_terminal.ddr) · [Win32-konsol](../tests/windows_console.ddr) · [Prestandamätningar](../benchmarks/README.md)
+
+### Färger och stilar i JSON
+
+1 833 indata jämförs med Ratatuis `serde` och `underline-color`. För varje godkänd stil jämförs den sparade JSON-strängen, resultatet av att kombinera två stilar och stilen i två ritade celler. Den ena cellen börjar tom, den andra har färg och attribut. Proven täcker alla 256 färgindex, äldre RGB- och indexobjekt, alla 512 kombinationer av namngivna attribut, extra attributbitar, dubbla fält, saknade värden och felaktiga tal. [Dunderprov](../tests/theme_reference.ddr) · [Ratatui-referens och indata](../benchmarks/reference/examples/themes.rs)
+
+På macOS ARM64, Linux ARM64, översatt Linux x86-64 och Win64 under Wine gav jämförelsen samma resultat för alla indata. På de tre Unix-målen laddade ett pseudoterminalprov två stilar, växlade från RGB till indexfärg efter en tangenttryckning och kontrollerade terminalens återställning. Nativ Windows x64 återstår för temaprovet. [Terminalprov](../tests/theme_terminal.ddr)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/theme_reference.ddr -o build/themes
+cargo build --locked --offline --release --manifest-path benchmarks/reference/Cargo.toml \
+  --features theme-oracle --example themes --target-dir build/rust
+ref=build/rust/release/examples/themes
+"$ref" --cases >build/theme-input
+"$ref" <build/theme-input >build/expected
+build/themes build/theme-input >build/actual
+diff -u build/expected build/actual
+dunder run --locked --offline tests/theme_terminal.ddr
+```
 
 ## Loggrader i en inbäddad vy
 

@@ -82,3 +82,9 @@ Dunder skrev 4 113 141 byte mot Ratatuis 7 939 285 på varje plattform. På Mac 
 Med den publicerade kompilatorn hade Dunder lägre p50 och p95 i alla fem PTY-fall på macOS och Linux ARM64. På översatt Linux x86-64 hade Ratatui lägre p50 och p95 i alla fem. Vid full omritning på Mac tog Dunder 99 / 109 µs mot Ratatuis 150 / 168 µs. Motsvarande tider på översatt x86-64 var 704 / 739 µs och 209 / 239 µs. Systemlasten varierade mellan mättillfällena för kompilatorversionerna. Varje rad i resultattabellen har en referens körd vid samma tillfälle. [Alla bildtider, byte och intervall](results/border-cells-dunder-0.12.0-local.tsv)
 
 På Mac gav profilerna 18 777 allokeringsanrop och 1 105 036 begärda byte för Dunder mot 31 122 och 1 748 420 för Ratatui. Medianen för högsta RSS var 2 144 respektive 2 688 KiB. De 1 100 bilderna inklusive uppvärmning gav 4 113 141 respektive 7 939 285 terminalbyte på varje plattform.
+
+## Efter stöd för sparade teman
+
+I diagramvyn på macOS ARM64 tog full omritning till en pseudoterminal 100 / 112 µs med Dunder och 149 / 167 µs med Ratatui (p50 / p95). På Linux ARM64 blev tiderna 71 / 77 respektive 125 / 136 µs. På översatt Linux x86-64 tog samma bild 690 / 723 µs med Dunder och 208 / 241 µs med Ratatui. Varje redovisad tid är medianen från sju körningar efter två uppvärmningar. [Samtliga fem arbetslaster, byte och spridning](results/themes-dunder-0.12.0-local.tsv)
+
+På varje plattform skrev diagramvyn 4 113 141 terminalbyte med Dunder och 7 939 285 med Ratatui under 1 100 bilder. Mac-profilerna gav 18 777 allokeringsanrop och 1 105 036 begärda byte för Dunder, respektive 31 122 och 1 748 330 för Ratatui. Medianen för högsta RSS över fem körningar var 2 144 och 2 704 KiB. Bildtiden gäller ritning från redan förberedda stilar.

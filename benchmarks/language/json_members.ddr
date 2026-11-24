@@ -1,0 +1,38 @@
+capability stdio
+
+import std.json
+import std.time
+
+fn visit(doc: &json.Doc) -> i64 {
+    mut total: i64 = 0
+    for i in 0..doc.count(doc.root) {
+        key := doc.key_at(doc.root, i).unwrap()
+        child := doc.val_at(doc.root, i)
+        total += i64(key.len) + doc.as_i64(child).unwrap()
+    }
+    total
+}
+
+fn main() {
+    for n in [512, 1024, 2048, 4096] {
+        mut out := json.Writer::new()
+        out.object()
+        mut expected: i64 = 0
+        for i in 0..n {
+            key := "k" + i.str()
+            out.key(key)
+            out.integer(i64(i))
+            expected += i64(key.len) + i64(i)
+        }
+        out.end()
+        doc := json.Doc::parse(out.finish().unwrap()).unwrap()
+        assert(visit(&doc) == expected)
+        for _ in 0..7 {
+            start := time.monotonic_ns()
+            total := visit(&doc)
+            elapsed := time.monotonic_ns() - start
+            assert(total == expected)
+            print(f"{n} {elapsed} {total}")
+        }
+    }
+}

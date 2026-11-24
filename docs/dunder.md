@@ -2,6 +2,8 @@
 
 ## Omprov med den publicerade 0.12.0
 
+Teman läses och skrivs med `std.json.Decode` och `std.json.Encode`. För att upptäcka dubbla fält i ett objekt behöver läsaren besöka varje nyckel. I 0.12.0 går både `key_at` och `val_at` från första barnet för varje index. Att besöka ett redan tolkat objekt tog i median 0,46, 1,83, 7,40 och 29,69 ms för 512, 1 024, 2 048 och 4 096 fält på macOS ARM64. Varje storlek kördes sju gånger med samma kontrollsumma inom serien. [Fristående Dunderprov](../benchmarks/language/json_members.ddr)
+
 `std.time.local_from_unix` ersätter TUI-bibliotekets sista direkta Win32-anrop för kalenderdatum. Vid 13 tidpunkter i UTC gav kalendern samma resultat före och efter bytet, inklusive 1601, dagen före Unixepoken, årsskiftet 1999/2000 och kalenderns övre gräns. Alla 48 059 breddprov stämmer även med den nya terminalbreddsfunktionen. [Datumprov](../tests/calendar_clock.ddr) · [Breddprov](../tests/standard_columns.ddr)
 
 En loop över en **temporär array av koordinatpar** kan krascha i 0.12.0. Det fristående programmet avbryts på macOS ARM64 med standardinställningarna. Det passerar med `--mir-memory=off` och med Dunder 0.11.3. Det fulla ramprovet avbröts även på Linux ARM64 och översatt Linux x86-64 när det itererade direkt över resultatet av `diff_positions().unwrap()`. Cellproven sparar nu listan i en lokal variabel och itererar över ett lån. Då matchar samma råceller och diffar referensen med 0.12.0:s standardinställningar. [Fristående kompilatorprov](../tests/dogfood/compiler/temporary_pair_loop.ddr) · [Celljämförelse](../tests/raw_cells.ddr)

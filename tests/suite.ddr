@@ -12,6 +12,7 @@ import ..src.text as rich
 import .grapheme_cases as cases
 import .scroll_errors
 import std.parse as parse
+import std.json
 import std.text as words
 import std.bytes as bytes
 import ..src.plot as plot
@@ -1512,4 +1513,35 @@ impl tui.Backend for BufferedOutput {
     b.merge = .Replace
     f.render_widget(&b,area)
     assert(f.cell_at(1,0).unwrap().symbol == "║" && f.cell_at(3,0).unwrap().symbol == "║")
+}
+
+@test fn saved_themes_survive_composition_copy_resize_and_cell_diff() {
+    raw := "{\"add_modifier\":\"BOLD | 0x8200\",\"sub_modifier\":\"BOLD | 0x200\"}"
+    style := json.from_str<tui.Style>(raw).unwrap()
+    mut painted := tui.Frame::new(3, 1)
+    area := painted.area()
+    painted.fill(area, rune(120), tui.ink(.Blue).bold())
+    painted.fill(area, rune(120), style)
+    expected := json.from_str<tui.Style>("{\"fg\":\"Blue\",\"bg\":\"Reset\",\"underline_color\":\"Reset\",\"add_modifier\":\"0x8000\"}").unwrap()
+    assert(painted.style_at(2, 0).unwrap() == expected)
+
+    mut copy := tui.Frame::new(3, 1)
+    copy.copy_region(&painted, area, 0, 0)
+    copy.resize(4, 1)
+    assert(copy.style_at(2, 0).unwrap() == expected)
+    copy.resize(3, 1)
+    assert(copy.diff_positions(&painted).unwrap().len == 0)
+
+    mut visible := tui.Frame::new(3, 1)
+    visible.fill(area, rune(120), tui.ink(.Blue))
+    assert(copy.diff_positions(&visible).unwrap().len == 3)
+    empty := tui.Frame::new(0, 0)
+    mut first: []u8 = []
+    mut second: []u8 = []
+    copy.ansi_diff(&empty, &mut first)
+    visible.ansi_diff(&empty, &mut second)
+    assert(bytes.decode(&first).unwrap() == bytes.decode(&second).unwrap())
+    remove := json.from_str<tui.Style>("{\"sub_modifier\":\"0x8000\"}").unwrap()
+    copy.apply_cell_style(area, remove)
+    assert(copy.diff_positions(&visible).unwrap().len == 0)
 }

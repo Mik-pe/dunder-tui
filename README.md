@@ -412,6 +412,16 @@ Använd `base.patch(overlay)` för att kombinera två stilar, `.without(.Bold)` 
 
 För animerade färger tar `foreground_rgb(0x54dcbe)`, `background_rgb(...)` och `underline_index(199)` färgdata direkt. Det undviker temporära färgvärden i ritloopen.
 
+På `main` kan du läsa ett JSON-tema en gång och återanvända stilen när bilden ritas. Använd `branch = "main"` i beroenderaden för att få stödet. `tui.Style` och `tui.Color` fungerar även inuti arrayer med Dunders `std.json`. En färg som saknas ärvs, medan `"Reset"` väljer terminalens grundfärg.
+
+```dunder
+import std.json
+
+rubrik := json.from_str<tui.Style>("{\"fg\":\"#54DCBE\",\"add_modifier\":\"BOLD | UNDERLINED\"}").unwrap()
+frame.text(frame.area(), "Ankomster", rubrik)
+sparat := json.to_string(&rubrik).unwrap()
+```
+
 I 0.3 används `tui.plain()` och stilmetoderna för att ersätta gamla `Style { ... }`-literaler. `.White` behåller färg 7, även kallad `.Gray`. `.BrightWhite` är färg 15. Ett palettindex kan skiljas från en namngiven färg i `style_at`.
 
 ## Plattformar och tester

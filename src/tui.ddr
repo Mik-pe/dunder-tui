@@ -13,6 +13,8 @@ import std.time as clock
 import std.cmp as cmp
 import .paint
 import .colorspace
+import .theme_format
+import std.json
 import std.parse as parse
 import std.text as strings
 
@@ -50,8 +52,15 @@ impl Color {
 
     pub fn parse(value: string) -> Option<Color> {
         if value.len == 7 && value[0] == b'#' {
-            hex := parse.hex_u64_range(value, 1, 7)
-            if hex.ok { return .Some(rgb(u32(hex.value))) }
+            mut channels: [u8; 3] = [0, 0, 0]
+            for i in 0..3 {
+                pos := 1 + i * 2
+                start := if value[pos] == b'+' { pos + 1 } else { pos }
+                channel := parse.hex_u64_range(value, start, pos + 2)
+                if !channel.ok { return .None }
+                channels[i] = u8(channel.value)
+            }
+            return .Some(.Rgb(channels[0], channels[1], channels[2]))
         }
         start := if value.len > 0 && value[0] == b'+' { 1 } else { 0 }
         index := parse.u64_range(value, start, value.len)
@@ -109,6 +118,32 @@ impl Display for Color {
 
 impl Eq for Color {
     fn eq(&self, other: &Self) -> bool { self.encoded() == other.encoded() }
+}
+
+impl json.Encode for Color {
+    fn encode_json(&self, out: &mut json.Writer) { out.string(self.str()) }
+}
+
+impl json.Decode for Color {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self, json.JsonError> {
+        if doc.kind(node) == .String {
+            match Color::parse(doc.as_str(node).unwrap()) {
+                .Some(color) => { return .Ok(color) },
+                .None => {},
+            }
+        } else if doc.kind(node) == .Object && doc.count(node) == 1 {
+            key := doc.key_at(node, 0).unwrap()
+            value := doc.val_at(node, 0)
+            if key == "Indexed" { return .Ok(.Indexed(u8::decode_json(&doc, value)?)) }
+            if key == "Rgb" && doc.kind(value) == .Array && doc.count(value) == 3 {
+                red := u8::decode_json(&doc, doc.at(value, 0))?
+                green := u8::decode_json(&doc, doc.at(value, 1))?
+                blue := u8::decode_json(&doc, doc.at(value, 2))?
+                return .Ok(.Rgb(red, green, blue))
+            }
+        }
+        .Err(json.JsonError::new("invalid terminal color", doc.node_offset(node)))
+    }
 }
 
 fn packed_rgb(value: u32) -> i32 { 0x1000000 + i32(value.bit_and(0xffffff)) }
@@ -178,7 +213,7 @@ impl Style {
     }
 
     fn keep_bits(&self) -> i64 {
-        mut clear := i64(self.removed).shl(52)
+        mut clear := i64(self.removed.bit_and(511)).shl(52)
         if self.fg != INHERIT { clear = clear.bit_or(0x3ffffff) }
         if self.bg != INHERIT { clear = clear.bit_or(i64(0x3ffffff).shl(26)) }
         clear.bit_not()
@@ -214,10 +249,56 @@ impl Style {
     fn brush(&self) -> paint.Brush {
         paint.Brush {
             fg: if self.fg == INHERIT { -1 } else { self.fg }, bg: if self.bg == INHERIT { -1 } else { self.bg },
-            modifiers: self.added.bit_and(511)
+            modifiers: self.cell_modifiers().bit_and(511)
         }
     }
+
+    fn cell_modifiers(&self) -> i32 { self.added.bit_and(self.removed.bit_not()) }
 }
+
+fn write_color(out: &mut json.Writer, key: string, color: i32) {
+    if color != INHERIT {
+        out.key(key)
+        out.string(Color::decoded(color).str())
+    }
+}
+
+fn read_color(doc: &json.Doc, node: i32) -> Result<i32, json.JsonError> {
+    if node < 0 || doc.kind(node) == .Null { return .Ok(INHERIT) }
+    color := Color::decode_json(&doc, node)?
+    .Ok(color.encoded())
+}
+
+impl json.Encode for Style {
+    fn encode_json(&self, out: &mut json.Writer) {
+        out.object()
+        write_color(&mut out, "fg", self.fg)
+        write_color(&mut out, "bg", self.bg)
+        write_color(&mut out, "underline_color", self.underline)
+        theme_format.write_flags(&mut out, "add_modifier", self.added)
+        theme_format.write_flags(&mut out, "sub_modifier", self.removed)
+        out.end()
+    }
+}
+
+impl json.Decode for Style {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self, json.JsonError> {
+        fields := theme_format.style_fields(&doc, node)?
+        fg := read_color(&doc, fields[0])?
+        bg := read_color(&doc, fields[1])?
+        underline := read_color(&doc, fields[2])?
+        added := theme_format.read_flags(&doc, fields[3])?
+        removed := theme_format.read_flags(&doc, fields[4])?
+        .Ok(Self { fg: fg, bg: bg, underline: underline, added: added, removed: removed })
+    }
+}
+
+fn decoration_bits(underline: i32, modifiers: i32) -> i64 {
+    color := if underline < 0 { 0 } else { underline + 1 }
+    i64(modifiers.bit_and(0xfe00)).shl(26).bit_or(i64(color))
+}
+
+fn detail_underline(details: i64) -> i32 { i32(details.bit_and(0x3ffffff)) - 1 }
 
 pub struct Rect { x: i32, y: i32, w: i32, h: i32 }
 
@@ -612,15 +693,15 @@ impl Frame {
 
     fn encode(&mut self, style: Style) -> i64 {
         packed := style.brush().packed()
-        self.style_key(packed, style.underline)
+        self.style_key(packed, decoration_bits(style.underline, style.cell_modifiers()))
     }
 
-    fn style_key(&mut self, packed: i64, underline: i32) -> i64 {
-        if underline < 0 { return packed }
+    fn style_key(&mut self, packed: i64, details: i64) -> i64 {
+        if details == 0 { return packed }
         n := self.decorations.len
-        if n == 0 || self.decorations[n - 2] != packed || self.decorations[n - 1] != i64(underline) {
+        if n == 0 || self.decorations[n - 2] != packed || self.decorations[n - 1] != details {
             self.decorations.push(packed)
-            self.decorations.push(i64(underline))
+            self.decorations.push(details)
         }
         i64(1) - i64(self.decorations.len)
     }
@@ -628,22 +709,25 @@ impl Frame {
     fn decoration(&self, key: i64) -> paint.Decoration {
         if key >= 0 { return paint.Decoration { packed: key, underline: -1 } }
         i := i32(i64(-1) - key)
-        paint.Decoration { packed: self.decorations[i], underline: i32(self.decorations[i + 1]) }
+        paint.Decoration { packed: self.decorations[i], underline: detail_underline(self.decorations[i + 1]) }
     }
 
     fn same_style(&self, previous: &Frame, i: i32) -> bool {
         key := self.styles[i]
         other := previous.styles[i]
         if key >= 0 || other >= 0 { return key == other }
-        self.decoration(key) == previous.decoration(other)
+        current := i32(-1-key)
+        prior := i32(-1-other)
+        self.decorations[current] == previous.decorations[prior] && self.decorations[current+1] == previous.decorations[prior+1]
     }
 
     fn resolved(&self, key: i64) -> Style {
         decoration := self.decoration(key)
         brush := paint.Brush::unpack(decoration.packed)
+        extra := if key < 0 { i32(self.decorations[i32(-key)].shr(26)) } else { 0 }
         Style {
             fg: brush.fg, bg: brush.bg,
-            underline: decoration.underline, added: brush.modifiers, removed: 0
+            underline: decoration.underline, added: brush.modifiers.bit_or(extra), removed: 0
         }
     }
 
@@ -796,12 +880,14 @@ impl Frame {
         mut packed := if old >= 0 { old } else { self.decorations[i32(i64(-1)-old)] }
         if overlay.fg != INHERIT { packed = packed.bit_and(i64(0x3ffffff).bit_not()).bit_or(i64(overlay.fg+1)) }
         if overlay.bg != INHERIT { packed = packed.bit_and(i64(0x3ffffff).shl(26).bit_not()).bit_or(i64(overlay.bg+1).shl(26)) }
-        packed = packed.bit_and(i64(overlay.removed).shl(52).bit_not()).bit_or(i64(overlay.added).shl(52))
-        if old >= 0 && overlay.underline < 0 { return packed }
-        inherited := if old < 0 { i32(self.decorations[i32(-old)]) } else { -1 }
-        underline := if overlay.underline == INHERIT { inherited } else { overlay.underline }
-        if old < 0 && self.decorations[i32(i64(-1)-old)] == packed && underline == inherited { return old }
-        self.style_key(packed, underline)
+        packed = packed.bit_or(i64(overlay.added.bit_and(511)).shl(52)).bit_and(i64(overlay.removed.bit_and(511)).shl(52).bit_not())
+        if old >= 0 && overlay.underline < 0 && overlay.added <= 511 { return packed }
+        inherited := if old < 0 { self.decorations[i32(-old)] } else { i64(0) }
+        underline := if overlay.underline == INHERIT { detail_underline(inherited) } else { overlay.underline }
+        flags := i32(inherited.shr(26)).bit_or(overlay.added).bit_and(overlay.removed.bit_not())
+        details := decoration_bits(underline, flags)
+        if old < 0 && self.decorations[i32(i64(-1)-old)] == packed && details == inherited { return old }
+        self.style_key(packed, details)
     }
 
     fn ascii_line(&mut self, area: Rect, value: string, brush: i64, overlay: &Style) -> bool {
@@ -1215,8 +1301,8 @@ impl Frame {
         if span > room { return span }
         key := source.styles[i]
         brush := if key >= 0 { key } else {
-            d := source.decoration(key)
-            self.style_key(d.packed,d.underline)
+            offset := i32(-1-key)
+            self.style_key(source.decorations[offset], source.decorations[offset+1])
         }
         code := value.bit_and(WIDE-1)+32
         if code == CLUSTER || code == ZERO_CLUSTER {

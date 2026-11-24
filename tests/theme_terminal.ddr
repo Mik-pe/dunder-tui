@@ -1,0 +1,38 @@
+capability unsafe, stdio, process
+
+import sys
+import std.json
+import ..src.tui
+import .terminal_driver as driver
+
+fn child() -> i32 {
+    mut terminal := tui.open(.Fullscreen).unwrap()
+    themes := json.from_str<[]tui.Style>("[{\"fg\":\"#2F80ED\",\"add_modifier\":\"BOLD | 0x8000\"},{\"fg\":{\"Indexed\":211},\"sub_modifier\":\"BOLD\"}]").unwrap()
+    for i in 0..2 {
+        frame := terminal.get_frame()
+        frame.text(frame.area(), if i == 0 { "Ocean" } else { "Coral" }, themes[i])
+        if terminal.apply_buffer().is_err() { return 1 }
+        match terminal.backend_mut().next(3000) { .Press(_) => {}, _ => { return 1 }, }
+    }
+    0
+}
+
+fn exercise(master: i32, slave: i32, screen: &mut driver.Screen) -> bool {
+    unsafe {
+        if !driver.wait_for(master, &mut screen, 0, "Ocean", "38;2;47;128;237") { return false }
+        if !driver.send(master, "n") || !driver.wait_for(master, &mut screen, 0, "Coral", "38;5;211") { return false }
+        return driver.send(master, "q") && driver.wait_for(master, &mut screen, 0, "", "\x1b[?1049l")
+    }
+    false
+}
+
+fn main() -> i32 {
+    if sys.arg_count() == 2 { return child() }
+    unsafe {
+        if driver.test_with_args(sys.arg(0), ["draw"], 12, 5, exercise) {
+            print("Theme colors and terminal restoration OK")
+            return 0
+        }
+    }
+    1
+}
