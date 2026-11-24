@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Skrolla och storleksändra en läsare med ram
+
+Läsarprovet jämför 48 rader färgsatt Unicode-text med direkt och förberedd radbrytning. Det mäter fem arbetslaster i minne och i en pseudoterminal på macOS och Linux. [Bildtider, minne och terminalbyte](reader.md)
+
 ## Bygg buffertar från text
 
 Att bygga 24 rader med blandade skriftsystem och radslut tog 196 µs i median på macOS ARM64, jämfört med 234 µs tidigare och 35,2 µs för Ratatui. [Alla arbetslaster, p95 och resursvärden](line-input.md)

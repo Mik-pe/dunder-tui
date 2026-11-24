@@ -8,7 +8,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | --- | --- | --- |
 | Buffer och Cell | Förskjutet origo, koordinater och linjära index, råa celler och stilar, celldiff och fyra diffregler. Kopiering, storleksändring och sammanslagning inom hela koordinatintervallet. | Minnesgränsen för sammanhängande Dunder-arrayer och avvikelsen i Ratatuis sammanslagning vid stora index beskrivs nedan. |
 | Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. Tailwind och Material ger 500 namngivna RGB-värden. | JSON för färger och stilar jämförs nedan. Fler konverteringar mellan backendens stilrepresentationer återstår. |
-| Text | Span, Line, Text, Paragraph, byte och omordning av rad- och spannsamlingar, inkrementell redigering, sammanslagning av dokument och läsning av stiliserade grafem, stiländringar, läsning av textens delar, utskrift, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. Cellprov för Unicode 18:s emojitest, presentationsvarianter och skriftspecifika ligaturer inom och över grafemgränser. | Fler jämförelser av sammansatta dokument i listor och tabeller. Se de tolv gränsfallen vid fysisk högerkant nedan. |
+| Text | Span, Line, Text, Paragraph, byte och omordning av rad- och spannsamlingar, inkrementell redigering, sammanslagning av dokument och läsning av stiliserade grafem, stiländringar, läsning av textens delar, utskrift, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. Cellprov för Unicode 18:s emojitest, presentationsvarianter och skriftspecifika ligaturer inom och över grafemgränser. | Fler jämförelser av sammansatta dokument i listor och tabeller. För beteendet vid fysisk högerkant, se styckeprovet nedan. |
 | Layout | Rektangeloperationer, rad- och kolumniteratorer från båda ändar, radvis genomgång av cellkoordinater, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering, riktningsbyte och cache. 22 408 jämförda layouter, 2 460 rektangelprov och två vyer med vardera 1 100 bilder. Blandade regler provas med upp till 24 paneler. | Större blandade system och nativa x64-mätningar för frekvensbanden. För stora marginaler och råa rektanglar vid koordinatgränsen, se JSON-provet nedan. |
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna strängar för hörn och sidor, individuella kanter, justerade titlar, utfyllnad och skuggor. För skuggor jämförs 85 050 råa celler och celldiffarnas ordning med referensen. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
 | Övriga widgets | Fristående Clear och Fill med cellvisa symboler, stil och klippning, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, månadskalender med händelser och egna datumstilar, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. Ratatuis båda logotyper och maskot med två ögonfärger. | Se beteendeproven per widget nedan. |
@@ -326,16 +326,16 @@ Vid sammanslagning av två rader med startkolumn 62 003 placerar den optimerade 
 
 ## Text i 0.4.0
 
-Styckeprovet kombinerar två sorters radbrytning och klippning med rad- och textjustering, två skrollaxlar och åtta bredder. Fyra dokument innehåller bland annat tomrader, kontrolltecken, olika sorters mellanrum, sammansatta emoji och blandade stilar. Dunder ritar varje bild innanför en kant av röda kontrolltecken. Provet läser tecken, position, förgrund, bakgrund, fetstil och kursivering och kontrollerar hela kanten.
+På `main` använder `Paragraph` Ratatuis radbrytning även när ett brett tecken börjar i styckets sista kolumn. Provet kombinerar fyra dokument, åtta bredder, tre radbrytningslägen, fyra justeringar och två skrollaxlar. Alla 4 608 bilder matchar de faktiska cellerna i hela referensbufferten, inklusive marginalen runt stycket. Vid terminalens fysiska högerkant jämförs 4 596 hela buffertar direkt. I de tolv fall där en teckenposition hamnar utanför bufferten jämförs varje synlig cell med samma stycke ritat på en bredare yta. [Dunderprov](../tests/text_reference.ddr) · [Ratatui-referens](../benchmarks/reference/examples/text.rs)
 
-Av 4 608 bilder är 4 164 identiska med Ratatui 0.30.2. I 432 fall skiljer sig bilderna efter att ett brett tecken har passerat styckets högerkant i referensen. I ytterligare 12 fall avbryter Ratatui med ett indexfel i en två kolumner bred buffert. Jämförelseprogrammet upprepar ritningen med extra utrymme för att kontrollera när den första överträdelsen sker. Dunder flyttar hela tecknet till nästa rad när det får plats där. En separat jämförelse ger 152 identiska bilder för fristående text och textspann. De 96 referensbilderna från prestandaprovet stämmer också med både vanlig och förberedd rendering. [Dunderprov](../tests/text_reference.ddr) · [Ratatui-referens](../benchmarks/reference/examples/text.rs)
+Dessutom matchar 152 bilder av fristående text och spann samt 96 bilder ur det tidigare läsprovet. För en panel där ett brett tecken ska flyttas helt till nästa rad finns `.wide_wrap(.NextLine)`. [Prov av båda radbrytningarna](../tests/suite.ddr)
 
 ```sh
 mkdir -p build
 dunder build --locked --offline tests/text_reference.ddr -o build/text-reference
 cargo build --release --locked --manifest-path benchmarks/reference/Cargo.toml --example text --target-dir build/rust
 build/text-reference | build/rust/release/examples/text
-for mode in --widths --inline --benchmark; do
+for mode in --physical --widths --inline --benchmark; do
     build/text-reference "$mode" | build/rust/release/examples/text "$mode"
 done
 ```
@@ -344,6 +344,21 @@ Alla 766 officiella prov för grafemgränser i Unicode 17.0 och alla 1 111 999 U
 
 ```sh
 dunder run --locked --offline tools/unicode.ddr -- /sökväg/till/UCD-17 /sökväg/till/UCD-18
+```
+
+## Stycken med ram på main
+
+`Paragraph.block` ritar kant, titlar och utfyllnad samt hanterar stilen under texten. `prepare` och `resize` använder panelens ytterbredd. Provet ritar samma stycke direkt och med förberedd layout, även efter storleksändringar och delvis utanför skärmen. Fem paneler, tre justeringar, tre brytlägen, två origo och två uppsättningar diffregler ger 1 440 jämförelser av hela bufferten. Samtliga 207 360 råa celler matchar Ratatui med båda renderingsvägarna. Bland fallen finns tom innehållsyta, nederkantstitel, olika utfyllnad på varje sida och egna breda kantsymboler. [Dunderprov](../tests/framed_paragraph.ddr) · [Ratatui-prov](../benchmarks/reference/examples/framed_paragraph.rs)
+
+Läsaren provades i en pseudoterminal på macOS ARM64, Linux ARM64 och översatt Linux x86-64 med 40 × 10 och 30 × 9 celler. Provet skrollar till sista klockslaget, kontrollerar rubriken och återställer terminalen. Win32-provet kördes under Wine och läste tillbaka klockslag och rubrik efter skrollning. En fristående Dunder-app som importerade biblioteket lokalt byggdes med `--locked --offline` för samtliga fyra mål. Båda Linuxbinärerna var statiskt länkade. macOS använde libSystem och Windows importerade kernel32 och msvcrt. [Unixprov](../tests/reader_terminal.ddr) · [Win32-prov](../tests/windows_console.ddr) · [Läsarens bildtider](../benchmarks/reader.md)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/framed_paragraph.ddr -o build/framed
+cargo build --release --locked --offline --manifest-path benchmarks/reference/Cargo.toml --target-dir build/rust --no-default-features --features theme-oracle --example framed_paragraph
+build/framed > build/framed.actual
+build/rust/release/examples/framed_paragraph > build/framed.expected
+cmp build/framed.actual build/framed.expected
 ```
 
 ## Blockkanter med egna symboler
@@ -809,6 +824,6 @@ Affischen och den skrollande programlistan jämförs även i 1 100 kompletta ter
 
 Elva redigeringssteg tar bort, flyttar och byter ut rader och spann i samma dokument. Efter varje steg jämförs text, bredd, justering och tolv bilder av dokumentet. Ytterligare 1 188 styckebilder jämförs med direkt och förberedd rendering över sex bredder, tre skrollpositioner och tre radbrytningslägen. Tillsammans med de tidigare redigeringsproven ger det 1 776 bilder. [Dunderprov](../tests/text_edits.ddr) · [Ratatui-prov](../benchmarks/reference/examples/text_edits.rs)
 
-Med `.wide_wrap(.Overhang)` kan ett brett tecken börja i sista kolumnen, som i Ratatui. I styckeprovet matchar alla fysiska celler i de 4 596 fall som Ratatui kan rita på den angivna ytan. För de tolv fall där Ratatui avbryter matchar Dunder den synliga delen av en bredare referensbuffert. Standardvalet `.NextLine` behåller radbrytningen från 0.4.0. Ett separat prov ritar upp till fyra lager över förifyllda celler. Det jämför 1 296 bilder, 31 536 råa celler och samtliga ordnade celldiffar, inklusive tidigare tecken under breda symboler, understrykningsfärg och cellernas diffregler. [Styckeprov](../tests/text_reference.ddr) · [Lagerprov](../tests/paragraph_cells.ddr) · [Ratatuis celljämförelse](../benchmarks/reference/examples/paragraph_cells.rs)
+Det ursprungliga lagerprovet ritar upp till fyra lager över förifyllda celler. På `main` använder det standardinställningen för breda tecken. Det jämför 1 296 bilder, 31 536 råa celler och samtliga ordnade celldiffar, inklusive underliggande tecken, understrykningsfärg och cellernas diffregler. [Lagerprov](../tests/paragraph_cells.ddr) · [Ratatuis celljämförelse](../benchmarks/reference/examples/paragraph_cells.rs)
 
 Den publicerade körlistan testades tillsammans med galleriet och maskoten i pseudoterminal på macOS ARM64 och Linux ARM64/x64 och i Win32-konsol på Windows x64. Testet flyttar en rad, markerar den som klar, byter pass två gånger och läser tillbaka ordning och markering från skärmen. [Unixprov](../tests/rundown_terminal.ddr) · [x64-körning](https://github.com/Mik-pe/dunder-tui/actions/runs/45330011065) · [Körlistans bildtider på fyra plattformar](../benchmarks/collections.md)
