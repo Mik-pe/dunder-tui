@@ -1,0 +1,13 @@
+capability stdio
+struct Cue { title: string, played: bool }
+
+fn mark(cues: &mut []Cue) {
+    for cue in &mut cues { cue.played = true }
+}
+
+fn main() {
+    mut cues: []Cue = [Cue { title:"Intro", played:false },Cue { title:"Slut", played:false }]
+    mark(&mut cues)
+    assert(cues[0].played && cues[1].played)
+    print(cues[1].title)
+}
