@@ -1,0 +1,36 @@
+capability stdio
+import sys
+
+struct Mark { weight: i32 }
+struct Item { source: &string, at: i32, mark: Mark }
+struct Items { source: &string, at: i32, mark: Mark }
+
+impl Iterator for Items {
+    fn next(&mut self) -> Option<Item> from self {
+        if self.at == self.source.len { return .None }
+        self.at += 1
+        .Some(Item { source: self.source, at: self.at-1, mark: self.mark })
+    }
+}
+
+fn folded(total: i32, byte: u8, mark: &Mark) -> i32 { total + i32(byte) + mark.weight }
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 2 }
+    mode := sys.arg(1)
+    source := "abcdefghijklmnop"
+    mark := Mark { weight: 3 }
+    mut total := 0
+    for _ in 0..64 {
+        if mode == "iter" {
+            for item in Items { source: &source, at: 0, mark: mark } {
+                total = folded(total,item.source[item.at],&item.mark)
+            }
+        } else if mode == "scan" {
+            for at in 0..source.len { total = folded(total,source[at],&mark) }
+        } else { return 2 }
+    }
+    assert(total == 110080)
+    print(total)
+    0
+}
