@@ -1183,3 +1183,33 @@ impl tui.Backend for BufferedOutput {
         }
     }
 }
+
+@test fn cell_widgets_keep_raw_symbols_styles_and_diff_options_within_their_area() {
+    a := tui.Rect{x:8,y:2,w:5,h:1}
+    mut frame := tui.Frame::at(a)
+    _ := frame.set_cell(8,2,"界",tui.ink(.Red))
+    _ := frame.set_cell(11,2,"界",tui.ink(.Green))
+    _ := frame.set_diff_option(9,2,.AlwaysUpdate)
+    mut fill := widgets.Fill::new("xy")
+    fill.style = tui.plain().background(.Blue)
+    frame.render_widget(&fill,tui.Rect{x:9,y:2,w:3,h:1})
+    assert(frame.cell_at(8,2).unwrap().symbol == "界" && frame.cell_at(12,2).unwrap().symbol == " ")
+    painted := frame.cell_at(9,2).unwrap()
+    assert(painted.symbol == "xy" && painted.style.get_background() == .Some(.Blue))
+    assert(match painted.diff_option { .AlwaysUpdate => true, _ => false, })
+    mut copy := tui.Frame::at(a)
+    copy.copy_region(&frame,a,8,2)
+    assert(copy.cell_at(9,2).unwrap().symbol == "xy" && copy.diff_positions(&frame).unwrap().len == 0)
+    frame.render_widget(widgets.Clear{},tui.Rect{x:9,y:2,w:1,h:1})
+    cleared := frame.cell_at(9,2).unwrap()
+    assert(cleared.symbol == " " && cleared.style.get_background() == .Some(.Default))
+    assert(match cleared.diff_option { .None => true, _ => false, })
+    mut one := tui.Frame::new(1,1)
+    one.render_widget(&fill,one.area())
+    blank := tui.Frame::new(1,1)
+    assert(blank.diff_positions(&one).unwrap() == [(0,0)])
+    one.render_widget(widgets.Fill::new(""),one.area())
+    assert(one.cell_at(0,0).unwrap().symbol == "")
+    one.resize(2,1)
+    assert(one.cell_at(0,0).unwrap().symbol == "")
+}

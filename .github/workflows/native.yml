@@ -129,13 +129,15 @@ jobs:
           cd "$SOURCE_ROOT"
           manifest=benchmarks/reference/Cargo.toml
           cargo fetch --locked --manifest-path "$manifest"
-          cargo build --release --locked --offline --manifest-path "$manifest" --features layout-cache --example cursor_lifetime --example text --example terminal_bench --target-dir build/rust
+          cargo build --release --locked --offline --manifest-path "$manifest" --features layout-cache --example cursor_lifetime --example cell_widgets --example text --example terminal_bench --target-dir build/rust
           ref=build/rust/release/examples
           build/dunder$EXT build --locked --offline tests/cursor_lifetime.ddr -o "build/lifetime$EXT"
           build/lifetime$EXT >build/dunder-trace 2>build/dunder-errors
           "$ref/cursor_lifetime$EXT" >build/reference-trace 2>build/reference-errors
           diff --strip-trailing-cr build/reference-trace build/dunder-trace
           diff --strip-trailing-cr build/reference-errors build/dunder-errors
+          build/dunder$EXT build --locked --offline tests/cell_widgets.ddr -o "build/cell-widgets$EXT"
+          build/cell-widgets$EXT | "$ref/cell_widgets$EXT"
           build/dunder$EXT build --locked --offline tools/ligatures.ddr -o "build/cases$EXT"
           build/cases$EXT | tr -d '\r' >build/cases.txt
           build/dunder$EXT build --locked --offline tests/text_reference.ddr -o "build/text$EXT"

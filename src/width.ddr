@@ -232,3 +232,25 @@ pub fn glyph(chars: &[]rune, start: i32) -> Glyph {
     if script { out.saved = script_savings(&chars, start, out.end); out.span -= out.saved }
     out
 }
+
+pub fn cell_columns(value: string) -> i32 {
+    if value.len == 1 { return 1 }
+    chars := value.runes()
+    mut at := 0
+    mut measured := i64(0)
+    mut marks := 0
+    mut script := false
+    while at < chars.len {
+        g := glyph(&chars,at)
+        measured += i64(if g.span < 0 { 1 } else { g.span }) + i64(g.saved)
+        for i in at..g.end {
+            cp := i32(chars[i])
+            if cp == 0xff9e || cp == 0xff9f { marks += 1 }
+            if script_candidate(cp) { script = true }
+        }
+        at = g.end
+    }
+    if script { measured -= i64(script_savings(&chars,0,chars.len)) }
+    columns := (measured-i64(marks)).bit_and(65535) + i64(marks.bit_and(65535))
+    if columns >= 65535 { 65535 } else { i32(columns) }
+}

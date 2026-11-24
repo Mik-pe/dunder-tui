@@ -342,6 +342,7 @@ impl Rect {
 const OFFSET_MASK: i32 = 4095
 const CLUSTER: i32 = 0x110000
 const ZERO_CLUSTER: i32 = 0x110001
+const EMPTY_SYMBOL: i32 = 0x110002
 const WIDE: i32 = 0x200000
 const WRITTEN_SPACE: i32 = 0x1fffff
 
@@ -825,6 +826,50 @@ impl Frame {
         self.fill_cells(bounds, cp, g.span, symbol, &style)
     }
 
+    fn detach_edges(&mut self, area: Rect) {
+        for y in area.y..area.bottom() {
+            self.split_wide_cell(area.x,y)
+            self.split_wide_cell(area.right(),y)
+        }
+    }
+
+    pub fn paint_cells(&mut self, bounds: Rect, value: string, style: Style) {
+        area := bounds.intersection(self.bounds)
+        if area.is_empty() { return }
+        self.detach_edges(area)
+        if value.len == 0 {
+            self.fill_cells(area,EMPTY_SYMBOL,1,"",&style)
+            return
+        }
+        if value.len == 1 && value[0] >= 32 && value[0] < 127 {
+            self.fill_cells(area,i32(value[0]),1,"",&style)
+            return
+        }
+        chars := value.runes()
+        if chars.len == 1 && width.columns(i32(chars[0])) == 1 {
+            self.fill_cells(area,i32(chars[0]),1,"",&style)
+            return
+        }
+        self.overlaps = true
+        mut last := i64(0)
+        mut brush := self.composite(last,&style)
+        for y in area.y..area.bottom() {
+            for x in area.x..area.right() {
+                i := self.index(x,y)
+                old := self.styles[i]
+                if old != last { last = old; brush = self.composite(old,&style) }
+                self.put_cluster(x,y,value.clone(),1,brush)
+            }
+        }
+    }
+
+    pub fn reset_cells(&mut self, bounds: Rect) {
+        area := bounds.intersection(self.bounds)
+        if area.is_empty() { return }
+        self.detach_edges(area)
+        self.clear_area(area)
+    }
+
     fn fill_cells(&mut self, bounds: Rect, cp: i32, cells: i32, cluster: string, style: &Style) {
         area := bounds.intersection(self.bounds)
         if cells <= 0 || cells > area.w || area.h <= 0 { return }
@@ -953,6 +998,7 @@ impl Frame {
         if glyph < 0 { if terminal_output { out.push(32) }; return }
         if glyph == WRITTEN_SPACE { out.push(32); return }
         cp := glyph.bit_and(WIDE - 1) + 32
+        if cp == EMPTY_SYMBOL { return }
         if cp == CLUSTER || cp == ZERO_CLUSTER {
             if terminal_output && cp == ZERO_CLUSTER { out.push(b' ') }
             bytes.append_utf8(&mut out, self.clusters[i])
@@ -1180,7 +1226,8 @@ impl Frame {
         }
         if self.cluster_cells.len > 0 {
             for i in row..(row + self.bounds.w) {
-                if self.glyphs[i] >= 0 && self.glyphs[i] != WRITTEN_SPACE && self.glyphs[i].bit_and(WIDE - 1) >= CLUSTER - 32 && self.clusters[i] != previous.clusters[i] { return false }
+                code := self.glyphs[i].bit_and(WIDE - 1) + 32
+                if self.glyphs[i] >= 0 && (code == CLUSTER || code == ZERO_CLUSTER) && self.clusters[i] != previous.clusters[i] { return false }
             }
         }
         if shared_floor != -9223372036854775808 {
@@ -1212,16 +1259,9 @@ impl Frame {
         if !self.overlaps || value >= WIDE { return self.advance(i) }
         if value <= 0 || value == WRITTEN_SPACE { return 1 }
         code := value+32
+        if code == EMPTY_SYMBOL { return 1 }
         if code == CLUSTER || code == ZERO_CLUSTER {
-            chars := self.clusters[i].runes()
-            mut columns := 0
-            mut at := 0
-            while at < chars.len {
-                g := width.glyph(&chars,at)
-                columns += cmp.max<i32>(0,g.span)
-                at = g.end
-            }
-            return cmp.max<i32>(1,columns)
+            return cmp.max<i32>(1,width.cell_columns(self.clusters[i]))
         }
         cmp.max<i32>(1,width.columns(code))
     }
@@ -1250,8 +1290,8 @@ impl Frame {
             return true
         }
         if self.overlaps || previous.overlaps {
-            if a == CLUSTER-32 && b != ZERO_CLUSTER-32 { return self.clusters[i] == rune(b+32).str() }
-            if b == CLUSTER-32 && a != ZERO_CLUSTER-32 { return previous.clusters[i] == rune(a+32).str() }
+            if a == CLUSTER-32 && b < CLUSTER-32 { return self.clusters[i] == rune(b+32).str() }
+            if b == CLUSTER-32 && a < CLUSTER-32 { return previous.clusters[i] == rune(a+32).str() }
         }
         false
     }

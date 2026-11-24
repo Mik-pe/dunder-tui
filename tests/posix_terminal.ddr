@@ -7,6 +7,7 @@ import ..src.widgets as ui
 import std.bytes as bytes
 import std.text as text
 import sys
+import .cell_widgets
 
 @extern("c", "openpty")
 unsafe fn open_pty(master: ptr, slave: ptr, name: ptr, attributes: ptr, size: ptr) -> i32
@@ -52,6 +53,7 @@ fn draw(frame: &mut tui.Frame, state: &Probe) {
     frame.label(body, f"Steg {state.step} med bredd {body.w}")
     values: []u64 = [0,1,2,3,4,5,6,7,8]
     ui.Sparkline::new(&values).render(&mut frame, tui.Rect { x: 0, y: 2, w: 9, h: 1 })
+    cell_widgets.swatch(&mut frame,12,2)
     if frame.area().h >= 6 {
         frame.label(tui.Rect { x: 0, y: 3, w: 10, h: 3 }, if state.step == 0 {
             "😶‍🌫️a\n😶‍🌫b\n👩🏽‍💻c"
@@ -102,7 +104,7 @@ fn update(state: &mut Probe, key: tui.Key) -> bool {
         state.ok = text.contains(rendered, "\x1b[?1049h") && initial.contains(1,"Steg 0 med bredd 32") &&
         text.contains(rendered, "\x1b[96;58;5;199;3;4mRubrik") && text.contains(rendered, "▁▂▃▄▅▆▇█") &&
         text.contains(rendered, "😶‍🌫️\x1b[4;3Ha") && text.contains(rendered, "😶‍🌫b") && text.contains(rendered, "👩🏽‍💻c") &&
-        text.contains(rendered, "\x1b[7;13Hل!")
+        text.contains(rendered, "\x1b[7;13Hل!") && initial.contains(2,"xy  #")
         match key { .Up => {}, _ => { state.ok = false }, }
     } else if state.step == 1 {
         state.ok = rendered == "\x1b[2;6H1\x1b[4;3Hd\x1b[5;4He\x1b[6;3Hf\x1b[7;14H?" && resize(state.slave)

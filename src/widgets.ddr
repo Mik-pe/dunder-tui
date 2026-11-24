@@ -3,6 +3,17 @@ import .text as rich
 import .block
 import std.cmp as cmp
 
+pub struct Clear {}
+impl Clear {
+    pub fn render(&self, frame: &mut tui.Frame, area: tui.Rect) { frame.reset_cells(area) }
+}
+
+pub struct Fill { symbol: string, style: tui.Style }
+impl Fill {
+    pub fn new(move symbol: string) -> Self { Self { symbol: move symbol, style: tui.plain() } }
+    pub fn render(&self, frame: &mut tui.Frame, area: tui.Rect) { frame.paint_cells(area,self.symbol,self.style) }
+}
+
 pub struct Gauge {
     ratio: f64, fractional: bool, label: Option<rich.Span>, style: tui.Style, bar_style: tui.Style, block: block.Block,
 }
