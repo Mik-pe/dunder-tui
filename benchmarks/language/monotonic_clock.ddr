@@ -1,0 +1,44 @@
+capability unsafe, stdio
+import std.time as clock
+
+@extern("c", "clock_gettime")
+unsafe fn gettime(id: i32, result: ptr) -> i32
+
+@extern("c", "clock_getres")
+unsafe fn getres(id: i32, result: ptr) -> i32
+
+fn sample(raw: bool) -> i64 {
+    if target_is("macos") && raw {
+        mut ts: [i64; 2] = [0; 2]
+        unsafe { assert(gettime(4,addr(&mut ts[0])) == 0) }
+        return ts[0]*1000000000+ts[1]
+    }
+    clock.monotonic_ns()
+}
+
+fn measure(raw: bool) {
+    mut previous := sample(raw)
+    assert(previous >= 0)
+    mut ties := 0
+    mut smallest := i64(9223372036854775807)
+    for _ in 0..100000 {
+        now := sample(raw)
+        assert(now >= previous)
+        delta := now-previous
+        if delta == 0 { ties += 1 } else if delta < smallest { smallest = delta }
+        previous = now
+    }
+    label := if raw { "CLOCK_MONOTONIC_RAW" } else { "std.time.monotonic_ns" }
+    print(f"{label} reads=100000 ties={ties} smallest_positive_ns={smallest}")
+    if target_is("macos") {
+        id := if raw { 4 } else { 6 }
+        mut ts: [i64; 2] = [0; 2]
+        unsafe { assert(getres(id,addr(&mut ts[0])) == 0) }
+        print(f"clock_getres_ns={ts[0]*1000000000+ts[1]}")
+    }
+}
+
+fn main() {
+    measure(false)
+    if target_is("macos") { measure(true) }
+}
