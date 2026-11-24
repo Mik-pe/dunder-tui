@@ -13,7 +13,9 @@ fn panel(move title: string) -> box.Block {
 }
 
 impl Scene {
-    pub fn new(phase: i32, alternate: bool) -> Self {
+    pub fn new(phase: i32, alternate: bool) -> Self { Scene::dashboard(phase,alternate,false) }
+
+    pub fn dashboard(phase: i32, alternate: bool, horizontal: bool) -> Self {
         mut tabs := ui.Tabs::new([rich.Line::raw("Signal"), rich.Line::raw("Spectrum"), rich.Line::raw("Level")])
         tabs.highlight = tui.ink(.Red).bold()
         tabs.selected = .Some(if alternate { 1 } else { 0 })
@@ -26,12 +28,16 @@ impl Scene {
         spark.block = panel(" Trace ")
         spark.maximum = .Some(30)
         mut group: []chart.Bar = []
-        for i in 0..12 { group.push(chart.Bar::named((i + 1).str(), u64((i * 7 + 3) % 20))) }
+        for i in 0..12 {
+            value := if horizontal { u64((i*7+phase*3)%19)*7031981 } else { u64((i*7+3)%20) }
+            group.push(chart.Bar::named((i+1).str(),value))
+        }
         mut bars := chart.BarChart::new(move group)
         bars.block = panel(" Harmonics ")
         bars.bar_style = tui.ink(if alternate { .Yellow } else { .Magenta })
         bars.value_style = tui.ink(.Cyan)
-        bars.bar_width = 3
+        if horizontal { bars.direction = .Horizontal; bars.bar_width = 1; bars.bar_gap = 0 }
+        else { bars.bar_width = 3 }
         mut gauge := ui.Gauge::new(if alternate { 0.8125 } else { 0.375 })
         gauge.fractional = true
         gauge.label = .Some(rich.Span::raw("level"))

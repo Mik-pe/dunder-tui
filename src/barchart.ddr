@@ -2,30 +2,48 @@ import .tui
 import .text as rich
 import .block
 import .widgets
+import .width
 import std.cmp as cmp
 
 pub enum Direction { Vertical, Horizontal }
 pub struct Bar { value: u64, label: Option<rich.Line>, text_value: Option<string>, style: tui.Style, value_style: tui.Style }
+impl Default for Bar { fn default() -> Self { Bar::new(0) } }
+
 impl Bar {
     pub fn new(value: u64) -> Self {
         Self { value: value, label: .None, text_value: .None, style: tui.plain(), value_style: tui.plain() }
     }
     pub fn named(move name: string, value: u64) -> Self {
+        Bar::with_label(rich.Line::raw(move name),value)
+    }
+    pub fn with_label(move label: rich.Line, value: u64) -> Self {
         mut b := Bar::new(value)
-        b.label = .Some(rich.Line::raw(move name))
+        b.label = .Some(move label)
         move b
     }
 }
 
 pub struct Group { bars: []Bar, label: Option<rich.Line> }
+impl Default for Group { fn default() -> Self { Group::new([]) } }
+
 impl Group {
     pub fn new(move bars: []Bar) -> Self { Self { bars: move bars, label: .None } }
 
-    fn draw_label(&self, frame: &mut tui.Frame, row: tui.Rect, style: tui.Style) {
+    pub fn with_label(move label: rich.Line, move bars: []Bar) -> Self { Self { bars:move bars, label:.Some(move label) } }
+
+    pub fn from_pairs(values: &[](string,u64)) -> Self {
+        mut bars: []Bar = []
+        bars.reserve(values.len)
+        for pair in &values { bars.push(Bar::named(pair.0.clone(),pair.1)) }
+        Group::new(move bars)
+    }
+
+    fn draw_label(&self, frame: &mut tui.Frame, row: tui.Rect, style: tui.Style, clip: bool) {
         match &self.label {
             .Some(label) => {
-                n := cmp.min<i32>(row.w, label.width())
-                x := match label.get_alignment() { .Center => (row.w - n) / 2, .Right => row.w - n, _ => 0, }
+                n := if clip { cmp.min<i32>(row.w,label.width()) } else { label.width() }
+                space := cmp.max<i32>(0,row.w-n)
+                x := match label.get_alignment() { .Center => space/2, .Right => space, _ => 0, }
                 area := tui.Rect { x: row.x + x, y: row.y, w: n, h: row.h }
                 frame.apply_cell_style(area, style)
                 label.render(&mut frame, area)
@@ -36,22 +54,43 @@ impl Group {
 }
 
 pub struct BarChart {
-    groups: []Group, direction: Direction, bar_width: i32, bar_gap: i32, group_gap: i32, maximum: Option<u64>,
+    groups: []Group, direction: Direction, clip_to_area: bool, bar_width: i32, bar_gap: i32, group_gap: i32, maximum: Option<u64>,
     symbols: [rune; 9], bar_set: Option<[string;9]>, style: tui.Style, bar_style: tui.Style, value_style: tui.Style, label_style: tui.Style, block: block.Block,
 }
 
-fn value_area(bar: tui.Rect, width: i32, ticks: i32) -> tui.Rect {
+fn value_area(bar: tui.Rect, width: i32, bytes: i32, ticks: i32) -> tui.Rect {
     n := if width < bar.w || (width == bar.w && ticks >= 8) { width } else { 0 }
-    tui.Rect { x: bar.x + (bar.w - n) / 2, y: bar.y + bar.h - 1, w: n, h: 1 }
+    tui.Rect { x: bar.x + cmp.max<i32>(0,bar.w - bytes) / 2, y: bar.y + bar.h - 1, w: n, h: 1 }
 }
+
+impl Default for BarChart { fn default() -> Self { BarChart::grouped([]) } }
 
 impl BarChart {
     pub fn grouped(move groups: []Group) -> Self {
-        Self { groups: move groups, direction: .Vertical, bar_width: 1, bar_gap: 1, group_gap: 0, maximum: .None,
+        mut data := move groups
+        mut count := 0
+        for i in 0..data.len {
+            if data[i].bars.len == 0 { continue }
+            if count != i { data.swap(count,i) }
+            count += 1
+        }
+        while data.len > count { _ := data.pop() }
+        Self { groups: move data, direction: .Vertical, clip_to_area:false, bar_width: 1, bar_gap: 1, group_gap: 0, maximum: .None,
             symbols: widgets.nine_levels(), bar_set:.None, style: tui.plain(), bar_style: tui.plain(), value_style: tui.plain(),
             label_style: tui.plain(), block: block.Block::new() }
     }
     pub fn new(move bars: []Bar) -> Self { BarChart::grouped([Group::new(move bars)]) }
+
+    pub fn vertical(move bars: []Bar) -> Self { BarChart::new(move bars) }
+    pub fn horizontal(move bars: []Bar) -> Self {
+        mut chart := BarChart::new(move bars)
+        chart.direction = .Horizontal
+        move chart
+    }
+
+    pub fn add_group(&mut self, move group: Group) {
+        if group.bars.len > 0 { self.groups.push(move group) }
+    }
 
     pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
         frame.apply_cell_style(bounds, self.style)
@@ -100,14 +139,16 @@ impl BarChart {
                 bar := &group.bars[i]
                 ticks := widgets.bar_ticks(bar.value, maximum, (if vertical { plot.h } else { plot.w }) * 8)
                 if vertical { self.vertical_bar(&mut frame, plot, i32(offset), &bar, ticks, bar_labels, &symbols) }
-                else { self.horizontal_bar(&mut frame, plot, area.x, i32(offset), &bar, ticks, &symbols) }
+                else { self.horizontal_bar(&mut frame, plot, area.x, label_width, i32(offset), &bar, ticks, &symbols) }
                 offset += step
             }
             end := i32(offset - gap)
             if vertical && group_labels {
-                group.draw_label(&mut frame, tui.Rect { x: area.x + start, y: area.y + area.h - 1, w: end - start, h: 1 }, self.label_style)
+                group.draw_label(&mut frame, tui.Rect { x: area.x + start, y: area.y + area.h - 1, w: end - start, h: 1 }, self.label_style,self.clip_to_area)
             } else if !vertical && self.group_gap > 0 && end < area.h {
-                group.draw_label(&mut frame, tui.Rect { x: plot.x, y: plot.y + end, w: plot.w, h: plot.h - end }, self.label_style)
+                h := if self.clip_to_area { plot.h-end } else { plot.h }
+                x := if self.clip_to_area { plot.x } else { area.x+label_width+(if label_width > 0 { 1 } else { 0 }) }
+                group.draw_label(&mut frame, tui.Rect { x:x, y:plot.y+end, w:plot.w, h:h },self.label_style,self.clip_to_area)
             }
             offset += i64(cmp.max<i32>(0, self.group_gap))
         }
@@ -130,26 +171,23 @@ impl BarChart {
         if bar.value == 0 { return }
         match &bar.text_value {
             .None => {
-                mut n := bar.value
-                mut width := 1
-                while n >= 10 { n /= 10; width += 1 }
-                row := value_area(area, width, ticks)
-                n = bar.value
+                n := decimal_width(bar.value)
+                row := value_area(area,n,n,ticks)
                 style := self.value_style.patch(bar.value_style)
-                for i in 0..row.w {
-                    cell := tui.Rect { x: row.x + row.w - 1 - i, y: row.y, w: 1, h: 1 }
-                    frame.paint_rune(cell, rune(48 + i32(n % 10)), style)
-                    n /= 10
-                }
+                write_digits(&mut frame,row,bar.value,n,n,&style,&style)
             },
             .Some(value) => {
-                label := rich.Span::styled(value.clone(), self.value_style.patch(bar.value_style))
-                _ := label.write(&mut frame, value_area(area, label.width(), ticks))
+                n := width.cell_columns_view(value.as_str())
+                row := value_area(area,n,value.len,ticks)
+                if row.w > 0 {
+                    label := rich.Span::styled(value.clone(),self.value_style.patch(bar.value_style))
+                    _ := label.write(&mut frame,row)
+                }
             },
         }
     }
 
-    fn horizontal_bar<S: widgets.BarSymbol>(&self, frame: &mut tui.Frame, plot: tui.Rect, label_x: i32, offset: i32, bar: &Bar, ticks: i32, symbols: &[S;9]) {
+    fn horizontal_bar<S: widgets.BarSymbol>(&self, frame: &mut tui.Frame, plot: tui.Rect, label_x: i32, label_width: i32, offset: i32, bar: &Bar, ticks: i32, symbols: &[S;9]) {
         y := plot.y + offset
         length := ticks / 8
         style := self.bar_style.patch(bar.style)
@@ -157,18 +195,50 @@ impl BarChart {
         symbols[0].paint_bar(&mut frame, tui.Rect { x:plot.x+length, y:y, w:plot.w-length, h:self.bar_width }, style)
         row := y + self.bar_width / 2
         match &bar.label {
-            .Some(label) => { _ := label.write(&mut frame, tui.Rect { x: label_x, y: row, w: plot.x - label_x, h: 1 }) },
+            .Some(label) => { _ := label.write(&mut frame, tui.Rect { x: label_x, y: row, w: if self.clip_to_area { cmp.min<i32>(label_width,plot.x-label_x) } else { label_width }, h: 1 }) },
             _ => {},
         }
         if plot.w == 0 { return }
-        value := match &bar.text_value { .Some(s) => s.clone(), _ => bar.value.str(), }
-        run := tui.GlyphRun::new(move value)
-        mut split := 0
-        mut columns := 0
-        while split < run.count() && columns < length { columns += run.width_at(split); split += 1 }
-        area := tui.Rect { x: plot.x, y: row, w: plot.w, h: 1 }
-        _ := run.write_cells(&mut frame, area, 0, split, self.value_style.patch(bar.value_style))
-        (_, rest) := area.cols(columns)
-        _ := run.write_cells(&mut frame, rest, split, run.count(), style)
+        area := tui.Rect { x:plot.x, y:row, w:plot.w, h:1 }
+        value_style := self.value_style.patch(bar.value_style)
+        match &bar.text_value {
+            .None => { write_digits(&mut frame,area,bar.value,decimal_width(bar.value),length,&value_style,&style) },
+            .Some(text) => {
+                if text.len == 0 { return }
+                if length > 0 {
+                    first := rich.Span::styled(text.clone(),value_style)
+                    _ := first.write(&mut frame,area.cols(length).0)
+                }
+                if text.len > length {
+                    mut split := length
+                    while split < text.len && text[split].bit_and(192) == 128 { split += 1 }
+                    if split < area.w && split < text.len {
+                        suffix := rich.Span::styled(text[split..text.len],style)
+                        _ := suffix.write(&mut frame,area.cols(split).1)
+                    }
+                }
+            },
+        }
+    }
+}
+
+fn decimal_width(value: u64) -> i32 {
+    mut n := value
+    mut count := 1
+    while n >= 10 { n /= 10; count += 1 }
+    count
+}
+
+fn write_digits(frame: &mut tui.Frame, area: tui.Rect, value: u64, digits: i32, split: i32, first: &tui.Style, rest: &tui.Style) {
+    if area.w <= 0 { return }
+    mut number := value
+    for i in 0..digits {
+        col := digits-i-1
+        if col < area.w {
+            digit := rune(48+i32(number%10))
+            if col < split { frame.paint_cell_rune(area.x+col,area.y,digit,&first) }
+            else { frame.paint_cell_rune(area.x+col,area.y,digit,&rest) }
+        }
+        number /= 10
     }
 }

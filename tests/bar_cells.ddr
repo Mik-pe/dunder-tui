@@ -1,0 +1,69 @@
+capability stdio
+import ..src.tui
+import ..src.text as rich
+import ..src.barchart as chart
+import .styled_grid
+import std.json
+import sys
+
+fn setup(k:i32, horizontal:bool) -> chart.BarChart {
+    mut first := chart.Bar::new(if k%3 == 0 { 0 } else { u64(k+1) })
+    text := ["0","界X","éX","éZ","👩🏽‍💻Z","9","","0123456789","XYZ"]
+    if k != 8 { first.text_value = .Some(text[k].clone()) }
+    first.style = tui.ink(.Cyan).background(.Blue)
+    first.value_style = tui.ink(.Magenta).underline_rgb(0x020407)
+    if k%3 == 1 { first.label = .Some(rich.Line::raw("Ha界").styled(tui.ink(.Green))) }
+    mut second := chart.Bar::with_label(rich.Line::raw("B").styled(tui.ink(.Blue)),0xffffffffffffffff)
+    if k%2 == 0 { second.label = .None }
+    align: rich.Alignment = match k%3 { 0 => .Left, 1 => .Center, _ => .Right, }
+    label := rich.Line::raw(if k%2 == 0 { "Gr茶pp" } else { "界GH界" }).align(align)
+    mut c := chart.BarChart::default()
+    c.add_group(chart.Group::with_label(move label,[move first,move second]))
+    c.add_group(chart.Group::default())
+    pairs: [](string,u64) = [("Q",8),("AB",1)]
+    c.add_group(chart.Group::from_pairs(&pairs))
+    c.direction = if horizontal { .Horizontal } else { .Vertical }
+    c.bar_width = 1+k%4
+    c.bar_gap = k%2
+    c.group_gap = (k/2)%3
+    if k != 7 { c.maximum = .Some(if k == 0 { u64(0) } else { u64(12) }) }
+    if k%2 == 1 { c.style = tui.plain().background(.Black).without(.Bold) }
+    c.bar_style = tui.ink(.Yellow).italic()
+    c.label_style = tui.ink(.Red).underline_index(7)
+    c.value_style = tui.plain().background(.Green).bold()
+    move c
+}
+
+pub fn caption(frame:&mut tui.Frame, x:i32, y:i32, clipped:bool) {
+    frame.fill(tui.Rect::new(x-1,y,9,1),`.`,tui.plain())
+    mut c := chart.BarChart::horizontal([chart.Bar::named("NORD",0)])
+    c.clip_to_area = clipped
+    frame.render_widget(&c,tui.Rect::new(x,y,2,1))
+}
+
+fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--caption" {
+        for a in [tui.Rect::new(0,0,16,8),tui.Rect::new(5,3,16,8)] {
+            mut frame := tui.Buffer::empty(a).to_frame().unwrap()
+            for clip in [false,true] {
+                caption(&mut frame,a.x+3,a.y+2,clip)
+                print(json.to_string(&frame).unwrap())
+            }
+        }
+        return
+    }
+    for a in [tui.Rect::new(0,0,16,8),tui.Rect::new(5,3,16,8)] {
+        for area in [a,tui.Rect::new(a.x+2,a.y+1,9,5),tui.Rect::new(a.x+3,a.y+1,2,6),
+                tui.Rect::new(a.x+5,a.y+2,6,1),tui.Rect::new(a.x+1,a.y+2,0,3)] {
+            for flags in [false,true] { for horizontal in [false,true] { for k in 0..9 {
+                mut frame := styled_grid.seed(a,flags)
+                mut c := setup(k,horizontal)
+                for phase in 0..2 {
+                    if phase == 1 { c.bar_gap = 2; c.bar_width += 1; c.maximum = .Some(24) }
+                    frame.render_widget(&c,area)
+                    print(json.to_string(&frame).unwrap())
+                }
+            } } }
+        }
+    }
+}

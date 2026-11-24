@@ -27,30 +27,13 @@ struct Check<I> {
     input: I,
     count: usize,
     failures: usize,
-    clipped: usize,
 }
 impl<I: Iterator<Item = io::Result<String>>> Check<I> {
-    fn frame(&mut self, kind: &str, id: usize, area: Rect, mut buf: Buffer) {
+    fn frame(&mut self, kind: &str, id: usize, area: Rect, buf: Buffer) {
         let actual = self.input.next().expect("missing Dunder frame").unwrap();
         let expected = snapshot(&buf);
         self.count += 1;
         if actual != expected {
-            if kind == "barchart" {
-                let original = seeded(area);
-                let mut overflow = false;
-                for y in 0..buf.area.height {
-                    for x in 0..buf.area.width {
-                        if !area.contains((x, y).into()) && buf[(x, y)] != original[(x, y)] {
-                            overflow = true;
-                            buf[(x, y)] = original[(x, y)].clone();
-                        }
-                    }
-                }
-                if overflow && actual == snapshot(&buf) {
-                    self.clipped += 1;
-                    return;
-                }
-            }
             if self.failures < 12 {
                 eprintln!("{kind} {id}, {area:?}\nD {actual}\nR {expected}");
             }
@@ -314,11 +297,13 @@ fn main() {
         input,
         count: 0,
         failures: 0,
-        clipped: 0,
     };
-    for w in [0, 1, 2, 3, 5, 8, 13, 22] {
-        for h in [0, 1, 2, 3, 6] {
-            check.widgets(Rect::new(1, 1, w, h));
+    let horizontal = std::env::args().any(|arg| arg == "--horizontal");
+    if !horizontal {
+        for w in [0, 1, 2, 3, 5, 8, 13, 22] {
+            for h in [0, 1, 2, 3, 6] {
+                check.widgets(Rect::new(1, 1, w, h));
+            }
         }
     }
     for w in [80, 96] {
@@ -326,19 +311,18 @@ fn main() {
             for marker in [false, true] {
                 let area = Rect::new(0, 0, w, 24);
                 let mut buf = Buffer::empty(area);
-                widgets_scene::Scene::new(if phase == 8 { 0 } else { phase }, phase == 8)
-                    .draw(&mut buf, marker);
+                widgets_scene::Scene::dashboard(
+                    if phase == 8 { 0 } else { phase },
+                    phase == 8,
+                    horizontal,
+                )
+                .draw(&mut buf, marker);
                 check.frame("benchmark", phase as usize, area, buf);
             }
         }
     }
-    assert_eq!(check.count, 24516);
-    assert_eq!(check.clipped, 31);
+    assert_eq!(check.count, if horizontal { 36 } else { 24516 });
     assert!(check.input.next().is_none());
     assert_eq!(check.failures, 0, "out of {} frames", check.count);
-    println!(
-        "{} identical widget frames, {} match after clipping reference writes outside the widget",
-        check.count - check.clipped,
-        check.clipped
-    );
+    println!("{} identical widget frames", check.count);
 }

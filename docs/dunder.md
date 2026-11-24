@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Skriv osignerade heltal direkt i en bytebuffert
+
+`std.bytes.append_decimal` tar `i64`. I 0.12.1 gav 7 000 formateringar av `u64` med `value.str()` och `append_utf8` 7 007 allokeringsanrop inklusive uppstart. Med samma förallokerade buffert och `std.json.write_u64` blev det sju. Båda vägarna gav exakt samma tecken, även för 2⁶³ och 2⁶⁴−1. Gör den osignerade skrivaren tillgänglig i `std.bytes` och återanvänd den i JSON. Kör provet med `--runtime-profile` och argumentet `string` respektive `buffer`. [Minimiprov](../benchmarks/language/unsigned_text.ddr)
+
 ## Kopiera fasta axelgränser till befintlig lagring
 
 I Dunder 0.12.1 krävde 10 001 kopieringar av två `f64` med `dst.bounds = src.bounds.clone()` 20 011 allokeringsanrop inklusive uppstart. Att skriva de två elementen på plats gav nio. Källan kunde ändras efter kopian och ett tidigare sparat värde behöll båda gränserna. I diagrammet försvann 4 400 arraykloner över 1 100 bilder när de fyra gränsparen uppdaterades på plats. [Minimiprov](../benchmarks/language/fixed_bounds.ddr) · [Diagramprovet](../benchmarks/charts.md)

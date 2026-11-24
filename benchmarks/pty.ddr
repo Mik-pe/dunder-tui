@@ -4,12 +4,12 @@ import ..tools.pty
 import std.bytes as bytes
 import sys
 
-unsafe fn bench(program: string, capture: string) -> i32 {
+unsafe fn bench(program: string, capture: string, move args: []string) -> i32 {
     mut master := -1
     mut slave := -1
     if !pty.open(&mut master, &mut slave, 96, 24) { return 1 }
     defer { _ := sys.fd_close(master) }
-    child := pty.launch(program, ["--terminal"], slave, true)
+    child := pty.launch(program, move args, slave, true)
     _ := sys.fd_close(slave)
     if child.is_err() { return 1 }
     mut running := child.unwrap()
@@ -34,11 +34,16 @@ unsafe fn bench(program: string, capture: string) -> i32 {
 }
 
 fn main() -> i32 {
-    if !(target_is("macos") || target_is("linux")) || sys.arg_count() < 2 || sys.arg_count() > 3 {
-        _ := sys.eprint("Usage on macOS or Linux: pty BENCHMARK [OUTPUT.ansi]")
+    total := sys.arg_count()
+    mut end := total
+    for i in 2..total { if sys.arg(i) == "--" { end = i; break } }
+    if !(target_is("macos") || target_is("linux")) || end < 2 || end > 3 {
+        _ := sys.eprint("Usage on macOS or Linux: pty BENCHMARK [OUTPUT.ansi] [-- BENCHMARK_ARGS...]")
         return 1
     }
-    capture := if sys.arg_count() == 3 { sys.arg(2) } else { "" }
-    unsafe { return bench(sys.arg(1), capture) }
+    capture := if end == 3 { sys.arg(2) } else { "" }
+    mut args: []string = ["--terminal"]
+    for i in end+1..total { args.push(sys.arg(i)) }
+    unsafe { return bench(sys.arg(1), capture, move args) }
     1
 }

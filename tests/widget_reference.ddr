@@ -166,22 +166,25 @@ fn main() {
         }
         return
     }
-    for w in [0,1,2,3,5,8,13,22] {
-        for h in [0,1,2,3,6] {
-            area := tui.Rect { x: 1, y: 1, w: w, h: h }
-            gauges(area)
-            sparklines(area)
-            tabs(area)
-            scrollbars(area)
-            blocks(area)
-            bars(area)
+    horizontal := sys.arg_count() > 1 && sys.arg(1) == "--horizontal"
+    if !horizontal {
+        for w in [0,1,2,3,5,8,13,22] {
+            for h in [0,1,2,3,6] {
+                area := tui.Rect { x: 1, y: 1, w: w, h: h }
+                gauges(area)
+                sparklines(area)
+                tabs(area)
+                scrollbars(area)
+                blocks(area)
+                bars(area)
+            }
         }
     }
     for w in [80, 96] {
         for phase in 0..9 {
             for marker in [false, true] {
                 mut f := tui.Frame::new(w,24)
-                scene.Scene::new(if phase == 8 { 0 } else { phase }, phase == 8).draw(&mut f, marker)
+                scene.Scene::dashboard(if phase == 8 { 0 } else { phase },phase == 8,horizontal).draw(&mut f, marker)
                 cells.snapshot(&f)
             }
         }

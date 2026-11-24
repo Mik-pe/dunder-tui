@@ -6,10 +6,11 @@ mod frames;
 #[path = "../src/widgets_scene.rs"]
 mod widgets_scene;
 fn main() {
+    let horizontal = std::env::args().any(|arg| arg == "--horizontal");
     let mut scenes = (0..8)
-        .map(|p| widgets_scene::Scene::new(p, false))
+        .map(|p| widgets_scene::Scene::dashboard(p, false, horizontal))
         .collect::<Vec<_>>();
-    scenes.push(widgets_scene::Scene::new(0, true));
+    scenes.push(widgets_scene::Scene::dashboard(0, true, horizontal));
     frames::run(
         &["idle", "cell", "scroll", "resize", "repaint"],
         |buf, mode, n| {

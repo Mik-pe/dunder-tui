@@ -174,3 +174,7 @@ required-features = ["theme-oracle"]
 [[example]]
 name = "chart_cells"
 required-features = ["theme-oracle"]
+
+[[example]]
+name = "bar_cells"
+required-features = ["theme-oracle"]

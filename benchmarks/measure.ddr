@@ -32,12 +32,14 @@ fn record(rows: &mut []Samples, cases: &mut []string, output: string, keep: bool
 }
 
 fn main() -> i32 {
-    args := sys.arg_count()
+    total := sys.arg_count()
+    mut args := total
+    for i in 1..total { if sys.arg(i) == "--" { args = i; break } }
     labeled := args >= 6 && sys.arg(args-3) == "--labels"
     positional := if labeled { args-3 } else { args }
     recorded := args >= 3 && sys.arg(1) == "--recorded"
-    if positional != 3 && positional != 4 {
-        _ := sys.eprint("Usage: measure FIRST SECOND [PTY_DRIVER] [--labels FIRST_NAME SECOND_NAME]")
+    if (positional != 3 && positional != 4) || (recorded && args != total) {
+        _ := sys.eprint("Usage: measure FIRST SECOND [PTY_DRIVER] [--labels FIRST_NAME SECOND_NAME] [-- BENCHMARK_ARGS...]")
         _ := sys.eprint("       measure --recorded DIRECTORY [console]")
         return 1
     }
@@ -63,8 +65,13 @@ fn main() -> i32 {
                     continue
                 }
                 program := programs[which].clone()
-                command := if mode == 1 { proc.Command::new(sys.arg(3), [program.clone()]) }
-                                  else { proc.Command::new(program.clone(), []) }
+                mut child_args: []string = []
+                if mode == 1 {
+                    child_args.push(program.clone())
+                    if args < total { child_args.push("--") }
+                }
+                for i in args+1..total { child_args.push(sys.arg(i)) }
+                command := proc.Command::new(if mode == 1 { sys.arg(3) } else { program.clone() },move child_args)
                 out := command.exec()
                 if !out.succeeded() {
                     _ := sys.eprint(f"{program} exit={out.code} signal={out.signal} error={out.error}")

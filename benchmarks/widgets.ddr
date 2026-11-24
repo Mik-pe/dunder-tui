@@ -2,6 +2,7 @@ capability stdio
 import ..src.tui
 import .widgets_scene as fixture
 import .frames
+import sys
 
 fn draw(scenes: &mut []fixture.Scene, frame: &mut tui.Frame, mode: string, n: i32) {
     index := if mode == "scroll" { n % 8 } else if mode == "repaint" && n % 2 == 1 { 8 } else { 0 }
@@ -9,9 +10,11 @@ fn draw(scenes: &mut []fixture.Scene, frame: &mut tui.Frame, mode: string, n: i3
 }
 
 fn main() {
+    mut horizontal := false
+    for i in 1..sys.arg_count() { if sys.arg(i) == "--horizontal" { horizontal = true } }
     mut scenes: []fixture.Scene = []
-    for phase in 0..8 { scenes.push(fixture.Scene::new(phase, false)) }
-    scenes.push(fixture.Scene::new(0, true))
+    for phase in 0..8 { scenes.push(fixture.Scene::dashboard(phase,false,horizontal)) }
+    scenes.push(fixture.Scene::dashboard(0,true,horizontal))
     cases: []string = ["idle", "cell", "scroll", "resize", "repaint"]
     frames.run(&mut scenes, &cases, draw)
 }

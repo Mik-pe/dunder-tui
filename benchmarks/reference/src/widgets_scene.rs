@@ -1,6 +1,6 @@
 use ratatui::{
     buffer::Buffer,
-    layout::Rect,
+    layout::{Direction, Rect},
     style::Style,
     symbols::border,
     text::Line,
@@ -20,7 +20,7 @@ fn panel(title: &'static str) -> Block<'static> {
         .border_style(Style::new().cyan())
 }
 impl Scene {
-    pub fn new(phase: u64, alternate: bool) -> Self {
+    pub fn dashboard(phase: u64, alternate: bool, horizontal: bool) -> Self {
         let tabs = Tabs::new(["Signal", "Spectrum", "Level"])
             .highlight_style(Style::new().red().bold())
             .select(usize::from(alternate));
@@ -36,7 +36,14 @@ impl Scene {
             .max(30);
         let bars = BarChart::new(
             (0..12)
-                .map(|i| Bar::with_label(Line::raw((i + 1).to_string()), (i * 7 + 3) % 20))
+                .map(|i| {
+                    let value = if horizontal {
+                        ((i * 7 + phase * 3) % 19) * 7031981
+                    } else {
+                        (i * 7 + 3) % 20
+                    };
+                    Bar::with_label(Line::raw((i + 1).to_string()), value)
+                })
                 .collect::<Vec<_>>(),
         )
         .block(panel(" Harmonics "))
@@ -46,7 +53,13 @@ impl Scene {
             Style::new().magenta()
         })
         .value_style(Style::new().cyan())
-        .bar_width(3);
+        .direction(if horizontal {
+            Direction::Horizontal
+        } else {
+            Direction::Vertical
+        })
+        .bar_gap(if horizontal { 0 } else { 1 })
+        .bar_width(if horizontal { 1 } else { 3 });
         let gauge = Gauge::default()
             .ratio(if alternate { 0.8125 } else { 0.375 })
             .use_unicode(true)

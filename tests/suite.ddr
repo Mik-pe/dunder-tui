@@ -1101,7 +1101,12 @@ struct SavedPreferences { name: string, styles: []Option<snapshot.WithoutUnderli
     assert(f.line(0) == "     ▇·" && f.line(1) == "     █·")
 }
 
-@test fn horizontal_chart_clips_labels_and_splits_values_at_graphemes() {
+@test fn horizontal_bar_labels_can_be_clipped_and_value_styles_follow_reference_columns() {
+    mut grouped := chart.BarChart::grouped([chart.Group::default(),chart.Group::new([chart.Bar::new(3)]),
+        chart.Group::default(),chart.Group::new([chart.Bar::new(7)])])
+    grouped.add_group(chart.Group::default())
+    assert(grouped.groups.len == 2 && grouped.groups[0].bars[0].value == 3 && grouped.groups[1].bars[0].value == 7)
+    assert(chart.BarChart::vertical([]).groups.len == 0)
     mut f := tui.Frame::new(8, 3)
     f.fill(f.area(), `#`, tui.plain())
     mut b := chart.Bar::named("abc", 1)
@@ -1111,10 +1116,17 @@ struct SavedPreferences { name: string, styles: []Option<snapshot.WithoutUnderli
     graph.maximum = .Some(3)
     graph.value_style = tui.ink(.Cyan)
     graph.render(&mut f, tui.Rect { x: 1, y: 1, w: 1, h: 1 })
+    assert(f.line(1) == "#abc####")
+    graph.clip_to_area = true
+    f.fill(f.area(),`#`,tui.plain())
+    graph.render(&mut f,tui.Rect::new(1,1,1,1))
     assert(f.line(1) == "#a######")
     graph.render(&mut f, tui.Rect { x: 1, y: 1, w: 7, h: 1 })
-    assert(f.line(1) == "#abc#界X")
-    assert(f.style_at(5, 1).unwrap().get_foreground() == .Some(tui.Color.Cyan))
+    assert(f.line(1) == "#abc#█  ")
+    graph.groups[0].bars[0].text_value = .Some("XYZ")
+    graph.render(&mut f,tui.Rect::new(1,1,7,1))
+    assert(f.line(1) == "#abc#XYZ")
+    assert(f.style_at(5,1).unwrap().get_foreground() == .Some(tui.Color.Cyan))
     assert(f.line(2) == "########")
 }
 

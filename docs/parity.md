@@ -386,7 +386,7 @@ build/columns "$@" | build/rust/release/examples/standard_columns "$@"
 
 ## Widgets i 0.5.0
 
-Bildprovet ritar på en färgad bakgrund med en kontrollkant runt widgeten. För varje cell jämförs tecken, för- och bakgrundsfärg samt de attribut som används i provet. Av 24 516 bilder är 24 485 identiska över hela bufferten. I resterande 31 bilder skriver Ratatuis stapeldiagram utanför sin tilldelade ruta. Dunder matchar alla celler inuti rutan och behåller omgivningen intakt. Provet inkluderar samtliga 36 tillstånd som används för att mäta diagramvyn. Ytterligare 50 700 kombinationer av linjetecken och sammanslagningsregler ger samma symbol som Ratatui. [Dunderprov](../tests/widget_reference.ddr) · [Ratatui-prov](../benchmarks/reference/examples/widgets.rs) · [Bildtider och terminalutdata](../benchmarks/widgets.md)
+På `main` matchar alla 24 516 bilder Ratatui över hela bufferten, inklusive kontrollkanten runt widgeten. För varje cell jämförs tecken, för- och bakgrundsfärg samt de attribut som används i provet. De 31 tidigare avvikelserna gällde stapel- och gruppetiketter i små rutor. Provet täcker alla 36 tillstånd i den vertikala diagramvyn. Med `--horizontal` jämförs ytterligare 36 tillstånd med vågräta staplar. Alla 50 700 kombinationer av linjetecken och sammanslagningsregler ger samma symbol som Ratatui. [Dunderprov](../tests/widget_reference.ddr) · [Ratatui-prov](../benchmarks/reference/examples/widgets.rs) · [Bildtider och terminalutdata](../benchmarks/widgets.md)
 
 Kör båda jämförelserna från repots rot.
 
@@ -395,10 +395,23 @@ mkdir -p build
 dunder build --locked --offline tests/widget_reference.ddr -o build/widget-reference
 cargo build --locked --release --manifest-path benchmarks/reference/Cargo.toml --example widgets --target-dir build/rust
 build/widget-reference | build/rust/release/examples/widgets
+build/widget-reference --horizontal | build/rust/release/examples/widgets --horizontal
 build/widget-reference --merge | build/rust/release/examples/widgets --merge
 ```
 
-`Frame.fill_symbol` tar även ett grafem med flera Unicode-skalärer. Stapeldiagrammet delar en färgsatt värdeetikett vid en hel grafemgräns och använder terminalkolumner för dess bredd.
+`Frame.fill_symbol` tar även ett grafem med flera Unicode-skalärer. En vågrät stapel ritar värdet med två stilar. Fyllnadens bredd mäts i terminalkolumner. Den andra textdelen börjar vid första UTF-8-skalärgränsen på eller efter motsvarande byteindex. För lodräta staplar avgör terminalbredden om texten ryms och antalet UTF-8-byte var den centreras.
+
+720 kompletta buffertar jämförs även som JSON. De innehåller sammanlagt 92 160 celler med symbol, samtliga färger, attribut och diffregler. Provet växlar riktning, etikettjustering, stapelbredd, mellanrum och maxvärde. Det ritar två gånger över befintliga breda tecken. Fyra ytterligare buffertar visar hur en etikett i två tilldelade kolumner blir `NORD` i standardläget och `NO` med `clip_to_area`. Samma växling provas i Unix-pseudoterminalen och med Win32-konsolens teckenavläsning. [Dunderprov](../tests/bar_cells.ddr) · [Ratatui-prov](../benchmarks/reference/examples/bar_cells.rs) · [Terminalprov](../tests/meter_terminal.ddr)
+
+```sh
+dunder build --locked --offline tests/bar_cells.ddr -o build/bar-cells
+cargo build --locked --release --manifest-path benchmarks/reference/Cargo.toml --target-dir build/rust --no-default-features --features theme-oracle --example bar_cells
+for mode in '' --caption; do
+    build/bar-cells $mode > build/bars.actual
+    build/rust/release/examples/bar_cells $mode > build/bars.expected
+    cmp build/bars.actual build/bars.expected || exit 1
+done
+```
 
 ## Listor i 0.6.0
 

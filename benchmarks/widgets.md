@@ -1,5 +1,33 @@
 # Diagramvy i 0.5.0
 
+## Vågräta staplar på main med Dunder 0.12.1
+
+Med `--horizontal` får de tolv staplarna egna rader och värden på upp till nio siffror. Rullning ändrar både signalen och stapelvärdena. För varje arbetslast ritas 20 uppvärmningsbilder och 200 mätbilder. Tabellen visar medianen av sju körningars p50 och p95 i mikrosekunder vid skrivning till pseudoterminal. TSV-filen innehåller även mätningarna i minne och lägsta och högsta uppmätta p50 och p95. [Alla fem arbetslaster](results/horizontal-bars-0.12.1.tsv) · [Celljämförelse av alla 36 skärmtillstånd](../docs/parity.md#widgets-i-050)
+
+| Plattform | Oförändrad, Dunder | Oförändrad, Ratatui | Full omritning, Dunder | Full omritning, Ratatui | Högsta RSS i KiB, Dunder / Ratatui¹ |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| macOS ARM64 | 34 / 74 | 48 / 77 | 89 / 145 | 145 / 235 | 2 144 / 2 864 |
+| Linux ARM64 | 34 / 75 | 54 / 101 | 62 / 140 | 143 / 240 | 552 / 2 204 |
+| Linux x86-64 med CPU-översättning | 242 / 439 | 88 / 188 | 553 / 983 | 211 / 400 | 6 108 / 5 616 |
+
+¹ Medianen av tre separata processers högsta RSS. Alla körningar gjordes på samma Apple M5. Dunder skrev 4 009 072 byte och Ratatui 6 987 963 byte till pseudoterminalen över 1 100 bilder på varje plattform.
+
+På macOS gav samma scen med den tidigare stapelritaren 82 923 allokeringsanrop och 3 040 529 begärda byte. När siffrorna skrevs direkt i cellerna blev det 22 423 anrop och 1 201 401 byte på alla tre plattformar. Ratatui gav 17 928 anrop och 1 795 238 byte på macOS samt 17 924 anrop och 1 795 045 byte på Linux. Dunder hade lägre medianbildtid i samtliga fem PTY-fall på ARM64. På översatt x86-64 var Ratatui snabbare i samtliga fem. [Tidigare stapelritare](https://github.com/Mik-pe/dunder-tui/blob/9aee09bb692c96999b99565ff35068640c465388/src/barchart.ddr)
+
+```sh
+mkdir -p build
+dunder build --locked --offline benchmarks/widgets.ddr -o build/widgets
+dunder build --locked --offline benchmarks/measure.ddr -o build/measure
+dunder build --locked --offline benchmarks/pty.ddr -o build/pty
+cargo build --locked --offline --release --manifest-path benchmarks/reference/Cargo.toml --target-dir build/rust --features layout-cache --example widget_bench
+build/measure build/widgets build/rust/release/examples/widget_bench build/pty -- --horizontal
+dunder build --locked --offline --runtime-profile benchmarks/widgets.ddr -o build/widgets-profile
+build/widgets-profile --horizontal --allocations
+cargo run --locked --offline --release --manifest-path benchmarks/reference/Cargo.toml --target-dir build/rust-profile --features layout-cache,allocation-counts --example widget_bench -- --horizontal --allocations
+```
+
+## Den vertikala diagramvyn i 0.5.0
+
 Vyn består av tre flikar, en färgsatt sparkline, tolv namngivna staplar, paneler och en mätare. Ritningen sker via båda bibliotekens publika API. Vyn är 96 × 24 celler och ändras till 80 × 24 varannan bild i storleksprovet. Ett prov ändrar ett enda tecken, ett rullar signalen ett sampel åt gången och ett växlar färg på hela bakgrunden. Alla 36 kombinationer av bredd, fas, tema och markör har jämförts cell för cell. [Dunder](widgets_scene.ddr) · [Ratatui](reference/src/widgets_scene.rs) · [Bildjämförelsen](../docs/parity.md#widgets-i-050)
 
 Bildtiden innefattar tömning, ritning från förberedd widgetdata, diff och ANSI-kodning. I PTY-provet ingår också varje skrivning till en pseudoterminal i råläge. Läsaren räknar fysiska byte. Skärmemulatorns presentationstid ingår inte i mätningen. Programmen bygger med Dunder 0.11 och Rust 1.99.1 i releaseprofil. Efter två uppvärmningskörningar följer sju körningar med växlande startordning. Varje fall har 20 uppvärmningsbilder och 200 mätbilder.

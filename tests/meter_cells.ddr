@@ -4,6 +4,7 @@ import ..src.widgets as ui
 import ..src.barchart as chart
 import ..src.text as rich
 import .raw_cells
+import .bar_cells
 
 fn symbols() -> [string;9] { ["","_","é","界","🦊","ab","́","⣿","😶‍🌫️"] }
 
@@ -22,6 +23,7 @@ pub fn live(f: &mut tui.Frame, phase: &mut i32) {
     line.label = .Some(rich.Line::raw("V"))
     line.set_symbols(if phase == 0 { "界" } else { "=" },"·")
     f.render_widget(&line,tui.Rect::new(a.x,a.y+1,12,1))
+    bar_cells.caption(&mut f,a.x+1,a.y+2,phase == 1)
 }
 
 fn paint(f: &mut tui.Frame, area: tui.Rect, widget:i32, k:i32) {

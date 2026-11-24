@@ -17,8 +17,10 @@ fn app() -> i32 {
 fn exercise(master:i32, slave:i32, screen:&mut driver.Screen) -> bool {
     unsafe {
         if !driver.wait_for(master,&mut screen,1,"V 界界······","38;5;81") || !screen.contains(0," ▁▂▃▄▅▆▇█◆") { return false }
+        if !screen.contains(2,".NORD....") && !driver.wait_for(master,&mut screen,2,".NORD....","") { return false }
         if !driver.send(master,"n") || !driver.wait_for(master,&mut screen,1,"V ======····","") { return false }
         if !screen.contains(0,"◆█▇▆▅▄▃▂▁ ") { return false }
+        if !screen.contains(2,".NO......") && !driver.wait_for(master,&mut screen,2,".NO......","") { return false }
         return driver.send(master,"q") && driver.wait_for(master,&mut screen,0,"","\x1b[?1049l")
     }
     false
@@ -27,7 +29,7 @@ fn exercise(master:i32, slave:i32, screen:&mut driver.Screen) -> bool {
 fn main() -> i32 {
     if sys.arg_count() == 2 { return app() }
     unsafe { if driver.test_with_args(sys.arg(0),["draw"],12,5,exercise) {
-        print("Reversed the sparkline, replaced wide gauge markers and restored the terminal")
+        print("Reversed the sparkline, replaced wide markers, clipped the bar label and restored the terminal")
         return 0
     } }
     1
