@@ -70,3 +70,9 @@ Samma 36 widgettillstånd och fem bildändringar mättes lokalt mot Ratatui 0.30
 I Linuxgästen på ARM64 tog en oförändrad bild 66 / 76 µs mot Ratatuis 43 / 95 µs. På översatt Linux x86-64 hade Ratatui lägre p50 och p95 för alla fem fall. Värddatorn körde också andra virtuella maskiner och intervallen mellan upprepningarna var breda. Varje körning på alla tre plattformarna skrev exakt 4 113 141 byte för Dunder och 7 939 285 för Ratatui inklusive uppvärmning.
 
 På macOS gjorde Dunder 23 858 allokeringsanrop och begärde 1 189 668 byte. Rustreferensen gjorde 31 122 anrop och begärde 1 748 420 byte. Medianen av högsta RSS över fem separata körningar var 2 128 KiB respektive 2 960 KiB.
+
+## Egna blockkanter med Dunder 0.11.3
+
+Diagramvyn mättes om med samma förberedda widgetdata och fem bildändringar. På macOS ARM64 tog full omritning till en pseudoterminal 204 / 237 µs för Dunder och 247 / 297 µs för Ratatui (p50 / p95). På Linux ARM64 hade Dunder lägre p50 i alla fem fall. För rullning var p95 128 µs mot Ratatuis 122 µs. På översatt Linux x86-64 var Ratatui snabbare i samtliga fall. Mätfilen innehåller spridningen mellan körningarna, både med och utan terminalskrivning. [60 mätserier](results/border-cells-dunder-0.11.3-local.tsv)
+
+Dunder skrev 4 113 141 byte mot Ratatuis 7 939 285 på varje plattform. På Mac var antalet allokeringsanrop 23 786 respektive 31 122 och den begärda mängden 1 180 308 respektive 1 748 420 byte. Medianen av högsta RSS över fem körningar var 2 144 respektive 2 960 KiB. Det separata konstruktionsprovet hämtar alla åtta symboler i varje ram, med växling mellan 18 kantsymboluppsättningar. [Konstruktionsprov för `--runtime-profile`](border_sets.ddr)

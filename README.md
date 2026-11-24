@@ -258,6 +258,18 @@ level.render(&mut frame, area)
 | `tui.barchart` | Horisontella och vertikala staplar med grupper, etiketter och färger per stapel. |
 | `tui.block` | Ramar med egna kanttecken, flera titlar, marginal innanför kanten och skuggor. Delade kanter kan slås ihop. |
 
+På `main` tar en blockkant även strängar. Varje hörn och sida har en egen symbol. Använd `.Exact` för att slå ihop mötande linjer. Ett senare anrop till `border_type` byter alla åtta symboler samtidigt.
+
+```dunder
+import tui.block as box
+
+mut panel := box.Block::bordered().border_set(box.BorderSymbols {
+    tl:"◈", tr:"◆", bl:"◇", br:"◆", left:"│", right:"│", top:"─", bottom:"─"
+})
+panel.merge = .Exact
+frame.render_widget(&panel, area)
+```
+
 `area.take_rows(n)` tar ut de första raderna och låter `area` fortsätta direkt under dem. `take_cols(n)` gör motsvarande för kolumner. Använd `frame.fill_symbol(area, "🌊", style)` för att upprepa hela grafem eller `frame.clear_area(area)` för att tömma ytan före en överlagring. [Exempel med flikar, paneler och diagram](examples/signal/main.ddr)
 
 Med `import tui.widgets` får du även `Fill` och `Clear` som vanliga widgets. `Fill` lagrar samma sträng i varje cell och lägger sin stil ovanpå cellens befintliga stil. Det fungerar även för en tom sträng och för en symbol som upptar flera kolumner. `Clear` återställer symbol, stil och diffregel i rutan. Du kan spara en `Fill` i appens tillstånd och ändra färg eller symbol mellan bilder.

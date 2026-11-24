@@ -1,0 +1,14 @@
+capability stdio
+import ..src.block as box
+
+fn main() {
+    types: [box.BorderType;18] = [.Plain,.Rounded,.Double,.Thick,.LightDoubleDashed,.HeavyDoubleDashed,
+        .LightTripleDashed,.HeavyTripleDashed,.LightQuadrupleDashed,.HeavyQuadrupleDashed,.QuadrantInside,.QuadrantOutside,
+        .OneEighthWide,.OneEighthTall,.ProportionalWide,.ProportionalTall,.Full,.Empty]
+    mut total := i64(0)
+    for i in 0..65536 {
+        set := box.BorderSet::from_type(types[i%18])
+        total += i64(set.tl)+i64(set.tr)+i64(set.bl)+i64(set.br)+i64(set.left)+i64(set.right)+i64(set.top)+i64(set.bottom)
+    }
+    print(total)
+}

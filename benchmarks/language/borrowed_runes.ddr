@@ -1,0 +1,27 @@
+capability stdio
+import sys
+
+fn stored(value: &str) -> i64 {
+    chars := value.runes()
+    mut total := i64(0)
+    for ch in &chars { total += i64(ch) }
+    total
+}
+
+fn streamed(value: &str) -> i64 {
+    mut total := i64(0)
+    for ch in value.runes() { total += i64(ch) }
+    total
+}
+
+fn main() {
+    if sys.arg_count() != 2 { panic("expected stored or streamed") }
+    use_stored := match sys.arg(1) { "stored" => true, "streamed" => false, _ => { panic("expected stored or streamed") }, }
+    values := ["─","╭","─a","🙂"]
+    mut total := i64(0)
+    for i in 0..65536 {
+        value := values[i.bit_and(3)].as_str()
+        total += if use_stored { stored(value) } else { streamed(value) }
+    }
+    print(total)
+}

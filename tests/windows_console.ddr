@@ -3,6 +3,7 @@ capability unsafe, stdio
 import .buffer_app
 import .cell_widgets
 import .shadow_cells
+import .border_cells
 import .meter_cells
 import ..src.tui
 import ..src.calendar as cal
@@ -282,6 +283,12 @@ unsafe fn shadow_and_meter_screen(out: ptr, x: i32, y: i32) -> i32 {
     phase = 1
     if term.draw(&mut phase,meter_cells.live).is_err() { return 169 }
     if unit_at(out,x+2,y+2) != 0x25c6 || unit_at(out,x+4,y+3) != 61 || unit_at(out,x+10,y+3) != 0xb7 { return 170 }
+    phase = 0
+    if term.draw(&mut phase,border_cells.joined).is_err() { return 171 }
+    if unit_at(out,x+3,y+2) != 0x25c8 || unit_at(out,x+9,y+2) != 0x25c6 || unit_at(out,x+3,y+3) != 0x253c { return 172 }
+    phase = 1
+    if term.draw(&mut phase,border_cells.joined).is_err() { return 173 }
+    if unit_at(out,x+3,y+2) != 0x256d || unit_at(out,x+9,y+5) != 0x256f { return 174 }
     0
 }
 

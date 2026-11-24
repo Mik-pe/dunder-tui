@@ -24,6 +24,14 @@ fn shape(code: i32) -> i32 {
     LINE_ARMS[code - 0x2500]
 }
 
+pub fn is_border(code: i32) -> bool { shape(code) >= 0 }
+
+pub fn border_code(value: &str) -> i32 {
+    if value.len != 3 || value[0] != 0xe2 { return -1 }
+    for ch in value.runes() { if is_border(i32(ch)) { return i32(ch) } }
+    -1
+}
+
 fn box_code(arms: i32) -> i32 {
     match arms {
         0x1010 => 0x2500, 0x2020 => 0x2501, 0x0101 => 0x2502, 0x0202 => 0x2503, 0x7070 => 0x2504, 0x8080 => 0x2505, 0x0707 => 0x2506, 0x0808 => 0x2507,
@@ -90,4 +98,13 @@ pub fn merge(previous: i32, next: i32, strategy: Merge) -> i32 {
     }
     code := box_code(arms)
     if code < 0 { next } else { code }
+}
+
+pub fn merge_symbols(previous: string, next: string, strategy: Merge) -> string {
+    if strategy == .Replace { return next.clone() }
+    overlay := border_code(next.as_str())
+    if overlay < 0 { return next.clone() }
+    base := border_code(previous.as_str())
+    if base < 0 { return previous.clone() }
+    rune(merge(base,overlay,strategy)).str()
 }

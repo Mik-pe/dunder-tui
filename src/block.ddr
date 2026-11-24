@@ -11,20 +11,57 @@ pub enum BorderType {
 
 pub struct BorderSet { tl: rune, tr: rune, bl: rune, br: rune, left: rune, right: rune, top: rune, bottom: rune }
 
+pub struct BorderSymbols { tl: string, tr: string, bl: string, br: string, left: string, right: string, top: string, bottom: string }
+
+trait StrokeSymbol {
+    fn stroke(&self, frame: &mut tui.Frame, area: tui.Rect, style: tui.Style, merge: lines.Merge)
+}
+
+impl StrokeSymbol for rune {
+    fn stroke(&self, frame: &mut tui.Frame, area: tui.Rect, style: tui.Style, merge: lines.Merge) {
+        frame.stroke(area,self,style,merge)
+    }
+}
+
+impl StrokeSymbol for string {
+    fn stroke(&self, frame: &mut tui.Frame, area: tui.Rect, style: tui.Style, merge: lines.Merge) {
+        frame.stroke_symbol(area,self,style,merge)
+    }
+}
+
+const BORDER_GLYPHS: [rune; 144] = [
+    `┌`, `┐`, `└`, `┘`, `│`, `│`, `─`, `─`,
+    `╭`, `╮`, `╰`, `╯`, `│`, `│`, `─`, `─`,
+    `╔`, `╗`, `╚`, `╝`, `║`, `║`, `═`, `═`,
+    `┏`, `┓`, `┗`, `┛`, `┃`, `┃`, `━`, `━`,
+    `┌`, `┐`, `└`, `┘`, `╎`, `╎`, `╌`, `╌`,
+    `┏`, `┓`, `┗`, `┛`, `╏`, `╏`, `╍`, `╍`,
+    `┌`, `┐`, `└`, `┘`, `┆`, `┆`, `┄`, `┄`,
+    `┏`, `┓`, `┗`, `┛`, `┇`, `┇`, `┅`, `┅`,
+    `┌`, `┐`, `└`, `┘`, `┊`, `┊`, `┈`, `┈`,
+    `┏`, `┓`, `┗`, `┛`, `┋`, `┋`, `┉`, `┉`,
+    `▗`, `▖`, `▝`, `▘`, `▐`, `▌`, `▄`, `▀`,
+    `▛`, `▜`, `▙`, `▟`, `▌`, `▐`, `▀`, `▄`,
+    `▁`, `▁`, `▔`, `▔`, `▏`, `▕`, `▁`, `▔`,
+    `▕`, `▏`, `▕`, `▏`, `▕`, `▏`, `▔`, `▁`,
+    `▄`, `▄`, `▀`, `▀`, `█`, `█`, `▄`, `▀`,
+    `█`, `█`, `█`, `█`, `█`, `█`, `▀`, `▄`,
+    `█`, `█`, `█`, `█`, `█`, `█`, `█`, `█`,
+    ` `, ` `, ` `, ` `, ` `, ` `, ` `, ` `,
+]
+
 impl BorderSet {
     pub fn from_type(kind: BorderType) -> Self {
-        pattern := match kind {
-            .Plain => "┌┐└┘││──", .Rounded => "╭╮╰╯││──", .Double => "╔╗╚╝║║══", .Thick => "┏┓┗┛┃┃━━",
-            .LightDoubleDashed => "┌┐└┘╎╎╌╌", .HeavyDoubleDashed => "┏┓┗┛╏╏╍╍",
-            .LightTripleDashed => "┌┐└┘┆┆┄┄", .HeavyTripleDashed => "┏┓┗┛┇┇┅┅",
-            .LightQuadrupleDashed => "┌┐└┘┊┊┈┈", .HeavyQuadrupleDashed => "┏┓┗┛┋┋┉┉",
-            .QuadrantInside => "▗▖▝▘▐▌▄▀", .QuadrantOutside => "▛▜▙▟▌▐▀▄",
-            .OneEighthWide => "▁▁▔▔▏▕▁▔", .OneEighthTall => "▕▏▕▏▕▏▔▁",
-            .ProportionalWide => "▄▄▀▀██▄▀", .ProportionalTall => "██████▀▄",
-            .Full => "████████", .Empty => "        ",
+        row := match kind {
+            .Plain => 0, .Rounded => 1, .Double => 2, .Thick => 3,
+            .LightDoubleDashed => 4, .HeavyDoubleDashed => 5, .LightTripleDashed => 6, .HeavyTripleDashed => 7,
+            .LightQuadrupleDashed => 8, .HeavyQuadrupleDashed => 9, .QuadrantInside => 10, .QuadrantOutside => 11,
+            .OneEighthWide => 12, .OneEighthTall => 13, .ProportionalWide => 14, .ProportionalTall => 15,
+            .Full => 16, .Empty => 17,
         }
-        g := pattern.runes()
-        Self { tl: g[0], tr: g[1], bl: g[2], br: g[3], left: g[4], right: g[5], top: g[6], bottom: g[7] }
+        i := row * 8
+        Self { tl: BORDER_GLYPHS[i], tr: BORDER_GLYPHS[i+1], bl: BORDER_GLYPHS[i+2], br: BORDER_GLYPHS[i+3],
+            left: BORDER_GLYPHS[i+4], right: BORDER_GLYPHS[i+5], top: BORDER_GLYPHS[i+6], bottom: BORDER_GLYPHS[i+7] }
     }
 }
 
@@ -76,20 +113,25 @@ pub enum Position { Inherit, Top, Bottom }
 pub struct Title { line: rich.Line, position: Position }
 
 pub struct Block {
-    borders: Borders, symbols: BorderSet, merge: lines.Merge, padding: Padding,
+    borders: Borders, symbols: BorderSet, custom_symbols: Option<BorderSymbols>, merge: lines.Merge, padding: Padding,
     style: tui.Style, border_style: tui.Style, title_style: tui.Style, titles: []Title,
     title_position: Position, title_alignment: rich.Alignment, shadow: Option<Shadow>,
 }
 
 impl Block {
     pub fn new() -> Self {
-        Self { borders: Borders::none(), symbols: BorderSet::from_type(.Plain), merge: .Replace, padding: Padding::uniform(0),
+        Self { borders: Borders::none(), symbols: BorderSet::from_type(.Plain), custom_symbols:.None, merge: .Replace, padding: Padding::uniform(0),
             style: tui.plain(), border_style: tui.plain(), title_style: tui.plain(), titles: [],
             title_position: .Top, title_alignment: .Left, shadow: .None }
     }
 
     pub fn bordered() -> Self { mut block := Block::new(); block.borders = Borders::all(); move block }
-    pub fn border_type(move self, kind: BorderType) -> Self { mut b := move self; b.symbols = BorderSet::from_type(kind); move b }
+    pub fn border_type(move self, kind: BorderType) -> Self { mut b := move self; b.symbols = BorderSet::from_type(kind); b.custom_symbols = .None; move b }
+    pub fn border_set(move self, move symbols: BorderSymbols) -> Self {
+        mut b := move self
+        b.custom_symbols = .Some(move symbols)
+        move b
+    }
     pub fn title(move self, move value: string) -> Self { self.title_at(.Inherit, rich.Line::raw(move value)) }
     pub fn title_at(move self, position: Position, move line: rich.Line) -> Self {
         mut b := move self
@@ -164,7 +206,7 @@ impl Block {
             n := cmp.max<i32>(0, size - offset)
             x := if alignment == .Right { available.x + available.w - n } else { available.x }
             part := tui.Rect { x: x, y: row.y, w: n, h: 1 }
-            frame.apply_style(part, self.title_style)
+            frame.apply_cell_style(part, self.title_style)
             if alignment == .Center && offset > 0 {
                 title.line.render_aligned(&mut frame, part, .Right)
                 offset = cmp.max<i32>(0, offset - n - 1)
@@ -175,12 +217,8 @@ impl Block {
         }
     }
 
-    pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) -> tui.Rect {
-        area := bounds.intersection(frame.area())
-        if area.w == 0 || area.h == 0 { return self.inner(area) }
-        frame.apply_style(area, self.style)
+    fn draw_borders<S>(&self, frame: &mut tui.Frame, area: tui.Rect, s: &S) {
         b := self.borders
-        s := self.symbols
         l := area.x
         r := l + area.w - 1
         t := area.y
@@ -188,23 +226,34 @@ impl Block {
         inset := self.merge != .Replace
         y := t + (if inset && b.top { 1 } else { 0 })
         x := l + (if inset && b.left { 1 } else { 0 })
-        h := d + 1 - y - (if inset && b.bottom { 1 } else { 0 })
-        w := r + 1 - x - (if inset && b.right { 1 } else { 0 })
-        if b.left { frame.stroke(tui.Rect { x: l, y: y, w: 1, h: h }, s.left, self.border_style, self.merge) }
-        if b.top { frame.stroke(tui.Rect { x: x, y: t, w: w, h: 1 }, s.top, self.border_style, self.merge) }
-        if b.right { frame.stroke(tui.Rect { x: r, y: y, w: 1, h: h }, s.right, self.border_style, self.merge) }
-        if b.bottom { frame.stroke(tui.Rect { x: x, y: d, w: w, h: 1 }, s.bottom, self.border_style, self.merge) }
-        if b.right && b.bottom { frame.stroke(tui.Rect { x: r, y: d, w: 1, h: 1 }, s.br, self.border_style, self.merge) }
-        if b.right && b.top { frame.stroke(tui.Rect { x: r, y: t, w: 1, h: 1 }, s.tr, self.border_style, self.merge) }
-        if b.left && b.bottom { frame.stroke(tui.Rect { x: l, y: d, w: 1, h: 1 }, s.bl, self.border_style, self.merge) }
-        if b.left && b.top { frame.stroke(tui.Rect { x: l, y: t, w: 1, h: 1 }, s.tl, self.border_style, self.merge) }
+        h := cmp.max<i32>(0,d - (if inset && b.bottom { 1 } else { 0 })) + 1 - y
+        w := cmp.max<i32>(0,r - (if inset && b.right { 1 } else { 0 })) + 1 - x
+        if b.left { s.left.stroke(&mut frame, tui.Rect { x: l, y: y, w: 1, h: h }, self.border_style, self.merge) }
+        if b.top { s.top.stroke(&mut frame, tui.Rect { x: x, y: t, w: w, h: 1 }, self.border_style, self.merge) }
+        if b.right { s.right.stroke(&mut frame, tui.Rect { x: r, y: y, w: 1, h: h }, self.border_style, self.merge) }
+        if b.bottom { s.bottom.stroke(&mut frame, tui.Rect { x: x, y: d, w: w, h: 1 }, self.border_style, self.merge) }
+        if b.right && b.bottom { s.br.stroke(&mut frame, tui.Rect { x: r, y: d, w: 1, h: 1 }, self.border_style, self.merge) }
+        if b.right && b.top { s.tr.stroke(&mut frame, tui.Rect { x: r, y: t, w: 1, h: 1 }, self.border_style, self.merge) }
+        if b.left && b.bottom { s.bl.stroke(&mut frame, tui.Rect { x: l, y: d, w: 1, h: 1 }, self.border_style, self.merge) }
+        if b.left && b.top { s.tl.stroke(&mut frame, tui.Rect { x: l, y: t, w: 1, h: 1 }, self.border_style, self.merge) }
+    }
+
+    pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) -> tui.Rect {
+        area := bounds.intersection(frame.area())
+        if area.w == 0 || area.h == 0 { return self.inner(area) }
+        frame.apply_cell_style(area, self.style)
+        match &self.custom_symbols {
+            .Some(set) => { self.draw_borders(&mut frame,area,&set) },
+            .None => { self.draw_borders(&mut frame,area,&self.symbols) },
+        }
         if self.titles.len > 0 {
-            left := l + (if b.left { 1 } else { 0 })
-            title_w := cmp.max<i32>(0, r + 1 - left - (if b.right { 1 } else { 0 }))
+            b := self.borders
+            left := area.x + (if b.left { 1 } else { 0 })
+            title_w := cmp.max<i32>(0, area.right() - left - (if b.right { 1 } else { 0 }))
             positions: [Position; 2] = [.Top, .Bottom]
             aligns: [rich.Alignment; 3] = [.Left, .Center, .Right]
             for pos in positions {
-                row := tui.Rect { x: left, y: if pos == .Top { t } else { d }, w: title_w, h: 1 }
+                row := tui.Rect { x: left, y: if pos == .Top { area.y } else { area.bottom()-1 }, w: title_w, h: 1 }
                 for a in aligns { self.draw_titles(&mut frame, row, pos, a) }
             }
         }

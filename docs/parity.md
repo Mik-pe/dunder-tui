@@ -10,12 +10,27 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. Tailwind och Material ger 500 namngivna RGB-värden. | Beständiga dataformat och full täckning för konvertering mellan stilrepresentationer. |
 | Text | Span, Line, Text, Paragraph, byte och omordning av rad- och spannsamlingar, inkrementell redigering, sammanslagning av dokument och läsning av stiliserade grafem, stiländringar, läsning av textens delar, utskrift, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. Cellprov för Unicode 18:s emojitest, presentationsvarianter och skriftspecifika ligaturer inom och över grafemgränser. | Fler jämförelser av sammansatta dokument i listor och tabeller. Se de tolv gränsfallen vid fysisk högerkant nedan. |
 | Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering och cache. 21 124 jämförda layouter, 2 460 rektangelprov och 1 100 jämförda bilder. Omfattar upprepade regelbyten och upp till nio paneler i gränsprovet för minsta storlek. | Överbestämda system med fler paneler och kombinationer av layoutmarginaler vid koordinatgränsen. |
-| Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna tecken, individuella kanter, justerade titlar, utfyllnad och skuggor. För skuggor jämförs 85 050 råa celler och celldiffarnas ordning med referensen. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
+| Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna strängar för hörn och sidor, individuella kanter, justerade titlar, utfyllnad och skuggor. För skuggor jämförs 85 050 råa celler och celldiffarnas ordning med referensen. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
 | Övriga widgets | Fristående Clear och Fill med cellvisa symboler, stil och klippning, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, månadskalender med händelser och egna datumstilar, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. Ratatuis båda logotyper och maskot med två ögonfärger. | Se beteendeproven per widget nedan. |
 | Egna widgets och tester | Frame ritar egna och inbyggda widgets med `render_widget` och `render_stateful_widget`. Tillstånd kan uppdateras vid ritning med `run_stateful`. Egna backends kan anslutas till Terminal. TestBackend har skrollhistorik, markör, fem rensningslägen och regionskrollning. | Bredare testning av specialiserade terminalbackends. |
 | Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, markörstyrning från Frame och Terminal, bildräknare, ANSI och Win32. Fast och inbäddad vyport, explicit storleksanpassning, terminalens tecken- och pixelmått, manuell cellutmatning och byte av arbetsbuffert, loggrader, rensning och regionskrollning. Marköråterställning för egna backends samt återhämtning efter skrivfel och uteblivet markörsvar. Regionskrollning och radmatningsbaserad infogning jämförs separat. | Nativ Windows x64 för de senaste ändringarna i logginfogning. |
 | Stabil Rust-integration | Jämförelseprogrammen använder den låsta Rustreferensen. Dunder-appar byggs offline. | Kontrollera Dunder-motsvarigheter till bekvämlighetsmakron, serialisering, cachning och backendval där dessa påverkar appens beteende. |
 | Effektivitet och plattformar | Tid, minne, allokeringar och terminalbyte på macOS och Linux. Pseudoterminal på macOS ARM64, Linux ARM64 och nativ Linux x86-64. Win32-prov på Windows Server 2025 x64 och under Wine. | Fler arbetslaster med komplex layout, lägre kostnad för dynamiska färgvärden och likvärdig bildtid på x86-64. |
+
+### Stabila funktionsflaggor
+
+| Flaggor i Ratatui 0.30.2 | Motsvarighet och verifiering |
+| --- | --- |
+| `all-widgets`, `widget-calendar` | `tui.calendar` ingår i biblioteket. Datum, händelser, stil och visade månader jämförs i kalenderprovet. |
+| `underline-color`, `palette` | Separat understrykningsfärg ingår i cell- och terminalproven. De två palettkonverteringarna från HSL och HSLuv jämförs i stilprovet. |
+| `layout-cache` | `Layout.cache_capacity` styr antal sparade uppdelningar. Layoutproven återanvänder tidigare storlekar efter regelbyten. |
+| `scrolling-regions` | Backendens regionskrollning och reservvägen med radmatning jämförs genom skrollhistorik och terminalutdata. |
+| `macros` | Konstruktorer för spann, rader, text och layout finns. Jämförelse per dokumenterad makroform återstår. |
+| `serde` | Beständig representation för bland annat färg, stil och rektanglar återstår. Färgsträngar kan redan läsas med färgparsern. |
+| `crossterm`, `crossterm_0_28`, `crossterm_0_29`, `termina`, `termion`, `termwiz` | Dunder använder POSIX och Win32 direkt. Den låsta Crossterm-referensen och de faktiska terminalproven täcker bland annat ritning, markör och återställning. Skillnader mellan referensens övriga backendval är öppna. |
+| `std`, `portable-atomic`, `default` | Dunder bygger offline med sitt standardbibliotek. `portable-atomic` gäller referensens mål utan atomära typer. `default` väljer kalender, Crossterm, layoutcache, makron och understrykningsfärg. |
+
+Flaggorna och deras kopplingar kommer från [det låsta manifestet](https://docs.rs/crate/ratatui/0.30.2/source/Cargo.toml.orig). [Layoutprov](../tests/layout_reference.ddr) · [Färgprov](../tests/style_reference.ddr) · [Kalenderprov](../tests/calendar_reference.ddr) · [Terminalprov](../tests/viewport_reference.ddr)
 
 Stilprovet genererar en bild med 1 024 celler via Dunders publika API, tolkar terminalströmmen och jämför varje attribut, färg och position med både Ratatuis buffert och Crossterms terminalström. Det täcker alla 512 kombinationer av de nio attributen. Ytterligare 512 färgtripplar konverteras med både HSL och HSLuv i båda programmen. [Dunderprovet](../tests/style_reference.ddr) · [Referens och terminalavkodare](../benchmarks/reference/examples/styles.rs)
 
@@ -98,6 +113,20 @@ Alla 766 officiella prov för grafemgränser i Unicode 17.0 och alla 1 111 999 U
 dunder run --locked --offline tools/unicode.ddr -- /sökväg/till/UCD-17 /sökväg/till/UCD-18
 ```
 
+## Blockkanter med egna symboler
+
+`Block.border_set` tar åtta strängar för ramens sidor och hörn. `border_type` återställer hela uppsättningen till den valda typen. En ram kan skickas till `frame.render_widget` eller ritas med `block.render` för att även få tillbaka innerytan. `lines.merge_symbols` slår ihop två strängar med samma tre regler som ramen.
+
+Av 9 216 bilder matchar 9 192 Ratatuis buffert och ordnade celldiff direkt. I 24 fall försöker Ratatui skriva i kolumn 65 535 när en bred titel når den högra koordinatgränsen. Provet kräver just det indexfelet och ritar om samma klippta ruta med en skyddskolumn. Alla 45 synliga celler och diffen stämmer även där. De 414 720 celljämförelserna täcker sexton kombinationer av kanter, tre sammanslagningsregler, egna och inbyggda symboler samt titlar ovanpå färger, breda tecken och diffregler. Dessutom matchar 1 323 fristående sammanslagningar av strängar. [Dunderprov](../tests/border_cells.ddr) · [Ratatui-prov](../benchmarks/reference/examples/border_cells.rs)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/border_cells.ddr -o build/borders
+cargo build --offline --locked --release --manifest-path benchmarks/reference/Cargo.toml --features style-oracle --example border_cells --target-dir build/rust
+build/borders | build/rust/release/examples/border_cells
+build/borders --merge | build/rust/release/examples/border_cells --merge
+```
+
 ## Symboler i staplar och mätare
 
 `Sparkline.bar_set` och `BarChart.bar_set` tar nio strängar från tom till full stapel. `Sparkline.missing_text` anger symbolen för ett saknat mätvärde. `LineGauge.set_symbols` väljer fylld och tom symbol. När en stränguppsättning är vald används den för varje cell. En etikett som börjar i andra kolumnen av ett brett tecken behåller tecknet i kolumnen till vänster.
@@ -136,7 +165,7 @@ build/widget-reference | build/rust/release/examples/widgets
 build/widget-reference --merge | build/rust/release/examples/widgets --merge
 ```
 
-Blockkanter tar ett enskilt tecken som symbol. `Frame.fill_symbol` tar även ett grafem med flera Unicode-skalärer. Stapeldiagrammet delar en färgsatt värdeetikett vid en hel grafemgräns och använder terminalkolumner för dess bredd.
+`Frame.fill_symbol` tar även ett grafem med flera Unicode-skalärer. Stapeldiagrammet delar en färgsatt värdeetikett vid en hel grafemgräns och använder terminalkolumner för dess bredd.
 
 ## Listor i 0.6.0
 

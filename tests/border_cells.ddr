@@ -1,0 +1,73 @@
+capability stdio
+import ..src.tui
+import ..src.block as box
+import ..src.lines
+import ..src.text as rich
+import .raw_cells
+import sys
+
+fn symbols() -> box.BorderSymbols {
+    box.BorderSymbols { tl:"",tr:"ab",bl:"é",br:"😶‍🌫️",left:"界",right:"╭",top:"─",bottom:"─a" }
+}
+
+pub fn joined(f: &mut tui.Frame, phase: &mut i32) {
+    a := f.area()
+    mut b := box.Block::bordered().border_set(box.BorderSymbols{
+        tl:"◈",tr:"◆",bl:"◇",br:"界",left:"│",right:"│",top:"─",bottom:"─" })
+    if phase == 1 { b = b.border_type(.Rounded) }
+    b.border_style = tui.ink(.Indexed(81))
+    f.render_widget(&b,tui.Rect::new(a.x+1,a.y,7,4))
+    mut across := box.Block::new()
+    across.borders.top = true
+    across.merge = .Exact
+    f.render_widget(&across,tui.Rect::new(a.x,a.y+1,10,1))
+}
+
+fn seed(a: tui.Rect, filled: bool) -> tui.Frame {
+    if !filled { return tui.Frame::at(a) }
+    mut f := raw_cells.seeded(a)
+    y := a.y+2
+    f.paint_cells(tui.Rect::new(a.x,y,1,1)," ",tui.plain())
+    _ := f.set_cell_with_width(a.x+3,y,"─",1,tui.plain())
+    f.paint_cells(tui.Rect::new(a.x+6,y,1,1),"─a",tui.plain())
+    move f
+}
+
+fn draw(f: &mut tui.Frame, area: tui.Rect, mask: i32, strategy: lines.Merge, stage: i32) {
+    mut b := box.Block::new()
+    if stage != 0 { b = b.border_set(symbols()) }
+    if stage == 2 { b = b.border_type(.Rounded) }
+    b.borders = box.Borders { left:mask.bit_and(1)!=0,right:mask.bit_and(2)!=0,top:mask.bit_and(4)!=0,bottom:mask.bit_and(8)!=0 }
+    b.merge = strategy
+    b.border_style = tui.ink(.Yellow).without(.Bold).underline_index(13)
+    if stage >= 2 { b.style = tui.plain().background_rgb(0x153444) }
+    if stage == 3 {
+        b = b.title_at(.Top,rich.Line::raw("界T").align(.Center)).title_at(.Bottom,rich.Line::raw("é"))
+        b.title_style = tui.ink(.Red).italic()
+    }
+    f.render_widget(&b,area)
+}
+
+fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--merge" {
+        values := [""," ","a","─a","é","́","界","☀","あ","🦊","😶‍🌫️","─","│","╭","╲","═","╂","┈","╹","╋","┿"]
+        for rule in [lines.Merge.Replace,.Exact,.Fuzzy] {
+            for before in &values { for after in &values { print(lines.merge_symbols(before,after,rule)) } }
+        }
+        return
+    }
+    for a in [tui.Rect::new(0,0,9,5),tui.Rect::new(5,3,9,5),tui.Rect::new(65526,65530,9,5)] {
+        for (dx,dy,w,h) in [(0,0,9,5),(0,0,1,1),(2,1,6,3),(1,1,1,1),(2,0,1,5),(0,2,9,1),(7,3,6,4),(2,2,0,1)] {
+            area := tui.Rect::new(a.x+dx,a.y+dy,w,h)
+            for mask in 0..16 { for strategy in [lines.Merge.Replace,.Exact,.Fuzzy] { for filled in [false,true] {
+                mut prior := seed(a,filled)
+                for stage in 0..4 {
+                    mut f := seed(a,filled)
+                    for n in 0..stage+1 { draw(&mut f,area,mask,strategy,n) }
+                    raw_cells.compare(&f,&prior)
+                    prior = move f
+                }
+            } } }
+        }
+    }
+}

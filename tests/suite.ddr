@@ -1495,3 +1495,21 @@ impl tui.Backend for BufferedOutput {
     assert(width.cell_columns(line[2..line.len] + "ﾞ") == 65535)
     assert(rich.Span::raw(move line).width() == 65536)
 }
+
+@test fn a_block_uses_raw_cells_and_named_border_types_replace_custom_symbols() {
+    mut f := tui.Frame::new(4,1)
+    _ := f.set_cell(0,0,"界",tui.ink(.Red))
+    mut b := box.Block::new().border_set(box.BorderSymbols{
+        tl:"",tr:"",bl:"",br:"",left:"狐",right:"ab",top:"é",bottom:"·" })
+    b.borders.left = true
+    b.borders.right = true
+    b.merge = .Fuzzy
+    area := tui.Rect::new(1,0,3,1)
+    f.render_widget(&b,area)
+    assert(f.cell_at(0,0).unwrap().symbol == "界" && f.cell_at(1,0).unwrap().symbol == "狐")
+    assert(f.cell_at(3,0).unwrap().symbol == "ab")
+    b = b.border_type(.Double)
+    b.merge = .Replace
+    f.render_widget(&b,area)
+    assert(f.cell_at(1,0).unwrap().symbol == "║" && f.cell_at(3,0).unwrap().symbol == "║")
+}

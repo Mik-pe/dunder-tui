@@ -589,7 +589,7 @@ impl Frame {
     }
 
     pub fn render_widget<W>(&mut self, widget: W, area: Rect) {
-        widget.render(&mut self,area)
+        _ := widget.render(&mut self,area)
     }
 
     pub fn render_stateful_widget<W,S>(&mut self, widget: W, area: Rect, state: &mut S) {
@@ -1068,19 +1068,35 @@ impl Frame {
     }
 
     pub fn stroke(&mut self, bounds: Rect, symbol: rune, style: Style, strategy: lines.Merge) {
-        if strategy == .Replace { self.fill(bounds, symbol, style); return }
+        if strategy == .Replace || !lines.is_border(i32(symbol)) {
+            self.paint_rune(bounds,symbol,style)
+        } else { self.merge_stroke(bounds,i32(symbol),style,strategy) }
+    }
+
+    pub fn stroke_symbol(&mut self, bounds: Rect, symbol: string, style: Style, strategy: lines.Merge) {
+        if strategy != .Replace {
+            code := lines.border_code(symbol.as_str())
+            if code >= 0 { self.merge_stroke(bounds,code,style,strategy); return }
+        }
+        self.paint_cells(bounds,symbol,style)
+    }
+
+    fn merge_stroke(&mut self, bounds: Rect, symbol: i32, style: Style, strategy: lines.Merge) {
         area := bounds.intersection(self.bounds)
-        if width.columns(i32(symbol)) != 1 { return }
-        for y in area.y..(area.y + area.h) {
-            for x in area.x..(area.x + area.w) {
+        if area.is_empty() { return }
+        self.detach_cell_styles(area)
+        for y in area.y..area.bottom() {
+            for x in area.x..area.right() {
                 i := self.index(x,y)
-                result := self.composite(self.styles[i], &style)
-                if self.glyphs[i] == 0 { self.put(x, y, i32(symbol), 1, result); continue }
-                head := self.head(i)
-                current := self.glyphs[head].bit_and(WIDE - 1) + 32
-                merged := lines.merge(current, i32(symbol), strategy)
-                if merged != current { self.put(x, y, merged, 1, result) }
-                else { self.apply_style(Rect { x: x, y: y, w: 1, h: 1 }, style) }
+                brush := self.composite(self.styles[i],&style)
+                self.styles[i] = brush
+                if self.glyphs[i] == 0 { self.glyphs[i] = symbol-32; continue }
+                code := self.glyphs[i]+32
+                previous := if code == CLUSTER || code == ZERO_CLUSTER {
+                    lines.border_code(self.clusters[i].as_str())
+                } else { code }
+                merged := lines.merge(previous,symbol,strategy)
+                if merged != previous { self.glyphs[i] = merged-32 }
             }
         }
     }
