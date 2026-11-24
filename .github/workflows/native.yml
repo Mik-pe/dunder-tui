@@ -9,7 +9,7 @@ on:
       before:
         type: string
         required: false
-        description: Compare this workload with an earlier library commit on native Linux x64 (full SHA)
+        description: Compare this workload with an earlier library commit on each native x64 host (full SHA)
 
 permissions: {}
 
@@ -152,6 +152,22 @@ jobs:
           build/text$EXT --ligatures build/cases.txt | "$ref/text$EXT" --ligatures build/cases.txt
           build/dunder$EXT build --locked --offline benchmarks/terminal.ddr -o "build/benchmark$EXT"
           build/benchmark$EXT --verify | "$ref/terminal_bench$EXT" --verify
+      - name: Build the earlier library revision for comparison
+        if: inputs.before != ''
+        env:
+          BEFORE: ${{ inputs.before }}
+        run: |
+          [[ "$BEFORE" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --quiet --depth=1 --no-tags "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" "$BEFORE"
+          test "$(git rev-parse FETCH_HEAD)" = "$BEFORE"
+          base="$RUNNER_TEMP/tui-before"
+          if [[ "$RUNNER_OS" == Windows ]]; then base="$(cygpath -m "$RUNNER_TEMP")/tui-before"; fi
+          mkdir -p "$base"
+          git archive HEAD benchmarks tests | tar -xf - -C "$base"
+          git archive "$BEFORE" src | tar -xf - -C "$base"
+          cd "$SOURCE_ROOT"
+          build/dunder$EXT build --offline --locked "$base/benchmarks/terminal.ddr" -o "build/before$EXT"
+          build/before$EXT --verify | build/rust/release/examples/terminal_bench$EXT --verify
       - name: Measure the terminal workload
         run: |
           cd "$SOURCE_ROOT"
@@ -161,6 +177,7 @@ jobs:
             build/dunder build --locked --offline benchmarks/pty.ddr -o build/pty
             lscpu | grep -E '^(Architecture|Model name|Hypervisor vendor):'
             build/measure build/benchmark "$ref" build/pty
+            if [[ -f build/before ]]; then build/measure build/before build/benchmark build/pty --labels before after; fi
             for round in {1..3}; do
               for program in build/benchmark "$ref"; do
                 /usr/bin/time -f "$program peak-rss-kib %M" "$program" >/dev/null
@@ -171,10 +188,11 @@ jobs:
             mkdir -p build/samples
             names=(dunder ratatui)
             programs=(build/benchmark.exe "$ref")
+            if [[ -f build/before.exe ]]; then names+=(before); programs+=(build/before.exe); fi
             for mode in memory console; do
               for round in {0..8}; do
-                for pos in 0 1; do
-                  i=$(((round+pos)%2))
+                for pos in "${!programs[@]}"; do
+                  i=$(((round+pos)%${#programs[@]}))
                   sample=build/samples/$mode-${names[i]}-$round
                   cmd=("${programs[i]}")
                   if [[ "$mode" == console ]]; then cmd=(build/conhost-bench.exe "${programs[i]}"); fi
@@ -188,6 +206,7 @@ jobs:
               done
             done
             build/measure.exe --recorded build/samples console
+            if [[ -f build/before.exe ]]; then build/measure.exe --recorded build/samples console --labels before dunder; fi
             for round in {1..3}; do
               for program in "${programs[@]}"; do
                 build/conhost-bench.exe "$program" --rss >build/peak.txt
@@ -204,27 +223,15 @@ jobs:
           fi
           cargo build --release --locked --offline --manifest-path benchmarks/reference/Cargo.toml --features layout-cache,allocation-counts --example terminal_bench --target-dir build/rust
           "$ref" --allocations
-      - name: Compare two Dunder library revisions on the same CPU
-        if: runner.os == 'Linux' && inputs.before != ''
-        env:
-          BEFORE: ${{ inputs.before }}
-        run: |
-          [[ "$BEFORE" =~ ^[0-9a-f]{40}$ ]]
-          git fetch --quiet --depth=1 --no-tags "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" "$BEFORE"
-          test "$(git rev-parse FETCH_HEAD)" = "$BEFORE"
-          base="$RUNNER_TEMP/tui-before"
-          mkdir -p "$base"
-          git archive HEAD benchmarks tests | tar -xf - -C "$base"
-          git archive "$BEFORE" src | tar -xf - -C "$base"
-          build/dunder build --offline --locked "$base/benchmarks/terminal.ddr" -o build/before
-          build/before --verify | build/rust/release/examples/terminal_bench --verify
-          build/measure build/before build/benchmark build/pty --labels before after
-      - name: Measure integer row fills
+      - name: Measure integer row fills and conditional pairs
         if: inputs.profile
         run: |
           cd "$SOURCE_ROOT"
           build/dunder$EXT build --offline --locked benchmarks/language/fill_rows.ddr -o "build/row-fill$EXT"
           build/row-fill$EXT
+          build/dunder$EXT build --offline --locked --runtime-profile benchmarks/language/conditional_pair.ddr -o "build/pairs$EXT"
+          build/pairs$EXT paired
+          build/pairs$EXT scalar
       - name: Profile native x64 instructions for an idle frame
         if: runner.os == 'Linux' && inputs.profile
         run: |

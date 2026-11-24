@@ -472,14 +472,19 @@ impl PreparedParagraph {
 
 impl Span {
     fn draw(&self, frame: &mut tui.Frame, area: tui.Rect, skip: i32) -> i32 {
-        start := if skip > 0 { self.glyphs.suffix_start(self.width() - skip) } else { (0, 0) }
-        mut x := start.1
+        mut first := 0
+        mut x := 0
+        if skip > 0 {
+            (index, offset) := self.glyphs.suffix_start(self.width() - skip)
+            first = index
+            x = offset
+        }
         if !self.glyphs.has_zero_width() {
-            return x + self.glyphs.write(&mut frame, tui.Rect { x: area.x + x, y: area.y, w: area.w - x, h: 1 }, start.0, self.count(), self.style)
+            return x + self.glyphs.write(&mut frame, tui.Rect { x: area.x + x, y: area.y, w: area.w - x, h: 1 }, first, self.count(), self.style)
         }
         mut previous := -1
         mut prefix := ""
-        for n in start.0..self.count() {
+        for n in first..self.count() {
             cells := self.glyphs.width_at(n)
             if cells > area.w - x { break }
             value := self.glyphs.symbol_at(n)
