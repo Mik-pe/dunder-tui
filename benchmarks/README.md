@@ -2,7 +2,7 @@
 
 ## Skriv till en rå cellbuffert
 
-På macOS ARM64 tog en ASCII-bild med 96 × 24 celler 21 µs i median i Dunder och 31,8 µs i Ratatui. Direkt skriven Unicode tog 213 respektive 36,5 µs. [Tider för alla fyra arbetslaster, allokeringar och minne](cell-writes.md)
+På macOS ARM64 sjönk mediantiden för en Unicode-bild med 96 × 24 celler från 212 till 91 µs. När även texten byttes mellan bilderna sjönk tiden från 234 till 107 µs. Ratatui tog 36,5 µs i båda fallen. [Alla fem arbetslaster, allokeringar och minne](cell-writes.md)
 
 ## Mixer med tolv frekvensband
 

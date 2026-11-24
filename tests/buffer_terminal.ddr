@@ -4,9 +4,9 @@ import sys
 
 fn exercise(master:i32, slave:i32, screen:&mut driver.Screen) -> bool {
     unsafe {
-        if !driver.wait_for(master,&mut screen,0,"A CDEFG","\x1b[?1049h") { return false }
+        if !driver.wait_for(master,&mut screen,1,"A茶eZ","\x1b[?1049h") || !screen.contains(0,"A CDEFG") { return false }
         if !driver.send(slave,"\x1b[1;2H!!") || !driver.wait_for(master,&mut screen,0,"A!!DEFG","") { return false }
-        if !driver.send(master,"n") || !driver.wait_for(master,&mut screen,1,"1","") || !screen.contains(0,"A!CDEFG") { return false }
+        if !driver.send(master,"n") || !driver.wait_for(master,&mut screen,1,"B海aZ","") || !screen.contains(0,"A!CDEFG") { return false }
         if !driver.send(master,"n") || !driver.wait_for(master,&mut screen,0,"ABC[X]G","") { return false }
         if !driver.send(master,"q") || !driver.wait_for(master,&mut screen,0,"","\x1b[?1049l") { return false }
     }

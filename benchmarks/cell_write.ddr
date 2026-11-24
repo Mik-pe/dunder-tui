@@ -4,6 +4,36 @@ import ..src.text as rich
 import std.array
 import std.time
 import sys
+import std.json
+
+fn motion_rows() -> []string {
+    mut rows: []string = []
+    for group in ["A茶é🦀..", "B氷ä🌙!.", "C海ô🪼;.", "D山ů🦉?."] {
+        mut row := ""
+        for _ in 0..12 { row += group }
+        rows.push(move row)
+    }
+    move rows
+}
+
+fn moving(timed: bool, check: bool) {
+    rows := motion_rows()
+    mut b := tui.Buffer::empty(tui.Rect::new(0,0,96,24))
+    mut samples: []i64 = []
+    for i in 0..(if check { 4 } else { 110 }) {
+        style := if i%2 == 0 { tui.ink(.Green).underlined() } else { tui.ink(.Cyan).italic() }
+        start := if timed { time.monotonic_ns() } else { i64(0) }
+        for y in 0..24 { b.set_string(0,y,rows[(i+y)%4].as_str(),style) }
+        if timed && i >= 10 { samples.push(time.monotonic_ns() - start) }
+        if check { print(json.to_string(&b).unwrap()) }
+    }
+    if check { return }
+    assert(b.get(0,23).symbol_text() == "A" && b.get(95,23).fg == .Cyan)
+    if timed {
+        array.sort<i64>(&mut samples)
+        print(f"moving {samples[49]} {samples[94]}")
+    }
+}
 
 fn sample(mode: string, head: string, timed: bool) {
     area := tui.Rect::new(0,0,96,24)
@@ -32,9 +62,11 @@ fn sample(mode: string, head: string, timed: bool) {
 }
 
 fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--check-moving" { moving(false,true); return }
     timed := sys.arg_count() == 1
     sample("ascii","1234567.",timed)
     sample("unicode","A茶é🦀..",timed)
     sample("span","A茶é🦀..",timed)
     sample("style","",timed)
+    moving(timed,false)
 }

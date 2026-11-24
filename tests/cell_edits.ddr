@@ -2,6 +2,7 @@ capability filesystem, stdio
 import ..src.tui
 import ..src.text as rich
 import ..src.lines
+import .grapheme_cases
 import std.json
 import std.bytes
 import std.parse
@@ -109,6 +110,18 @@ fn line_buffers() {
 }
 
 fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--graphemes" {
+        for row in text.split(grapheme_cases.unicode17(), "\n") {
+            mut points := ""
+            for word in text.split(row, " ") {
+                if word == "/" { continue }
+                if points.len > 0 { points += " " }
+                points += word
+            }
+            print(points)
+        }
+        return
+    }
     if sys.arg_count() == 2 && sys.arg(1) == "--scalars" {
         mut b := tui.Buffer::empty(tui.Rect::new(0,0,4,1))
         mut widths: []u8 = []

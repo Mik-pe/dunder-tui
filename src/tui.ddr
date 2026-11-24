@@ -81,6 +81,7 @@ pub enum Color {
 }
 
 impl Color {
+    fn is_default(&self) -> bool { match self { .Default => true, _ => false, } }
     pub fn code(&self) -> i32 {
         match self {
             .Default => -1, .Black => 0, .Red => 1, .Green => 2, .Yellow => 3, .Blue => 4,
@@ -719,6 +720,7 @@ impl RawCell {
         &mut self
     }
     fn write_symbol(&mut self, view: &str) {
+        if view.len == 1 { self.write_ascii(view[0]); return }
         match &self.symbol { .Some(old) => { if old.as_str() == view { return } }, .None => {}, }
         self.symbol = .Some(view.to_string())
     }
@@ -737,7 +739,7 @@ impl RawCell {
         match &self.diff_option { .ForcedWidth(w) => w, _ => self.columns(), }
     }
     fn empty_tail(&self) -> bool {
-        self.symbol.is_none() && self.fg == .Default && self.bg == .Default && self.underline_color == .Default && self.modifier.bits == 0
+        self.symbol.is_none() && self.fg.is_default() && self.bg.is_default() && self.underline_color.is_default() && self.modifier.bits == 0
     }
     fn columns(&self) -> i32 {
         match &self.symbol { .Some(value) => width.cell_columns(value), .None => 1, }
@@ -1039,16 +1041,15 @@ impl Buffer {
             for at in 0..count { if value[at] < 32 || value[at] > 126 { ascii = false; break } }
             if ascii { return self.write_ascii(x, y, value, count, &patch) }
         }
-        mut offset := 0
+        mut cursor := width.CellCursor::at(value, 0)
         mut i := self.cell_index(x, y)
-        while offset < value.len && left > 0 {
-            start := offset
-            mut w := 0
-            offset = width.next_cell(value, start, &mut w)
+        while cursor.end < value.len && left > 0 {
+            start := cursor.end
+            cursor.advance(value)
+            w := cursor.cells
             if w <= 0 { continue }
-            view := &value[start..offset]
             if w > left { break }
-            self.write_grapheme(i, view, w, &patch)
+            self.write_grapheme(i, &value[start..cursor.end], w, &patch)
             i += w
             col += w
             left -= w

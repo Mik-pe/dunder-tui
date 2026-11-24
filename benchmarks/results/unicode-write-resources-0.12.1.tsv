@@ -1,0 +1,16 @@
+target	implementation	allocation_requests	requested_bytes	median_peak_rss_kib	peak1_kib	peak2_kib	peak3_kib	peak4_kib	peak5_kib
+arm64-macos	dunder-before	903113	17806682	2064	2064	2064	2064	2160	2064
+arm64-macos	dunder	396233	6606074	2064	2064	2064	2064	2064	2160
+arm64-macos	ratatui	20	562934	2160	2160	2160	2288	2160	2160
+arm64-macos	decode-prefix	227480	5464358	-	-	-	-	-	-
+arm64-macos	from-text	153	8490	-	-	-	-	-	-
+arm64-linux	dunder-before	903113	17806682	512	512	512	512	512	512
+arm64-linux	dunder	396233	6606074	384	384	384	384	384	384
+arm64-linux	ratatui	18	562806	1920	1920	1984	1920	1984	1920
+arm64-linux	decode-prefix	227480	5464358	-	-	-	-	-	-
+arm64-linux	from-text	153	8492	-	-	-	-	-	-
+x86_64-linux	dunder-before	903113	17806682	5640	5640	5640	5640	5640	5640
+x86_64-linux	dunder	396233	6606074	5640	5640	5640	5640	5640	5640
+x86_64-linux	ratatui	18	562806	5452	5452	5452	5452	5452	5452
+x86_64-linux	decode-prefix	227480	5464364	-	-	-	-	-	-
+x86_64-linux	from-text	153	8496	-	-	-	-	-	-

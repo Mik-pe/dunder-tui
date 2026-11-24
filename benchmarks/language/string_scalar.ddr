@@ -1,0 +1,42 @@
+capability stdio
+import std.bytes.utf8
+import std.time
+import std.array
+import sys
+
+fn checked(s: &str, offset: i32) -> i32 {
+    if s[offset] < 128 { return i32(s[offset]) }
+    match utf8.decode_prefix(&s.as_bytes()[offset..]) {
+        .Scalar(c, _) => i32(c), _ => panic("invalid scalar boundary"),
+    }
+}
+
+fn from_text(s: &str, offset: i32) -> i32 {
+    first := i32(s[offset])
+    if first < 128 { return first }
+    assert(first >= 194)
+    second := i32(s[offset+1]).bit_and(63)
+    if first < 224 { return first.bit_and(31).shl(6) + second }
+    third := i32(s[offset+2]).bit_and(63)
+    if first < 240 { return first.bit_and(15).shl(12) + second.shl(6) + third }
+    first.bit_and(7).shl(18) + second.shl(12) + third.shl(6) + i32(s[offset+3]).bit_and(63)
+}
+
+fn run(read: fn(&str,i32) -> i32) {
+    text := "Aå茶🦀Zé界🌙"
+    offsets := [0,1,3,6,10,11,13,16]
+    mut total:i64 = 0
+    mut samples: []i64 = []
+    for k in 0..37 {
+        start := time.monotonic_ns()
+        for i in 0..8192 { total += i64(read(text.as_str(),offsets[(i*5+k)%8])) }
+        if k >= 6 { samples.push(time.monotonic_ns()-start) }
+    }
+    assert(total == 12177657856)
+    array.sort<i64>(&mut samples)
+    print(f"{total} {samples[15]} {samples[29]}")
+}
+
+fn main() {
+    if sys.arg(1) == "checked" { run(checked) } else if sys.arg(1) == "text" { run(from_text) } else { panic("expected checked or text") }
+}

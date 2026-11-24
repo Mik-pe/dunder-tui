@@ -156,8 +156,57 @@ fn line_buffers(record: &mut impl FnMut(&Buffer, (u16, u16))) {
     }
 }
 
+fn moving(timing: bool, check: bool) {
+    let rows = ["A茶é🦀..", "B氷ä🌙!.", "C海ô🪼;.", "D山ů🦉?."].map(|s| s.repeat(12));
+    let mut b = Buffer::empty(Rect::new(0, 0, 96, 24));
+    let mut samples = Vec::with_capacity(if timing { 100 } else { 0 });
+    let mut lines = io::stdin().lock().lines();
+    for i in 0..if check { 4 } else { 110 } {
+        let style = if i % 2 == 0 {
+            Style::new()
+                .fg(Color::Green)
+                .add_modifier(Modifier::UNDERLINED)
+        } else {
+            Style::new().fg(Color::Cyan).add_modifier(Modifier::ITALIC)
+        };
+        let start = timing.then(std::time::Instant::now);
+        for y in 0..24 {
+            b.set_string(0, y, &rows[(i + usize::from(y)) % 4], style);
+        }
+        std::hint::black_box(&b);
+        if let Some(t) = start
+            && i >= 10
+        {
+            samples.push(t.elapsed().as_nanos());
+        }
+        if check {
+            let actual: Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
+            assert_eq!(
+                actual,
+                serde_json::to_value(&b).unwrap(),
+                "motion frame {i}"
+            );
+        }
+    }
+    if check {
+        assert!(lines.next().is_none());
+        println!("9216 moving cells matched Ratatui");
+        return;
+    }
+    assert_eq!(b[(0, 23)].symbol(), "A");
+    assert_eq!(b[(95, 23)].fg, Color::Cyan);
+    if timing {
+        samples.sort_unstable();
+        println!("moving {} {}", samples[49], samples[94]);
+    }
+}
+
 fn main() {
     let bench = std::env::args().nth(1);
+    if bench.as_deref() == Some("--check-moving") {
+        moving(false, true);
+        return;
+    }
     if bench.as_deref() == Some("--scalars") {
         let widths = io::read_to_string(io::stdin()).unwrap();
         let mut observed = widths.trim_end().bytes();
@@ -227,6 +276,7 @@ fn main() {
                 println!("{name} {} {}", samples[49], samples[94]);
             }
         }
+        moving(timing, false);
         #[cfg(feature = "allocation-counts")]
         if !timing {
             allocation::report();

@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Läs en skalär vid ett byteindex i lånad text
+
+Buffertskrivaren behöver både en skalär och dess nästa byteindex i en giltig `&str`. I ett separat prov med Dunder 0.12.1 behövde 8 192 uppslag i median 103 µs via `std.bytes.utf8.decode_prefix` och 39 µs med direkt läsning ur textvyn på macOS ARM64. På Linux ARM64 var tiderna 107 och 39 µs. Båda sätten gav summan 12 177 657 856 över alla 37 omgångar. Den profilerade processen begärde 227 480 respektive 153 allokeringar. Ett typat uppslag för redan giltig text skulle kunna ersätta buffertskrivarens lokala UTF-8-avkodning. För råa byte behöver prefixavkodaren även kunna skilja ofullständiga sekvenser från ogiltiga. [Minimiprov](../benchmarks/language/string_scalar.ddr) · [Råmätningar](../benchmarks/results/unicode-writes-0.12.1.tsv)
+
 ## Typinferens och lån i testterminalens API
 
 Ett kontrollerat uppslag i en redigerbar buffert skulle kunna lämna `Option<&mut Cell>`. Även `Option<&mut i32>` i en metod med `from self` avvisas i 0.12.1 med E3099. Buffertens `get_mut` ger ett direkt lån och `update_cell` tar en kortlivad callback enligt samma mönster som `std.map.Map.update`. Biblioteksprovet kontrollerar att callbacken bara körs för en giltig koordinat. [Minimiprov](../tests/dogfood/compiler/optional_mutable_element.ddr) · [Körbar cellredigering](../tests/suite.ddr)

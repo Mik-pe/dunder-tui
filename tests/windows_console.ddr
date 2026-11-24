@@ -256,7 +256,7 @@ unsafe fn calendar_screen(out: ptr, x: i32, y: i32) -> i32 {
 fn shared_cells(frame: &mut tui.Frame, step: &mut i32) { buffer_app.cells(&mut frame,step) }
 
 unsafe fn shared_screen(out: ptr, x: i32, y: i32) -> i32 {
-    mut term: tui.Terminal<tui.LiveBackend> = tui.open(.Fixed(tui.Rect {x:2,y:2,w:7,h:1})).unwrap()
+    mut term: tui.Terminal<tui.LiveBackend> = tui.open(.Fixed(tui.Rect {x:2,y:2,w:7,h:2})).unwrap()
     defer { term.backend_mut().close() }
     mut step := 0
     mut pair: [u16;2] = [33,33]
@@ -264,9 +264,11 @@ unsafe fn shared_screen(out: ptr, x: i32, y: i32) -> i32 {
     coord := u32(x+3).bit_or(u32(y+2).shl(16))
     if stamp(out,addr(&pair[0]),2,coord,addr(&mut n)) == 0 || n != 2 { return 61 }
     if term.draw(&mut step,shared_cells).is_err() || unit_at(out,x+3,y+2) != 33 || unit_at(out,x+4,y+2) != 67 { return 62 }
+    if unit_at(out,x+2,y+3) != 65 || unit_at(out,x+3,y+3) != 0x8336 { return 62 }
     if stamp(out,addr(&pair[0]),2,coord,addr(&mut n)) == 0 || n != 2 { return 63 }
     step = 1
     if term.draw(&mut step,shared_cells).is_err() || unit_at(out,x+3,y+2) != 33 || unit_at(out,x+4,y+2) != 67 { return 64 }
+    if unit_at(out,x+2,y+3) != 66 || unit_at(out,x+3,y+3) != 0x6d77 { return 64 }
     step = 2
     if term.draw(&mut step,shared_cells).is_err() { return 65 }
     expected := "ABC[X]G"

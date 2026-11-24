@@ -4,7 +4,8 @@ import sys
 
 pub fn cells(frame: &mut tui.Frame, step: i32) {
     a := frame.area()
-    mut strip := tui.Buffer::with_lines(&["ABCDEFG"])
+    label := if step%2 == 0 { "A茶éZ" } else { "B海äZ" }
+    mut strip := tui.Buffer::with_lines(&["ABCDEFG",label])
     if step < 2 {
         _ := strip.get_mut(1,0).set_diff_option(.Skip)
         _ := strip.get_mut(2,0).set_diff_option(.AlwaysUpdate)
@@ -17,7 +18,7 @@ pub fn cells(frame: &mut tui.Frame, step: i32) {
 
 fn render(frame: &mut tui.Frame, step: &i32) {
     cells(&mut frame,step)
-    match frame.area().row_at(1) { .Some(row) => { frame.label(row,step.str()) }, .None => {}, }
+    match frame.area().row_at(2) { .Some(row) => { frame.label(row,step.str()) }, .None => {}, }
 }
 
 fn update(step: &mut i32, key: tui.Key) -> bool {
