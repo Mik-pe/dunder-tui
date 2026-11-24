@@ -1,5 +1,11 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Arraykrympning och bildtid
+
+När en bildbuffert blir mindre kan biblioteket kapa arrayerna med `truncate`. På Linux ARM64 tog krympning från 65 536 till 16 heltal 0,32 µs i median. `std.array.resize` tog 136 µs för samma innehåll. Provet kontrollerar prefix, kapacitet och att det går att lägga till ett nytt värde. [Körbart prov](../benchmarks/language/shrink_arrays.ddr) · [Förslag i Dunder](https://github.com/Mik-pe/dunder/blob/e896509250e36d5f275c18b71713790228a18edd/docs/next-steps.md#krymp-arrayer-med-truncate-i-stdarrayresize)
+
+På macOS ARM64 rapporterade Dunders monotona klocka steg på 1 000 ns. Därför mäter buffertprovet 512 storleksändringar per tidsintervall. En separat kontroll jämför klockans rapporterade upplösning med observerade tidssteg. [Klockprov](../benchmarks/language/monotonic_clock.ddr) · [Förslag i Dunder](https://github.com/Mik-pe/dunder/blob/e896509250e36d5f275c18b71713790228a18edd/docs/next-steps.md#exponera-klockans-upplösning-för-korta-tidsmätningar)
+
 ## Paket och barnprocesser på Windows
 
 På Windows Server 2025 x64 stoppar Dunder 0.11.2 ett paket med noll beroenden när den öppnar Git-lagret. Samma källfiler går att bygga med filingången utanför manifestet. Ett separat fel avslutar ett program som startar ett barn via `std.process` med kod 101. Process-ID och tråd-ID läses som ett enda heltal efter `CreateProcessW`. [Minimalt processprov](../tests/dogfood/compiler/windows_child.ddr) · [Dunders nästa steg](https://github.com/Mik-pe/dunder/blob/2c3d893/docs/next-steps.md#verifiera-windows-som-kompilatorvärd)
