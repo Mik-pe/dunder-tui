@@ -1,0 +1,39 @@
+capability stdio
+import ..src.tui
+import std.array as array
+import std.time as clock
+import sys
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 2 }
+    mode := sys.arg(1)
+    if mode != "plain" && mode != "styled" && mode != "grow" && mode != "large" { return 2 }
+    w1 := if mode == "large" { 1024 } else { 80 }
+    w2 := if mode == "large" { 2048 } else { 96 }
+    h1 := if mode == "large" { 1024 } else { 24 }
+    h2 := if mode == "large" { 512 } else if mode == "grow" { 24 } else { 20 }
+    mut frame := tui.Frame::new(w1,h1)
+    frame.label(frame.area(),"A")
+    if mode == "styled" {
+        frame.text(tui.Rect::new(13,2,4,1),"界❤️",tui.ink(.Blue).bold())
+        assert(frame.set_diff_option(11,9,.Skip))
+    }
+    mut samples: []i64 = []
+    mut sum := 0
+    for sample in 0..220 {
+        start := clock.monotonic_ns()
+        for _ in 0..256 {
+            frame.resize(w2,h2)
+            sum += frame.area().w
+            frame.resize(w1,h1)
+            sum += frame.area().w
+        }
+        elapsed := clock.monotonic_ns()-start
+        if sample >= 20 { samples.push(elapsed/512) }
+    }
+    assert(sum == 56320*(w1+w2) && frame.cell_at(0,0).unwrap().symbol == "A")
+    if mode == "styled" { assert(frame.cell_at(11,9).unwrap().diff_option == .Skip) }
+    array.sort<i64>(&mut samples)
+    print(f"{mode} {samples[99]} {samples[189]} {sum}")
+    0
+}

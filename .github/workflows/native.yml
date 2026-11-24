@@ -14,7 +14,7 @@ on:
       before:
         type: string
         required: false
-        description: Compare this workload with an earlier library commit on each native x64 host (full SHA)
+        description: Compare this workload with an earlier library commit on each native host (full SHA)
       release_gallery:
         type: boolean
         default: false
@@ -24,16 +24,23 @@ permissions: {}
 
 jobs:
   terminal:
-    name: ${{ matrix.runner }} x64
+    name: ${{ matrix.runner }} ${{ matrix.arch }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: ubuntu-24.04
+            arch: x64
             compiler: x86_64-linux.gz
             digest: 8855f35a53123b51ad2670af801a2b8e98bc953bdbbb79ef27d24411413b3d7f
             probe: posix_terminal
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            compiler: arm64-linux.gz
+            digest: b2202bb5c975c609d8408970cf6ceea4198b70735486f534a8a1c23d53ad7b84
+            probe: posix_terminal
           - runner: windows-2025
+            arch: x64
             compiler: x86_64-windows.exe
             digest: 1fc8481699cb23f3c8447f676f576f51f089c04b3a3c7ac214c94dbd59078b9c
             probe: windows_console
@@ -102,6 +109,10 @@ jobs:
           build/dunder$EXT build --locked --offline "tests/$PROBE.ddr" -o "build/console$EXT"
           build/console$EXT
           echo "$PROBE passed on $RUNNER_OS $RUNNER_ARCH"
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            build/dunder build --locked --offline tests/wide_terminal.ddr -o build/wide-terminal
+            build/wide-terminal
+          fi
       - name: Compare animated canvas pixels, styles and frame diffs
         if: runner.os == 'Linux'
         run: |
@@ -114,6 +125,7 @@ jobs:
           version=$(sed -n 's/^version = "\(.*\)"$/\1/p' dunder.toml)
           base="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/v$version"
           if [[ "$RUNNER_OS" == Windows ]]; then target=x86_64-windows; suffix=zip
+          elif [[ "$RUNNER_ARCH" == ARM64 ]]; then target=arm64-linux; suffix=tar.gz
           else target=x86_64-linux; suffix=tar.gz; fi
           folder="dunder-tui-$version-$target"
           archive="$folder.$suffix"
@@ -213,8 +225,30 @@ jobs:
         run: |
           cd "$SOURCE_ROOT"
           manifest=benchmarks/reference/Cargo.toml
-          cargo build --release --locked --offline --manifest-path "$manifest" --features style-oracle --example artwork --example paragraph_cells --example styled_graphemes --example grapheme_bench --target-dir build/rust
+          cargo build --release --locked --offline --manifest-path "$manifest" --features style-oracle --example artwork --example paragraph_cells --example large_buffers --example styled_graphemes --example grapheme_bench --target-dir build/rust
           ref=build/rust/release/examples
+          build/dunder$EXT build --locked --offline tests/large_buffers.ddr -o "build/large$EXT"
+          for mode in "" "--merge"; do
+            build/large$EXT $mode >build/large-actual
+            "$ref/large_buffers$EXT" $mode >build/large-expected
+            diff --strip-trailing-cr build/large-expected build/large-actual
+          done
+          build/large$EXT --reshape | "$ref/large_buffers$EXT" --reshape
+          cargo build --quiet --release --locked --offline --manifest-path "$manifest" --example reshape --target-dir build/rust
+          build/dunder$EXT build --locked --offline benchmarks/reshape.ddr -o "build/reshape$EXT"
+          for mode in plain styled grow large; do
+            for round in {1..5}; do
+              if (( round % 2 )); then programs=("build/reshape$EXT" "$ref/reshape$EXT"); else programs=("$ref/reshape$EXT" "build/reshape$EXT"); fi
+              for program in "${programs[@]}"; do
+                sample=$("$program" "$mode")
+                echo "reshape $program $sample"
+              done
+            done
+          done
+          build/dunder$EXT build --locked --offline benchmarks/language/shrink_arrays.ddr -o "build/shrink-arrays$EXT"
+          for kind in i32 string; do
+            for method in resize truncate; do build/shrink-arrays$EXT "$method" "$kind"; done
+          done
           build/dunder$EXT build --locked --offline tests/artwork.ddr -o "build/artwork$EXT"
           build/artwork$EXT | "$ref/artwork$EXT"
           build/dunder$EXT build --locked --offline tests/paragraph_cells.ddr -o "build/paragraph-cells$EXT"
@@ -322,7 +356,7 @@ jobs:
           build/pairs$EXT paired
           build/pairs$EXT scalar
       - name: Profile native x64 instructions for an idle frame
-        if: runner.os == 'Linux' && inputs.profile
+        if: runner.os == 'Linux' && matrix.arch == 'x64' && inputs.profile
         run: |
           cd "$SOURCE_ROOT"
           if ! command -v valgrind >/dev/null; then

@@ -6,7 +6,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 
 | Område | Finns i Dunder | Återstår att leverera eller verifiera |
 | --- | --- | --- |
-| Buffer och Cell | Återanvända bildbuffertar, breda tecken, celldiff, exakt och ungefärlig sammanslagning av linjesymboler, färgutdata och avläsning av rader och cellstilar. Buffertar med förskjutet origo, rektangulär kopiering, linjär storleksändring och tillämpning av en diff på en delyta. Buffertsammanslagning, avläsning av en hel cell, fyra cellregler och strömmande besök av ändringar. | Större ytor än bibliotekets nuvarande gräns på 4 096 celler per axel och 1 048 576 celler totalt. |
+| Buffer och Cell | Förskjutet origo, koordinater och linjära index, råa celler och stilar, celldiff och fyra diffregler. Kopiering, storleksändring och sammanslagning inom hela koordinatintervallet. | Minnesgränsen för sammanhängande Dunder-arrayer och avvikelsen i Ratatuis sammanslagning vid stora index beskrivs nedan. |
 | Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. Tailwind och Material ger 500 namngivna RGB-värden. | Beständiga dataformat och full täckning för konvertering mellan stilrepresentationer. |
 | Text | Span, Line, Text, Paragraph, byte och omordning av rad- och spannsamlingar, inkrementell redigering, sammanslagning av dokument och läsning av stiliserade grafem, stiländringar, läsning av textens delar, utskrift, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. Cellprov för Unicode 18:s emojitest, presentationsvarianter och skriftspecifika ligaturer inom och över grafemgränser. | Fler jämförelser av sammansatta dokument i listor och tabeller. Se de tolv gränsfallen vid fysisk högerkant nedan. |
 | Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering och cache. 21 124 jämförda layouter, 1 200 rektangelprov och 1 100 jämförda bilder. Omfattar upprepade regelbyten och upp till nio paneler i gränsprovet för minsta storlek. | Överbestämda system med fler paneler och kombinationer av marginaler vid koordinatgränsen. |
@@ -36,6 +36,14 @@ diff -u build/ratatui-colors build/dunder-colors
 ```
 
 Fler körbara prov täcker ändrade bildrader, delade SGR-återställningar, överlappande text, färgade understreck och terminalåterställning. [Bibliotekstester](../tests/suite.ddr) · [Unix-terminal](../tests/posix_terminal.ddr) · [Win32-konsol](../tests/windows_console.ddr) · [Prestandamätningar](../benchmarks/README.md)
+
+## Stora buffertar i 0.24.0
+
+`Frame::try_at(area)` och `frame.try_resize(area)` tar en rektangel och returnerar ett fel om lagringen blir för stor. Efter en nekad storleksändring går det att fortsätta använda bufferten och dess tidigare innehåll. `index_of(x,y)` och `position_at(index)` räknar från buffertens eget origo. Axlarna kan var för sig nå 65 535. En fast vy i en större terminal behöver bara utrymme för cellerna i vyn.
+
+Provet jämför raderna i nio rektanglar med totalt 2 283 794 celler. I 90 storleksändringar jämförs även varje rå cell, stil, diffregel och ordningen på ändringarna. När en ny radgräns delar ett brett tecken bevaras symbolen i sin ursprungliga cell. Ett separat pseudoterminalprov skriver i kolumn 65 534, ändrar den med ett tangenttryck och läser av den återställda terminalen. [Buffertprov](../tests/large_buffers.ddr) · [Ratatui-referens](../benchmarks/reference/examples/large_buffers.rs) · [Terminalprov](../tests/wide_terminal.ddr)
+
+Vid sammanslagning av två rader med startkolumn 62 003 placerar den optimerade Ratatui-versionen `D` på (58 467, 65 531). Dunder bevarar källpositionen (62 003, 65 532). Jämförelsen kontrollerar båda positionerna och hela resultatet mot koordinatvis kopiering. En hel yta på 65 535 × 65 535 celler ryms fortfarande inte. Dunder 0.11.2 har högst 1 GiB per sammanhängande minnesblock och enbart stilfältet behöver åtta byte per cell. [Sammanslagningsprov](../benchmarks/reference/examples/large_buffers.rs) · [Dunders allokerare](https://github.com/Mik-pe/dunder/blob/v0.11.2/selfhost/runtime/runtime.ddr)
 
 ## Text i 0.4.0
 

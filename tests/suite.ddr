@@ -882,6 +882,36 @@ import ..src.tailwind
 }
 struct FailingTerminal { device: testing.TestBackend, fail: bool, writes: i32 }
 
+struct LargeScreen { width:i32, height:i32, appended:i32, writes:i32 }
+
+impl tui.Backend for LargeScreen {
+    fn size(&mut self) -> (i32,i32) { (self.width,self.height) }
+    fn read_cursor(&mut self) -> Result<(i32,i32),string> { .Ok((0,0)) }
+    fn extend_lines(&mut self, rows:i32) -> Result<(),string> { self.appended += rows; .Ok }
+    fn present(&mut self, frame:&tui.Frame, previous:&tui.Frame) -> Result<(),string> { self.writes += 1; .Ok }
+}
+
+@test fn a_large_screen_only_reserves_cells_for_its_viewport_and_can_retry_after_a_rejected_resize() {
+    enormous := LargeScreen { width:65535, height:65535, appended:0, writes:0 }
+    mut fixed := tui.Terminal<LargeScreen>::with_viewport(enormous,.Fixed(tui.Rect::new(65000,65000,9,2))).unwrap()
+    assert(fixed.viewport_area() == tui.Rect::new(65000,65000,9,2))
+    mut count := 2
+    assert(fixed.draw(&mut count,draw_number).is_ok() && fixed.completed().symbol_at(65000,65000) == .Some("2"))
+    short := LargeScreen { width:4, height:2, appended:0, writes:0 }
+    inline := tui.Terminal<LargeScreen>::with_viewport(short,.Inline(65535)).unwrap()
+    assert(inline.viewport_area() == tui.Rect::new(0,0,4,2) && inline.backend().appended == 65534)
+    mut term := tui.Terminal<LargeScreen>::new(LargeScreen { width:10,height:2,appended:0,writes:0 })
+    assert(term.draw(&mut count,draw_number).is_ok())
+    term.current_buffer_mut().label(tui.Rect::new(0,0,3,1),"old")
+    term.backend_mut().width = 65535
+    term.backend_mut().height = 65535
+    assert(term.autoresize().is_err() && term.viewport_area() == tui.Rect::new(0,0,10,2))
+    assert(term.current_buffer_mut().line(0) == "old       " && term.backend().writes == 1)
+    term.backend_mut().width = 7000
+    term.backend_mut().height = 2
+    assert(term.draw(&mut count,draw_number).is_ok() && term.completed().area().w == 7000)
+}
+
 impl tui.Backend for FailingTerminal {
     fn size(&mut self) -> (i32,i32) { self.device.size() }
     fn present(&mut self, frame: &tui.Frame, previous: &tui.Frame) -> Result<(),string> {
@@ -1214,7 +1244,41 @@ impl VisitCount {
     assert(a.merge(&b).is_ok() && a.cell_at(12,7).unwrap().symbol == "界" && a.cell_at(13,7).unwrap().symbol == " ")
     assert(a.cursor_position() == .Some((14,7)))
     far := tui.Frame::at(tui.Rect{x:7000,y:7,w:1,h:1})
-    assert(a.merge(&far).is_err() && a.area().w == 4 && a.cell_at(12,7).unwrap().symbol == "界")
+    assert(a.merge(&far).is_ok() && a.area().w == 6989 && a.cell_at(12,7).unwrap().symbol == "界")
+    corner := tui.Frame::at(tui.Rect::new(65534,65534,1,1))
+    assert(a.merge(&corner).is_err() && a.area().w == 6989 && a.cell_at(12,7).unwrap().symbol == "界")
+    assert(a.try_resize(tui.Rect::new(0,0,65535,65535)).is_err() && a.area().w == 6989)
+    assert(tui.Frame::try_at(tui.Rect::new(0,0,32000,32000)).is_err())
+}
+
+@test fn resizing_retains_raw_wide_symbols_when_their_trailing_column_changes_row() {
+    mut f := tui.Frame::at(tui.Rect::new(10,20,7,1))
+    f.label(f.area(),"a界  ❤️")
+    _ := f.set_diff_option(12,20,.Skip)
+    assert(f.try_resize(tui.Rect::new(50000,30000,2,4)).is_ok())
+    assert(f.cell_at(50001,30000).unwrap().symbol == "界")
+    assert(f.cell_at(50000,30001).unwrap().diff_option == .Skip)
+    assert(f.cell_at(50001,30002).unwrap().symbol == "❤️")
+    assert(f.try_resize(tui.Rect::new(0,0,2,1)).is_ok() && f.cell_at(1,0).unwrap().symbol == "界")
+    assert(f.index_of(1,0) == .Some(1) && f.position_at(1) == .Some((1,0)))
+    assert(f.index_of(2,0).is_none() && f.position_at(2).is_none())
+}
+
+@test fn the_last_column_of_a_long_grapheme_can_be_split_or_overwritten() {
+    for width in [4096,4097,8193,65535] {
+        mut text: []u8 = []
+        for _ in 1..width { bytes.append_utf8(&mut text,"\u{600}") }
+        text.push(b'a')
+        symbol := bytes.decode(&text).unwrap()
+        mut f := tui.Frame::new(width,1)
+        assert(f.set_cell(0,0,symbol,tui.ink(.Cyan)))
+        assert(f.symbol_at(width-1,0) == .Some(""))
+        f.paint_cells(tui.Rect::new(width-1,0,1,1),"Z",tui.ink(.Red))
+        assert(f.cell_at(0,0).unwrap().symbol == symbol && f.cell_at(width-1,0).unwrap().symbol == "Z")
+        assert(f.set_cell(0,0,symbol,tui.ink(.Cyan)))
+        f.label(tui.Rect::new(width-1,0,1,1),"Q")
+        assert(f.cell_at(0,0).unwrap().symbol == " " && f.cell_at(width-1,0).unwrap().symbol == "Q")
+    }
 }
 
 

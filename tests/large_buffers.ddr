@@ -1,0 +1,67 @@
+capability stdio
+import ..src.tui
+import .raw_cells
+import sys
+
+fn extent(a: tui.Rect) {
+    mut f := tui.Frame::try_at(a).unwrap()
+    blank := tui.Frame::at(a)
+    cells := i32(a.cell_count())
+    assert(f.area() == a)
+    print(f"A {a.x} {a.y} {a.w} {a.h} {cells}")
+    assert(f.position_at(-1).is_none() && f.position_at(cells).is_none())
+    assert(f.index_of(a.right(),a.y).is_none() && f.index_of(a.x,a.bottom()).is_none())
+    if cells == 0 { return }
+    for n in [0,cells/2,cells-1,4095,4096,65534,65535,65536,1048575,1048576] {
+        if n >= cells { continue }
+        (x,y) := f.position_at(n).unwrap()
+        assert(f.index_of(x,y) == .Some(n))
+        assert(f.set_cell(x,y,"#",tui.ink(.Yellow).bold()))
+        print(f"I {n} {x} {y}")
+    }
+    for y in a.y..a.bottom() { print(f"R{f.line(y)}|") }
+    for (x,y) in f.diff_positions(&blank).unwrap() {
+        c := f.cell_at(x,y).unwrap()
+        assert(c.style.has(.Bold) && c.style.get_foreground() == .Some(.Yellow))
+        print(f"D {x} {y} {c.symbol}")
+    }
+}
+
+fn reshape() {
+    for w in 1..10 {
+        for h in [0,1,2,4,9] {
+            mut f := tui.Frame::at(tui.Rect::new(9,7,8,3))
+            for y in 7..10 {
+                f.text(tui.Rect::new(9,y,8,1),"a界b❤️cd",tui.ink(.Cyan).underlined().underline_index(181))
+                assert(f.set_diff_option(11,y,.Skip))
+                assert(f.set_diff_option(16,y,.AlwaysUpdate))
+            }
+            for area in [tui.Rect::new(65000,53000,w,h),tui.Rect::new(9,7,8,3)] {
+                assert(f.try_resize(area).is_ok())
+                blank := tui.Frame::at(area)
+                raw_cells.compare(&f,&blank)
+            }
+        }
+    }
+}
+
+fn merge(x: i32) {
+    mut a := tui.Frame::at(tui.Rect::new(x,65531,3,2))
+    a.label(a.area(),"ABC\nDEF")
+    mut b := tui.Frame::at(tui.Rect::new(6,65531,2,1))
+    b.label(b.area(),"XY")
+    assert(a.merge(&b).is_ok())
+    bounds := a.area()
+    print(f"M {bounds.x} {bounds.y} {bounds.w} {bounds.h}")
+    for y in bounds.y..bounds.bottom() { print(f"R{a.line(y)}|") }
+}
+
+fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--reshape" { reshape(); return }
+    if sys.arg_count() == 2 && sys.arg(1) == "--merge" { merge(25003); merge(62003); return }
+    for a in [tui.Rect::new(0,0,65535,1),tui.Rect::new(0,0,1,65535),
+        tui.Rect::new(17,21,8193,3),tui.Rect::new(8,27,3,8193),
+        tui.Rect::new(0,0,1025,1025),tui.Rect::new(7,19,257,4097),
+        tui.Rect::new(65531,65532,4000,4000),tui.Rect::new(19,65535,20000,20),
+        tui.Rect::new(65535,15,10,65000)] { extent(a) }
+}

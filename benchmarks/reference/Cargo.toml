@@ -27,6 +27,10 @@ name = "paragraph_cells"
 required-features = ["style-oracle"]
 
 [[example]]
+name = "large_buffers"
+required-features = ["style-oracle"]
+
+[[example]]
 name = "styles"
 required-features = ["style-oracle"]
 

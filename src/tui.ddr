@@ -231,6 +231,12 @@ impl Eq for Rect {
 }
 
 impl Rect {
+    pub fn new(x: i32, y: i32, width: i32, height: i32) -> Rect {
+        left := clamp(x,65535)
+        top := clamp(y,65535)
+        Rect { x:left, y:top, w:clamp(width,65535-left), h:clamp(height,65535-top) }
+    }
+
     pub fn right(self) -> i32 { i32(cmp.min<i64>(2147483647, i64(self.x) + i64(cmp.max<i32>(0, self.w)))) }
     pub fn bottom(self) -> i32 { i32(cmp.min<i64>(2147483647, i64(self.y) + i64(cmp.max<i32>(0, self.h)))) }
     pub fn is_empty(self) -> bool { self.w <= 0 || self.h <= 0 }
@@ -354,7 +360,7 @@ impl Rect {
     }
 }
 
-const OFFSET_MASK: i32 = 4095
+const WIDE_LENGTH_TAG: i32 = 65536
 const CLUSTER: i32 = 0x110000
 const ZERO_CLUSTER: i32 = 0x110001
 const EMPTY_SYMBOL: i32 = 0x110002
@@ -369,10 +375,17 @@ impl Default for CellDiffOption {
 
 pub struct Cell { symbol: string, style: Style, diff_option: CellDiffOption }
 
+fn reserve_cells(glyphs: &mut []i32, styles: &mut []i64, area: Rect) -> Result<(),string> {
+    cells := area.cell_count()
+    if cells > 2147483647 { return .Err("Frame has too many cells for a Dunder array.") }
+    n := i32(cells)
+    if n > styles.cap() && styles.try_reserve(n) != .Ok { return .Err("Could not allocate the frame's styles.") }
+    if n > glyphs.cap() && glyphs.try_reserve(n) != .Ok { return .Err("Could not allocate the frame's symbols.") }
+    .Ok
+}
+
 const SKIP_CELL: i32 = -1
 const ALWAYS_UPDATE: i32 = -2
-const FRAME_SIDE_LIMIT: i32 = 4096
-const FRAME_CELL_LIMIT: i32 = 1048576
 
 pub opaque struct Frame { bounds: Rect, cursor_x: i32, cursor_y: i32, cursor_changed: bool, number: u64, glyphs: []i32, styles: []i64, decorations: []i64, clusters: []string, cluster_cells: []i32, cluster_ranges: []i32, options: []i32, row_flags: []u8, has_options: bool, overlaps: bool }
 
@@ -495,22 +508,32 @@ impl Frame {
     }
 
     pub fn at(area: Rect) -> Self {
-        x := clamp(area.x,65535)
-        y := clamp(area.y,65535)
-        cols := clamp(area.w, FRAME_SIDE_LIMIT)
-        rows := clamp(area.h, if cols > 0 { clamp(FRAME_CELL_LIMIT / cols, FRAME_SIDE_LIMIT) } else { FRAME_SIDE_LIMIT })
-        n := cols * rows
+        Frame::try_at(area).unwrap()
+    }
+
+    pub fn try_at(area: Rect) -> Result<Self,string> {
+        bounds := Rect::new(area.x,area.y,area.w,area.h)
         mut glyphs: []i32 = []
         mut styles: []i64 = []
-        glyphs.reserve(n)
-        styles.reserve(n)
+        reserve_cells(&mut glyphs,&mut styles,bounds)?
+        n := bounds.w*bounds.h
         for _ in 0..n { glyphs.push(0); styles.push(0) }
-        Self { bounds: Rect { x:x, y:y, w:cols, h:rows }, cursor_x: -1, cursor_y: 0, cursor_changed:false, number: 0, glyphs: glyphs, styles: styles, decorations: [], clusters: [], cluster_cells: [], cluster_ranges: [], options: [], row_flags:[], has_options:false, overlaps:false }
+        .Ok(Self { bounds:bounds, cursor_x: -1, cursor_y: 0, cursor_changed:false, number: 0, glyphs: move glyphs, styles: move styles, decorations: [], clusters: [], cluster_cells: [], cluster_ranges: [], options: [], row_flags:[], has_options:false, overlaps:false })
     }
 
     pub fn area(&self) -> Rect { self.bounds }
 
     fn index(&self, x: i32, y: i32) -> i32 { (y-self.bounds.y)*self.bounds.w + (x-self.bounds.x) }
+
+    pub fn index_of(&self, x: i32, y: i32) -> Option<i32> {
+        if !self.bounds.contains(x,y) { return .None }
+        .Some(self.index(x,y))
+    }
+
+    pub fn position_at(&self, index: i32) -> Option<(i32,i32)> {
+        if index < 0 || index >= self.glyphs.len { return .None }
+        .Some((self.bounds.x+index%self.bounds.w,self.bounds.y+index/self.bounds.w))
+    }
 
     fn option_code(&self, index: i32) -> i32 {
         if self.options.len == 0 { 0 } else { self.options[index] }
@@ -673,11 +696,11 @@ impl Frame {
 
     fn head(&self, i: i32) -> i32 {
         code := self.glyphs[i]
-        if code < 0 { i - (-code).bit_and(OFFSET_MASK) } else { i }
+        if code <= -WIDE_LENGTH_TAG { i-1 } else if code < 0 { i+code } else { i }
     }
 
     fn advance(&self, i: i32) -> i32 {
-        if self.glyphs[i] >= WIDE { (-self.glyphs[i + 1]).shr(12) } else { 1 }
+        if self.glyphs[i] >= WIDE { -self.glyphs[i+1]-WIDE_LENGTH_TAG } else { 1 }
     }
 
     pub fn split_wide_cell(&mut self, x: i32, y: i32) {
@@ -730,10 +753,11 @@ impl Frame {
             self.mark_row(i,2)
             self.glyphs[i] = self.glyphs[i].bit_or(WIDE)
             for j in 1..span {
-                self.glyphs[i + j] = -(span.shl(12).bit_or(j))
+                self.glyphs[i + j] = -j
                 if self.options.len > 0 { self.options[i+j] = 0 }
                 self.styles[i + j] = style
             }
+            self.glyphs[i+1] = -WIDE_LENGTH_TAG-span
         }
         self.styles[i] = style
     }
@@ -853,15 +877,19 @@ impl Frame {
         self.put_at(i, if cells == 0 { ZERO_CLUSTER } else { CLUSTER }, if cells == 0 { 1 } else { cells }, brush)
         if self.clusters[i] == "" {
             self.cluster_cells.push(i)
-            if self.cluster_ranges.len == 0 {
-                self.cluster_ranges.reserve(self.bounds.h*2)
-                for _ in 0..self.bounds.h { self.cluster_ranges.push(self.glyphs.len); self.cluster_ranges.push(0) }
-            }
-            offset := row*2
-            if i < self.cluster_ranges[offset] { self.cluster_ranges[offset] = i }
-            if i >= self.cluster_ranges[offset+1] { self.cluster_ranges[offset+1] = i+1 }
+            self.include_cluster(i,row)
         }
         self.clusters[i] = move value
+    }
+
+    fn include_cluster(&mut self, i: i32, row: i32) {
+        if self.cluster_ranges.len == 0 {
+            self.cluster_ranges.reserve(self.bounds.h*2)
+            for _ in 0..self.bounds.h { self.cluster_ranges.push(self.glyphs.len); self.cluster_ranges.push(0) }
+        }
+        offset := row*2
+        if i < self.cluster_ranges[offset] { self.cluster_ranges[offset] = i }
+        if i >= self.cluster_ranges[offset+1] { self.cluster_ranges[offset+1] = i+1 }
     }
 
     pub fn set_cell(&mut self, x: i32, y: i32, value: string, style: Style) -> bool {
@@ -1169,14 +1197,12 @@ impl Frame {
 
     pub fn merge(&mut self, other: &Frame) -> Result<(),string> {
         area := self.bounds.union(other.bounds)
-        if area.w > FRAME_SIDE_LIMIT || area.h > FRAME_SIDE_LIMIT || area.cell_count() > i64(FRAME_CELL_LIMIT) {
-            return .Err("Merged bounds exceed the frame limits.")
-        }
         if self.bounds != area {
-            mut expanded := Frame::at(area)
+            mut expanded := Frame::try_at(area)?
             expanded.copy_region(&self,self.bounds,self.bounds.x,self.bounds.y)
             expanded.cursor_x = self.cursor_x
             expanded.cursor_y = self.cursor_y
+            expanded.cursor_changed = self.cursor_changed
             expanded.number = self.number
             self = move expanded
         }
@@ -1195,18 +1221,78 @@ impl Frame {
     }
 
     pub fn resize(&mut self, w: i32, h: i32) {
-        if self.bounds.w == w && self.bounds.h == h { return }
-        mut resized := Frame::at(self.bounds.resize(w,h))
-        limit := cmp.min<i32>(self.glyphs.len,resized.glyphs.len)
-        mut i := 0
-        while i < limit {
-            x := i%resized.bounds.w
-            i += resized.copy_glyph(&self,i,resized.bounds.x+x,resized.bounds.y+i/resized.bounds.w,cmp.min<i32>(limit-i,resized.bounds.w-x))
+        assert(self.try_resize(Rect { x:self.bounds.x,y:self.bounds.y,w:w,h:h }).is_ok())
+    }
+
+    pub fn try_resize(&mut self, area: Rect) -> Result<(),string> {
+        bounds := Rect::new(area.x,area.y,area.w,area.h)
+        if self.bounds.w == bounds.w && self.bounds.h == bounds.h { self.bounds = bounds; return .Ok }
+        if bounds.cell_count() == i64(self.glyphs.len) && self.row_flags.len == 0 && self.cluster_cells.len == 0 { self.bounds = bounds; return .Ok }
+        reserve_cells(&mut self.glyphs,&mut self.styles,bounds)?
+        self.reserve_metadata(bounds)?
+        n := bounds.w*bounds.h
+        kept := cmp.min<i32>(self.glyphs.len,n)
+        if self.row_flags.len > 0 && bounds.w > 0 {
+            if self.bounds.w != bounds.w {
+                mut boundary := bounds.w
+                while boundary < kept { self.split_at_index(boundary); boundary += bounds.w }
+            }
+            if kept < self.glyphs.len { self.split_at_index(kept) }
         }
-        resized.cursor_x = self.cursor_x
-        resized.cursor_y = self.cursor_y
-        resized.number = self.number
-        self = move resized
+        if self.options.len > 0 { resize_storage(&mut self.options,n,0) }
+        if self.clusters.len > 0 { resize_storage(&mut self.clusters,n,"") }
+        resize_storage(&mut self.glyphs,n,0)
+        resize_storage(&mut self.styles,n,i64(0))
+        if self.row_flags.len > 0 {
+            self.reshape_flags(bounds,kept)
+        }
+        self.bounds = bounds
+        if self.cluster_cells.len > 0 {
+            self.cluster_ranges.clear()
+            mut retained := 0
+            for k in 0..self.cluster_cells.len {
+                i := self.cluster_cells[k]
+                if i < kept {
+                    self.cluster_cells[retained] = i
+                    self.include_cluster(i,i/bounds.w)
+                    retained += 1
+                }
+            }
+            self.cluster_cells.truncate(retained)
+        }
+        .Ok
+    }
+
+    fn split_at_index(&mut self, i: i32) {
+        if self.glyphs[i] < 0 { self.split_wide_cell(self.bounds.x+i%self.bounds.w,self.bounds.y+i/self.bounds.w) }
+    }
+
+    fn reshape_flags(&mut self, bounds: Rect, kept: i32) {
+        if kept == 0 { self.row_flags.clear(); self.has_options = false; return }
+        old_width := self.bounds.w
+        if self.row_flags.len < bounds.h { resize_storage(&mut self.row_flags,bounds.h,u8(0)) }
+        if old_width != bounds.w {
+            for step in 0..bounds.h {
+                row := if bounds.w > old_width { step } else { bounds.h-1-step }
+                first := row*bounds.w
+                end := cmp.min<i32>(first+bounds.w,kept)
+                mut flags := u8(0)
+                if first < end {
+                    for old_row in first/old_width..(end-1)/old_width+1 { flags = flags.bit_or(self.row_flags[old_row]) }
+                }
+                self.row_flags[row] = flags
+            }
+        }
+        self.row_flags.truncate(bounds.h)
+    }
+
+    fn reserve_metadata(&mut self, area: Rect) -> Result<(),string> {
+        n := area.w*area.h
+        if self.options.len > 0 && self.options.try_reserve(n) != .Ok { return .Err("Could not resize the cell diff options.") }
+        if self.clusters.len > 0 && self.clusters.try_reserve(n) != .Ok { return .Err("Could not resize the grapheme storage.") }
+        if self.row_flags.len > 0 && self.row_flags.try_reserve(area.h) != .Ok { return .Err("Could not resize the row flags.") }
+        if self.cluster_cells.len > 0 && self.cluster_ranges.try_reserve(2*area.h) != .Ok { return .Err("Could not resize the grapheme ranges.") }
+        .Ok
     }
 
     pub fn erase(&mut self, region: Rect) { self.clear_area(region) }
@@ -1708,8 +1794,13 @@ pub fn window_size() -> Result<WindowSize,string> {
 }
 
 fn valid_area(area: Rect) -> bool {
-    area.x >= 0 && area.y >= 0 && area.w >= 0 && area.h >= 0 && area.w <= 4096 && area.h <= 4096 &&
-        i64(area.x)+i64(area.w) <= 65536 && i64(area.y)+i64(area.h) <= 65536 && area.cell_count() <= 1048576
+    area.x >= 0 && area.y >= 0 && area.w >= 0 && area.h >= 0 &&
+        i64(area.x)+i64(area.w) <= 65535 && i64(area.y)+i64(area.h) <= 65535
+}
+
+fn resize_storage<T: Clone + Storable>(values: &mut []T, length: i32, fill: T) {
+    if length < values.len { values.truncate(length) }
+    else { for _ in values.len..length { values.push(fill.clone()) } }
 }
 
 const CURSOR_UNSUPPORTED: string = "Backend cannot change cursor visibility."
@@ -1724,7 +1815,7 @@ pub trait Backend {
     fn draw_cells(&mut self, frame: &Frame, previous: &Frame) -> Result<(),string> { .Err("Backend cannot present a cell diff independently.") }
     fn flush(&mut self) -> Result<(),string> { .Ok }
     fn clear_screen(&mut self, area: Rect) -> Result<(),string> {
-        blank := Frame::at(area)
+        blank := Frame::try_at(area)?
         unknown := Frame::new(0,0)
         self.present(&blank,&unknown)
     }
@@ -1772,7 +1863,7 @@ impl Terminal<B> {
         mut term := Self::empty(move device)
         (w,h) := term.device.size()
         screen := Rect { x:0,y:0,w:w,h:h }
-        if valid_area(screen) {
+        if valid_area(screen) && term.reserve_buffers(screen).is_ok() {
             term.area = screen
             term.screen = screen
             term.initialize_buffers()
@@ -1781,25 +1872,36 @@ impl Terminal<B> {
     }
 
     fn initialize_buffers(&mut self) {
-        self.buffers[0] = Frame::at(self.area)
+        self.buffers[0].reset_area(self.area)
         self.buffers[0].cursor_x = -2
         self.invalid = false
+    }
+
+    fn reserve_buffers(&mut self, area: Rect) -> Result<(),string> {
+        for i in 0..2 {
+            buffer := &mut self.buffers[i]
+            reserve_cells(&mut buffer.glyphs,&mut buffer.styles,area)?
+        }
+        .Ok
     }
 
     pub fn with_viewport(move device: B, viewport: Viewport) -> Result<Self,string> {
         mut term := Self::empty(move device)
         term.viewport = viewport
         (w,h) := term.device.size()
-        term.screen = Rect { x:0,y:0,w:w,h:h }
-        if !valid_area(term.screen) { return .Err("Invalid terminal size.") }
+        screen := Rect { x:0,y:0,w:w,h:h }
+        if !valid_area(screen) { return .Err("Invalid terminal size.") }
+        term.screen = screen
         match viewport {
-            .Fullscreen => { term.area = term.screen },
+            .Fullscreen => { term.reserve_buffers(screen)?; term.area = screen },
             .Fixed(area) => {
                 if !valid_area(area) { return .Err("Invalid fixed viewport.") }
+                term.reserve_buffers(area)?
                 term.area = area
             },
             .Inline(height) => {
-                if height < 1 || height > 4096 { return .Err("Invalid inline height.") }
+                if height < 1 || height > 65535 { return .Err("Invalid inline height.") }
+                term.reserve_buffers(Rect::new(0,0,w,cmp.min<i32>(height,h)))?
                 position := term.reserve_inline(height,0)?
                 term.last_y = position.1
             },
@@ -1870,7 +1972,7 @@ impl Terminal<B> {
         }
         match self.viewport {
             .Fullscreen => { self.device.clear_screen(area)? },
-            _ => { blank := Frame::at(area); self.device.write_region(&blank)? },
+            _ => { blank := Frame::try_at(area)?; self.device.write_region(&blank)? },
         }
         previous := &mut self.buffers[self.front]
         previous.reset_area(self.area)
@@ -1884,6 +1986,9 @@ impl Terminal<B> {
         old := self.area
         mut cursor: Option<(i32,i32)> = .None
         viewport := self.viewport
+        size := match viewport { .Inline(height) => Rect::new(0,0,area.w,cmp.min<i32>(height,area.h)), _ => area, }
+        self.reserve_buffers(size)?
+        if self.staged { self.buffers[1-self.front].reserve_metadata(size)? }
         match viewport {
             .Inline(height) => {
                 self.screen = area
@@ -1898,14 +2003,13 @@ impl Terminal<B> {
         if embedded && self.area.w < old.w {
             self.area.y = 0
             (w,h) := self.device.size()
-            blank := Frame::new(w,h)
+            blank := Frame::try_at(Rect::new(0,0,w,h))?
             self.invalid = true
             self.device.write_region(&blank)?
         }
         if self.staged {
             pending := &mut self.buffers[1-self.front]
-            pending.resize(self.area.w,self.area.h)
-            pending.bounds = self.area
+            pending.try_resize(self.area)?
         }
         result := self.clear_surface()
         if result.is_err() { self.screen.w = -1; return result }
@@ -2055,7 +2159,7 @@ impl Terminal<B> {
         if !valid_area(screen) { return .Err("Invalid terminal viewport size.") }
         viewport := self.viewport
         match viewport {
-            .Fullscreen if self.screen.x < 0 => { self.area = screen; self.screen = screen },
+            .Fullscreen if self.screen.x < 0 => { self.reserve_buffers(screen)?; self.area = screen; self.screen = screen },
             .Fixed(_) => { self.screen = screen },
             _ => { return self.resize(screen) },
         }
@@ -2137,13 +2241,13 @@ impl LiveBackend {
         if visible == frame.bounds {
             if self.draw_region(&frame,&previous,cursor) { return .Ok }
         } else {
-            mut cropped := Frame::at(visible)
+            mut cropped := Frame::try_at(visible)?
             cropped.copy_region(&frame,visible,visible.x,visible.y)
             cropped.cursor_x = cmp.min<i32>(frame.cursor_x,self.width-1)
             cropped.cursor_y = cmp.min<i32>(frame.cursor_y,self.height-1)
             mut before := Frame::new(0,0)
             if frame.bounds == previous.bounds {
-                before = Frame::at(visible)
+                before = Frame::try_at(visible)?
                 before.copy_region(&previous,visible,visible.x,visible.y)
             }
             before.cursor_x = previous.displayed_cursor_x()
@@ -2183,7 +2287,6 @@ pub fn open(viewport: Viewport) -> Result<Terminal<LiveBackend>,string> {
         _ => {},
     }
     if !backend.session.enter() { return .Err("Could not enter terminal mode.") }
-    if alternate { return .Ok(Terminal<LiveBackend>::new(move backend)) }
     Terminal<LiveBackend>::with_viewport(move backend,viewport)
 }
 
@@ -2191,7 +2294,7 @@ impl Backend for LiveBackend {
     fn restore_cursor(&mut self) -> Result<(),string> { self.close(); .Ok }
     fn clear_screen(&mut self, area: Rect) -> Result<(),string> {
         if target_is("windows") {
-            if !self.session.win.vt { blank := Frame::at(area); return self.write_region(&blank) }
+            if !self.session.win.vt { blank := Frame::try_at(area)?; return self.write_region(&blank) }
         }
         self.control("\x1b[2J")
     }
@@ -2264,7 +2367,7 @@ impl Backend for LiveBackend {
         visible := self.visible(&frame)
         if visible.is_empty() { return .Ok }
         if visible != frame.bounds {
-            mut cropped := Frame::at(visible)
+            mut cropped := Frame::try_at(visible)?
             cropped.copy_region(&frame,visible,visible.x,visible.y)
             if self.draw_region(&cropped,&previous,false) { return .Ok }
         } else if self.draw_region(&frame,&previous,false) { return .Ok }
@@ -2314,7 +2417,7 @@ fn drive<S>(viewport: Viewport, state: &mut S, renderer: Renderer<S>, update: fn
     while true {
         (next_w, next_h) := term.device.size()
         if next_w <= 0 || next_h <= 0 { return .Err("Could not read the terminal size.") }
-        if next_w > 4096 || next_h > 4096 || i64(next_w) * i64(next_h) > 1048576 { return .Err("Terminal viewport is too large.") }
+        if next_w > 65535 || next_h > 65535 { return .Err("Invalid terminal size.") }
         if interval > 0 {
             now := clock.monotonic_ns()
             if now < 0 { return .Err("Could not read the animation clock.") }

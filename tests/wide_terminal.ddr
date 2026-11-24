@@ -1,0 +1,40 @@
+capability unsafe, stdio, process
+import .terminal_driver as driver
+import ..src.tui
+import sys
+
+fn draw(f: &mut tui.Frame, mark: &i32) {
+    a := f.area()
+    assert(a.w == 65535 && a.h == 2)
+    f.label(a,"START")
+    f.label(tui.Rect::new(a.right()-3,0,3,1),if mark == 0 { "END" } else { "EN!" })
+}
+
+fn update(mark: &mut i32,key: tui.Key) -> bool {
+    match key { .Char(c) if c == `q` => false, _ => { mark += 1; true }, }
+}
+
+fn exercise(master: i32, slave: i32, screen: &mut driver.Screen) -> bool {
+    unsafe {
+        if !driver.wait_for(master,&mut screen,0,"END","\x1b[?1049h") { return false }
+        if screen.cells[0] != `S` || screen.cells[65534] != `D` { return false }
+        if !driver.send(master," ") || !driver.wait_for(master,&mut screen,0,"EN!","") { return false }
+        if screen.cells[65534] != `!` { return false }
+        if !driver.send(master,"q") || !driver.wait_for(master,&mut screen,0,"","\x1b[?1049l") { return false }
+    }
+    true
+}
+
+fn main() -> i32 {
+    if sys.arg_count() == 2 && sys.arg(1) == "--app" {
+        mut mark := 0
+        return if tui.run(&mut mark,draw,update).is_ok() { 0 } else { 1 }
+    }
+    unsafe {
+        if driver.test_with_args(sys.arg(0),["--app"],65535,2,exercise) {
+            print("Column 65534, key-driven redraw and terminal restoration OK")
+            return 0
+        }
+    }
+    1
+}

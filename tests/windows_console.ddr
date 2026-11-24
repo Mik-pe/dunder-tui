@@ -270,6 +270,17 @@ unsafe fn embedded(out: ptr) -> i32 {
     if info(out,addr(&mut bounds[0])) == 0 { return 50 }
     x := i32(bounds[5])
     y := i32(bounds[6])
+    {
+        mut wide: tui.Terminal<tui.LiveBackend> = tui.open(.Fixed(tui.Rect::new(2,2,65533,1))).unwrap()
+        a := wide.viewport_area()
+        if a.right() != 65535 { return 160 }
+        f := wide.get_frame()
+        f.label(a,"WIDE")
+        f.label(tui.Rect::new(65532,2,3,1),"END")
+        if wide.apply_buffer().is_err() || unit_at(out,x+2,y+2) != 87 { return 161 }
+        if wide.completed().symbol_at(65534,2) != .Some("D") { return 162 }
+        wide.backend_mut().close()
+    }
     shared := shared_screen(out,x,y)
     if shared != 0 { return shared }
     result := calendar_screen(out,x,y)
