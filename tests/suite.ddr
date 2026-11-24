@@ -26,6 +26,55 @@ import ..src.material
 import ..src.tailwind
 import ..src.snapshot
 
+@test fn packed_row_diff_finds_every_glyph_and_style_and_clear_resets_every_cell() {
+    for w in [1, 3, 7, 8, 9, 15, 16, 17, 31, 32, 33] {
+        area := tui.Rect::new(3, 5, w, 3)
+        mut frame := tui.Frame::at(area)
+        mut previous := tui.Frame::at(area)
+        previous.fill(area, `x`, tui.plain())
+        frame.fill(area, `x`, tui.plain())
+        for y in area.y..area.bottom() {
+            for x in area.x..area.right() {
+                for style_only in [false, true] {
+                    if style_only { assert(frame.set_cell(x, y, "x", tui.ink(.Cyan))) }
+                    else { assert(frame.set_cell(x, y, "y", tui.plain())) }
+                    diff := frame.diff_positions(&previous).unwrap()
+                    assert(diff.len == 1 && diff[0] == (x, y))
+                    assert(frame.set_cell(x, y, "x", tui.ink(.Default)))
+                }
+            }
+        }
+        assert(frame.diff_positions(&previous).unwrap().len == 0)
+        frame.fill(area, `z`, tui.ink(.Magenta))
+        for y in area.y..area.bottom() {
+            for x in area.x..area.right() { assert(frame.set_diff_option(x, y, .AlwaysUpdate)) }
+        }
+        frame.clear()
+        for y in area.y..area.bottom() { assert(frame.row_is_blank(y)) }
+        empty := tui.Frame::at(area)
+        assert(frame.diff_positions(&empty).unwrap().len == 0)
+    }
+}
+
+@test fn ascii_runs_preserve_color_boundaries_wide_glyphs_and_cursor_digits() {
+    area := tui.Rect::new(97, 8, 13, 2)
+    mut frame := tui.Frame::at(area)
+    frame.text(area, "A B界CD", tui.ink(.Red))
+    frame.text(tui.Rect::new(104, 8, 6, 1), "EF", tui.ink(.BrightWhite).background(.BrightWhite))
+    assert(frame.set_cell(109, 9, "Z", tui.plain()))
+    mut out: []u8 = []
+    frame.ansi_diff(&tui.Frame::new(0, 0), &mut out)
+    assert(bytes.decode(&out).unwrap() == "\x1b[9;98H\x1b[31mA B界CD\x1b[97;107mEF\x1b[39;49m    \x1b[10;98H            Z")
+    previous := tui.Frame::at(area)
+    mut next := tui.Frame::at(area)
+    next.fill(area, ` `, tui.plain())
+    assert(next.diff_positions(&previous).unwrap().len == 0)
+    assert(next.set_cell(109, 9, "Z", tui.plain()))
+    out.clear()
+    next.ansi_diff(&previous, &mut out)
+    assert(bytes.decode(&out).unwrap() == "\x1b[10;110HZ")
+}
+
 @test fn clipped_spans_keep_zero_width_characters_out_of_alignment_and_scroll() {
     line := rich.Line::new([
         rich.Span::styled("\u{200b}A\u{200b}", tui.ink(.Cyan)),

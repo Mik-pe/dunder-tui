@@ -1,0 +1,83 @@
+capability unsafe, stdio
+
+import std.array
+import std.bytes
+import std.time
+import sys
+
+fn clear(glyphs: &mut []i32, styles: &mut []i64, memory: bool) {
+    if memory {
+        unsafe {
+            bytes.zero_memory(addr(&mut glyphs[0]), usize(glyphs.len) * size_of(i32))
+            bytes.zero_memory(addr(&mut styles[0]), usize(styles.len) * size_of(i64))
+        }
+        return
+    }
+    for i in 0..glyphs.len {
+        glyphs[i] = 0
+        styles[i] = 0
+    }
+}
+
+fn equal_row(glyphs: &[]i32, old_glyphs: &[]i32, styles: &[]i64, old_styles: &[]i64,
+             start: i32, width: i32, memory: bool) -> bool {
+    if memory {
+        unsafe {
+            return bytes.equal_memory(addr(&glyphs[start]), addr(&old_glyphs[start]), usize(width) * size_of(i32)) &&
+                bytes.equal_memory(addr(&styles[start]), addr(&old_styles[start]), usize(width) * size_of(i64))
+        }
+    }
+    for i in start..start + width {
+        if glyphs[i] != old_glyphs[i] || styles[i] != old_styles[i] { return false }
+    }
+    true
+}
+
+fn run(width: i32, mode: string) {
+    memory := mode == "memory"
+    timer := time.MonotonicClock.Raw
+    mut glyphs: []i32 = []
+    mut styles: []i64 = []
+    for _ in 0..width * 24 { glyphs.push(0); styles.push(0) }
+    old_glyphs := glyphs.clone()
+    old_styles := styles.clone()
+    mut clears: []i64 = []
+    mut comparisons: []i64 = []
+    mut equal_rows := 0
+    for batch in 0..120 {
+        mut start := timer.now_ns()
+        for frame in 0..16 {
+            i := (batch + frame) % 24 * width + width - 1
+            glyphs[i] = 9
+            styles[i] = 7
+            clear(&mut glyphs, &mut styles, memory)
+            assert(glyphs[i] == 0 && styles[i] == 0)
+        }
+        cleared := timer.now_ns() - start
+        start = timer.now_ns()
+        for frame in 0..16 {
+            i := (batch + frame) % 24 * width + width - 1
+            if frame % 4 == 1 { glyphs[i] = 9 }
+            if frame % 4 == 3 { styles[i] = 7 }
+            for row in 0..24 {
+                if equal_row(&glyphs, &old_glyphs, &styles, &old_styles, row * width, width, memory) { equal_rows += 1 }
+            }
+            glyphs[i] = 0
+            styles[i] = 0
+        }
+        compared := timer.now_ns() - start
+        if batch >= 20 { clears.push(cleared / 16); comparisons.push(compared / 16) }
+    }
+    assert(equal_rows == 45120)
+    array.sort<i64>(&mut clears)
+    array.sort<i64>(&mut comparisons)
+    print(f"{width} {mode} {clears[49]} {clears[94]} {comparisons[49]} {comparisons[94]} {equal_rows}")
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 2 }
+    mode := sys.arg(1)
+    if mode != "memory" && mode != "cells" { return 2 }
+    for width in [95, 96, 97] { run(width, mode) }
+    0
+}

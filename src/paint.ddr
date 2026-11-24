@@ -20,21 +20,29 @@ impl Brush {
     }
 }
 
+fn parameter(out: &mut []u8, value: i32) {
+    if value >= 0 && value < 100 {
+        if value >= 10 { out.push(u8(48 + value / 10)) }
+        out.push(u8(48 + value % 10))
+    } else { bytes.append_decimal(&mut out, i64(value)) }
+}
+
 pub fn cursor(out: &mut []u8, x: i32, y: i32) {
-    bytes.append_utf8(&mut out, "\x1b[")
-    bytes.append_decimal(&mut out, i64(y + 1))
+    out.push(27)
+    out.push(b'[')
+    parameter(&mut out, y + 1)
     out.push(b';')
-    bytes.append_decimal(&mut out, i64(x + 1))
+    parameter(&mut out, x + 1)
     out.push(b'H')
 }
 
 fn color(out: &mut []u8, code: i32, base: i32) {
-    if code < 0 { bytes.append_decimal(&mut out, i64(base + 9)); return }
+    if code < 0 { parameter(&mut out, base + 9); return }
     if base != 50 && code < 16 {
-        bytes.append_decimal(&mut out, i64(base + code + if code >= 8 { 52 } else { 0 }))
+        parameter(&mut out, base + code + if code >= 8 { 52 } else { 0 })
         return
     }
-    bytes.append_decimal(&mut out, i64(base + 8))
+    parameter(&mut out, base + 8)
     if code < 512 {
         bytes.append_utf8(&mut out, ";5;")
         bytes.append_decimal(&mut out, i64(code.bit_and(255)))
@@ -54,7 +62,7 @@ fn separator(out: &mut []u8, start: i32) {
 
 fn attribute(out: &mut []u8, start: i32, code: i32) {
     separator(&mut out, start)
-    bytes.append_decimal(&mut out, i64(code))
+    parameter(&mut out, code)
 }
 
 fn modifiers(out: &mut []u8, start: i32, old: i32, next: i32) {
@@ -79,7 +87,8 @@ pub fn transition(out: &mut []u8, from: Decoration, to: Decoration) {
     if from == to { return }
     old := Brush::unpack(from.packed)
     next := Brush::unpack(to.packed)
-    bytes.append_utf8(&mut out, "\x1b[")
+    out.push(27)
+    out.push(b'[')
     start := out.len
     if old.fg != next.fg { color(&mut out, next.fg, 30) }
     if old.bg != next.bg { separator(&mut out, start); color(&mut out, next.bg, 40) }

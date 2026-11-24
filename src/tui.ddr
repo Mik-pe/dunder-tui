@@ -21,11 +21,55 @@ import std.json
 import std.parse as parse
 import std.text as strings
 
+fn clear_packed(glyphs: &mut []i32, styles: &mut []i64) {
+    if target_is("arm64") && glyphs.len > 0 {
+        unsafe {
+            bytes.zero_memory(addr(&mut glyphs[0]), usize(glyphs.len) * size_of(i32))
+            bytes.zero_memory(addr(&mut styles[0]), usize(styles.len) * size_of(i64))
+        }
+        return
+    }
+    for i in 0..glyphs.len {
+        glyphs[i] = 0
+        styles[i] = 0
+    }
+}
+
+fn equivalent_spaces(glyph: i32, old: i32) -> bool {
+    (glyph == 0 && old == WRITTEN_SPACE) || (old == 0 && glyph == WRITTEN_SPACE)
+}
+
+fn packed_boundary(glyphs: &[]i32, other_glyphs: &[]i32, styles: &[]i64, other_styles: &[]i64,
+                   start: i32, end: i32, find_change: bool) -> i32 {
+    mut at := start
+    if find_change {
+        while at < end && glyphs[at] == other_glyphs[at] && styles[at] == other_styles[at] { at += 1 }
+    }
+    for i in at..end {
+        glyph := glyphs[i]
+        old := other_glyphs[i]
+        changed := styles[i] != other_styles[i] || (glyph != old && !equivalent_spaces(glyph, old))
+        if changed == find_change { return i }
+    }
+    end
+}
+
 fn fill_packed(glyphs: &mut []i32, styles: &mut []i64, start: i32, end: i32, code: i32, keep: i64, set: i64) {
     for i in start..end {
         glyphs[i] = code
         styles[i] = styles[i].bit_and(keep).bit_or(set)
     }
+}
+
+fn append_ascii_run(out: &mut []u8, glyphs: &[]i32, styles: &[]i64, start: i32, end: i32, style: i64) -> i32 {
+    for i in start..end {
+        glyph := glyphs[i]
+        if styles[i] != style { return i }
+        if glyph >= 0 && glyph < 96 { out.push(u8(glyph + 32)) }
+        else if glyph == WRITTEN_SPACE { out.push(b' ') }
+        else { return i }
+    }
+    end
 }
 
 pub enum Color {
@@ -882,14 +926,16 @@ impl snapshot.Read for Frame {
 
 struct DiffScan {
     at: i32, start: i32, end: i32, cached: i32, trailing: i32, limit: i32, force: bool,
-    full: bool, precise: bool, floor: i64,
+    full: bool, precise: bool, packed: bool, floor: i64,
 }
 
 impl DiffScan {
     fn new(current: &Frame, previous: &Frame) -> Self {
         full := current.bounds != previous.bounds
+        precise := current.row_flags.len > 0 || previous.row_flags.len > 0
         Self { at:0, start:0, end:0, cached:-1, trailing:0, limit:current.glyphs.len, force:false, full:full,
-            precise:current.row_flags.len > 0 || previous.row_flags.len > 0,
+            precise:precise, packed:!precise && current.decorations.len == 0 && previous.decorations.len == 0 &&
+                current.cluster_cells.len == 0 && previous.cluster_cells.len == 0,
             floor:if full { i64(0) } else { current.shared_style_floor(&previous) } }
     }
 
@@ -942,6 +988,13 @@ impl DiffScan {
             i := if self.cached >= 0 { self.cached } else { self.at }
             row := i-i%w
             limit := row+w
+            if self.packed && !self.full {
+                self.start = packed_boundary(&frame.glyphs, &previous.glyphs, &frame.styles, &previous.styles, i, limit, true)
+                if self.start == limit { self.at = limit; continue }
+                self.end = packed_boundary(&frame.glyphs, &previous.glyphs, &frame.styles, &previous.styles, self.start + 1, limit, false)
+                self.at = self.end
+                return true
+            }
             mut flags: u8 = 0
             if self.precise {
                 y := row/w
@@ -1979,12 +2032,7 @@ impl Frame {
         for i in &self.cluster_cells { self.clusters[i] = "" }
         self.cluster_cells.clear()
         self.cluster_ranges.clear()
-        if self.glyphs.len > 0 {
-            unsafe {
-                bytes.zero_memory(addr(&mut self.glyphs[0]), usize(self.glyphs.len) * size_of(i32))
-                bytes.zero_memory(addr(&mut self.styles[0]), usize(self.styles.len) * size_of(i64))
-            }
-        }
+        clear_packed(&mut self.glyphs, &mut self.styles)
     }
 
     fn reset_area(&mut self, area: Rect) {
@@ -2007,7 +2055,7 @@ impl Frame {
     fn changed(&self, previous: &Frame, i: i32) -> bool {
         code := self.glyphs[i]
         old := previous.glyphs[i]
-        if code != old && !(code == 0 && old == WRITTEN_SPACE) && !(old == 0 && code == WRITTEN_SPACE) { return true }
+        if code != old && !equivalent_spaces(code, old) { return true }
         if !self.same_style(&previous, i) { return true }
         symbol := code.bit_and(WIDE - 1) + 32
         (symbol == CLUSTER || symbol == ZERO_CLUSTER) && self.clusters[i] != previous.clusters[i]
@@ -2026,10 +2074,8 @@ impl Frame {
 
     fn same_row(&self, previous: &Frame, row: i32, shared_floor: i64) -> bool {
         if self.bounds.w == 0 { return false }
-        unsafe {
-            if !bytes.equal_memory(addr(&self.glyphs[row]), addr(&previous.glyphs[row]), usize(self.bounds.w) * size_of(i32)) ||
-            !bytes.equal_memory(addr(&self.styles[row]), addr(&previous.styles[row]), usize(self.bounds.w) * size_of(i64)) { return false }
-        }
+        end := row + self.bounds.w
+        if packed_boundary(&self.glyphs, &previous.glyphs, &self.styles, &previous.styles, row, end, true) != end { return false }
         if self.cluster_ranges.len > 0 {
             offset := row/self.bounds.w*2
             for i in self.cluster_ranges[offset]..self.cluster_ranges[offset+1] {
@@ -2154,9 +2200,12 @@ impl Frame {
                     paint.transition(&mut out,self.decoration(current),self.decoration(style))
                     current = style
                 }
-                if glyph >= 0 && glyph < 96 { out.push(u8(glyph+32)) }
-                else { self.append_glyph(&mut out,i,glyph,true) }
-                i += if glyph < WIDE { 1 } else { self.advance(i) }
+                if (glyph >= 0 && glyph < 96) || glyph == WRITTEN_SPACE {
+                    i = append_ascii_run(&mut out, &self.glyphs, &self.styles, i, scan.end, style)
+                } else {
+                    self.append_glyph(&mut out,i,glyph,true)
+                    i += if glyph < WIDE { 1 } else { self.advance(i) }
+                }
             }
         }
         if current != 0 { bytes.append_utf8(&mut out, "\x1b[0m") }
