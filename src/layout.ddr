@@ -90,16 +90,18 @@ fn weight(rule: &Constraint, flex: Flex) -> f64 {
     }
 }
 
-fn desired(rule: &Constraint, extent: f64) -> f64 {
+fn minimum_bound(value: u16) -> f64 { if value > 32767 { 0.0 } else { f64(value) } }
+
+fn desired(rule: &Constraint, extent: f64, flex: Flex) -> f64 {
     match rule {
         .Length(v) => f64(v), .Percentage(v) => extent * f64(v) / 100.0,
         .Ratio(a, b) => extent * f64(a) / f64(cmp.max<u32>(1, b)),
-        .Max(v) => f64(v), .Min(v) => f64(v), .Fill(_) => 0.0,
+        .Max(v) => f64(v), .Min(v) => if flex == .Legacy { f64(v) } else { minimum_bound(v) }, .Fill(_) => 0.0,
     }
 }
 
 fn shrink_rank(rule: &Constraint) -> i32 {
-    match rule { .Min(_) => 0, .Length(_) => 1, .Percentage(_) => 2, .Ratio(_, _) => 3, .Max(_) => 4, .Fill(_) => 5, }
+    match rule { .Min(v) => if v > 32767 { 4 } else { 0 }, .Length(_) => 1, .Percentage(_) => 2, .Ratio(_, _) => 3, .Max(_) => 4, .Fill(_) => 5, }
 }
 
 fn growth_cost(rule: &Constraint) -> i32 {
@@ -143,12 +145,12 @@ impl Layout {
         }
         if n > 1 && fixed_gaps && self.flex_mode != .Legacy && gap >= 0.0 {
             first := &self.rules[0]
-            target := desired(&first, length)
+            target := desired(&first, length, self.flex_mode)
             if target * f64(n) > available {
                 rank := shrink_rank(&first)
                 mut same := true
                 for i in 1..n {
-                    if shrink_rank(&self.rules[i]) != rank || desired(&self.rules[i], length) != target { same = false; break }
+                    if shrink_rank(&self.rules[i]) != rank || desired(&self.rules[i], length, self.flex_mode) != target { same = false; break }
                 }
                 if same {
                     edges.push(0)
@@ -174,7 +176,7 @@ impl Layout {
             if scale > 0.0 && scale < 1.0 { zero_fills += 1 }
             if scale > 0.0 { flexible += 1 }
             weights += scale
-            v := if scale > 0.0 { 0.0 } else { desired(&rule, length) }
+            v := if scale > 0.0 { 0.0 } else { desired(&rule, length, self.flex_mode) }
             used += v; sizes.push(v)
             if growth_cost(&rule) <= growth_cost(&self.rules[grow]) { grow = i }
         }
@@ -201,8 +203,8 @@ impl Layout {
                 if scale == 0.0 { continue }
                 portion := extra * (if zero_fills == n { 1.0 } else { scale }) / weights
                 match &self.rules[i] {
-                    .Min(min) if portion < f64(min) => {
-                        if flexible != 2 || weights > 3.0 || pinned >= 0 || extra < f64(min) { return false }
+                    .Min(min) if portion < minimum_bound(min) => {
+                        if flexible != 2 || weights > 3.0 || pinned >= 0 || extra < minimum_bound(min) { return false }
                         pinned = i
                     },
                     _ => {},
@@ -210,11 +212,11 @@ impl Layout {
                 sizes[i] = portion
             }
             if pinned >= 0 {
-                sizes[pinned] = desired(&self.rules[pinned], length)
+                sizes[pinned] = desired(&self.rules[pinned], length, self.flex_mode)
                 for i in 0..n {
                     if i == pinned || weight(&self.rules[i], self.flex_mode) == 0.0 { continue }
                     sizes[i] = extra - sizes[pinned]
-                    match &self.rules[i] { .Min(min) if sizes[i] < f64(min) => { return false }, _ => {}, }
+                    match &self.rules[i] { .Min(min) if sizes[i] < minimum_bound(min) => { return false }, _ => {}, }
                 }
             }
         } else {
@@ -305,7 +307,7 @@ impl Layout {
                 .Ratio(a, b) => { axis.size(&mut model, p, .Equal, axis.extent * f64(a) / f64(cmp.max<u32>(1, b)), 100000.0) },
                 .Max(v) => { axis.size(&mut model, p, .AtMost, f64(v), BOUND); axis.size(&mut model, p, .Equal, f64(v), 10000.0) },
                 .Min(v) => {
-                    axis.size(&mut model, p, .AtLeast, f64(v), BOUND)
+                    axis.size(&mut model, p, .AtLeast, minimum_bound(v), BOUND)
                     if self.flex_mode == .Legacy { axis.size(&mut model, p, .Equal, f64(v), 10000.0) }
                     else { axis.size(&mut model, p, .Equal, axis.extent, 1000.0) }
                 },

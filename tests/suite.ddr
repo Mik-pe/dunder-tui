@@ -624,7 +624,7 @@ import ..src.tailwind
     assert(l.part(area,0).unwrap().x == 11)
     assert(layout.centered(area,.Length(4),.Length(2)) == tui.Rect { x:9, y:6, w:4, h:2 })
     mut high := layout.Layout::horizontal([.Min(65535), .Length(7)])
-    assert(high.part(area.resize(100,3),0).unwrap().w == 100)
+    assert(high.part(area.resize(100,3),0).unwrap().w == 93)
     mut many: []layout.Constraint = []
     for _ in 0..1024 { many.push(.Fill(0)) }
     l = l.spacing(0)

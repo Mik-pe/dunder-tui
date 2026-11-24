@@ -9,7 +9,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | Buffer och Cell | Återanvända bildbuffertar, breda tecken, celldiff, exakt och ungefärlig sammanslagning av linjesymboler, färgutdata och avläsning av rader och cellstilar. Buffertar med förskjutet origo, rektangulär kopiering, linjär storleksändring och tillämpning av en diff på en delyta. Buffertsammanslagning, avläsning av en hel cell, fyra cellregler och strömmande besök av ändringar. | Större ytor än bibliotekets nuvarande gräns på 4 096 celler per axel och 1 048 576 celler totalt. |
 | Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. Tailwind och Material ger 500 namngivna RGB-värden. | Beständiga dataformat och full täckning för konvertering mellan stilrepresentationer. |
 | Text | Span, Line, Text, Paragraph, inkrementell redigering, stiländringar, läsning av textens delar, utskrift, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. Cellprov för Unicode 18:s emojitest, presentationsvarianter och skriftspecifika ligaturer inom och över grafemgränser. | Sammanslagning av hela dokument och genomgång av stiliserade grafem via det publika API:t. |
-| Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering och cache. 15 076 jämförda layouter, 1 200 rektangelprov och 1 100 jämförda bilder. | Utökad täckning av överbestämda system med många olika paneler och upprepade ändringar av reglerna. |
+| Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering och cache. 21 124 jämförda layouter, 1 200 rektangelprov och 1 100 jämförda bilder. Omfattar upprepade regelbyten och upp till nio paneler i gränsprovet för minsta storlek. | Överbestämda system med fler paneler och kombinationer av marginaler vid koordinatgränsen. |
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna tecken, individuella kanter, justerade titlar, utfyllnad och skuggor. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
 | Övriga widgets | Fristående Clear och Fill med cellvisa symboler, stil och klippning, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, månadskalender med händelser och egna datumstilar, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. | Logotyp och maskot. |
 | Egna widgets och tester | Frame ritar egna och inbyggda widgets med `render_widget` och `render_stateful_widget`. Tillstånd kan uppdateras vid ritning med `run_stateful`. Egna backends kan anslutas till Terminal. TestBackend har skrollhistorik, markör, fem rensningslägen och regionskrollning. | Bredare testning av specialiserade terminalbackends. |
@@ -102,7 +102,7 @@ Provet jämför alla paneler och mellanrum, även tomma ytor och överlappande g
 
 När flera placeringar uppfyller motstridiga regler lika väl kan även två Ratatui-processer välja olika rektanglar. För varje avvikelse räknar jämförelseprogrammet ut det lägsta möjliga viktade felet med exakta rationella tal. Det löser sedan samma problem två gånger med båda programmens avrundade cellgränser som extra villkor. Båda måste nå samma minimum och alla mellanrum måste kunna återskapas från kanterna. [Ratatuis beskrivning av motstridiga villkor](https://docs.rs/ratatui/0.30.2/ratatui/layout/struct.Layout.html) · [Kontroll med exakt aritmetik](../benchmarks/reference/src/layout_optimum.rs)
 
-I Dunder har rektanglar signerade 32-bitarskoordinater. En separat gränskontroll visar också en skillnad för `Min(65535)` bredvid `Length(7)` på 100 kolumner. Dunder låter minimikravet få alla 100 kolumner. Ratatui 0.30.2 konverterar minimikravet till ett signerat 16-bitarstal och lämnar sju kolumner åt grannen.
+I Dunder har rektanglar signerade 32-bitarskoordinater. Till och med 0.20.1 tog `Min(65535)` samtliga 100 kolumner bredvid `Length(7)`. Från 0.20.2 delar biblioteken upp samma yta i 93 och 7 kolumner.
 
 ```sh
 mkdir -p build
@@ -356,4 +356,17 @@ dunder build --locked --offline tests/text_edits.ddr -o build/text-edits
 build/text-edits >build/dunder-edits
 cargo run --release --locked --offline --manifest-path benchmarks/reference/Cargo.toml --example text_edits >build/ratatui-edits
 diff -u build/ratatui-edits build/dunder-edits
+```
+
+## Minsta storlek över 32 767 i 0.20.2
+
+Ratatui 0.30.2 tolkar `Min` som ett signerat 16-bitarstal när lösaren sätter en undre gräns. Från 32 768 är den gränsen negativ och uppfylld redan vid bredd noll. I flexläget `Legacy` använder Ratatui dessutom det ursprungliga osignerade värdet som önskad storlek med lägre prioritet. Dunder följer båda reglerna. [Ratatuis lösare](https://github.com/ratatui/ratatui/blob/ratatui-v0.30.2/ratatui-core/src/layout/layout.rs) · [Dunders lösare](../src/layout.ddr)
+
+Provet ändrar reglerna i samma layout och fortsätter använda fyra tidigare ritade storlekar. Det jämför varje panel och mellanrum för sex gränsvärden, alla sju flexlägen, båda riktningarna och upp till nio paneler. I 0.20.1 låg 3 768 av 6 048 layouter utanför referensens exakta optimum. I 0.20.2 nådde alla optimum. På macOS gav en körning 5 950 identiska uppdelningar och 98 andra verifierat likvärdiga uppdelningar. [Dunderprov](../tests/layout_reference.ddr) · [Oberoende kontroll med rationella tal](../benchmarks/reference/src/layout_optimum.rs)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/layout_reference.ddr -o build/layout
+cargo build --locked --offline --release --manifest-path benchmarks/reference/Cargo.toml --features layout-cache --example layout --target-dir build/rust
+build/layout --minimums | build/rust/release/examples/layout --minimums
 ```

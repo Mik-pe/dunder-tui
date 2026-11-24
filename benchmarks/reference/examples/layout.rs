@@ -206,10 +206,10 @@ fn main() {
     println!("{matches} identical, {ties} verified alternate optima, {differs} unresolved");
     assert_eq!(
         matches + ties + differs,
-        if std::env::args().nth(1).as_deref() == Some("--limits") {
-            980
-        } else {
-            14_096
+        match std::env::args().nth(1).as_deref() {
+            Some("--limits") => 980,
+            Some("--minimums") => 6048,
+            _ => 14_096,
         }
     );
     assert_eq!(differs, 0);
