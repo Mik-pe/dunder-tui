@@ -80,4 +80,29 @@ fn main() {
         inspect(&Text::from(Line::raw(value)));
         inspect(&Text::from(Span::raw(value)));
     }
+    for empty in [true, false] {
+        for dirty in [true, false] {
+            let mut joined = Text::default().red().bold().right_aligned();
+            if !empty {
+                joined.push_line("左");
+                joined.push_line("a");
+            }
+            let mut suffix = Text::from(vec![
+                Line::raw("👩🏽‍💻").left_aligned(),
+                Line::from(vec![Span::raw("秋").yellow(), Span::raw("B")]).on_magenta(),
+            ])
+            .cyan()
+            .italic()
+            .centered();
+            if dirty {
+                suffix.lines[1].spans[1].content = "e\u{301}◌".into();
+            }
+            joined += suffix;
+            inspect(&joined);
+            joined += Text::default();
+            joined.lines[0].spans[0].content = "!".into();
+            joined.push_span("C");
+            inspect(&joined);
+        }
+    }
 }

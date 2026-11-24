@@ -1,4 +1,4 @@
 name = "dunder-tui"
-version = "0.20.2"
+version = "0.21.0"
 root = "src/tui.ddr"
 test_root = "tests/suite.ddr"

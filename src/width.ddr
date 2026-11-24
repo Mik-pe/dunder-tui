@@ -36,7 +36,12 @@ pub fn columns(cp: i32) -> i32 {
     property(cp).shr(7).bit_and(3)
 }
 
-fn encoded(cp: i32) -> i32 {
+pub fn whitespace(cp: i32) -> bool {
+    (cp >= 9 && cp <= 13) || cp == 32 || cp == 0x85 || cp == 0xa0 || cp == 0x1680 ||
+        (cp >= 0x2000 && cp <= 0x200a) || cp == 0x2028 || cp == 0x2029 || cp == 0x202f || cp == 0x205f || cp == 0x3000
+}
+
+pub fn encoded(cp: i32) -> i32 {
     if cp < 128 { return 1 }
     if cp < 2048 { return 2 }
     if cp < 65536 { return 3 }

@@ -86,7 +86,7 @@ Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.20.2", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.21.0", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.
@@ -357,9 +357,20 @@ mut journal := rich.Text::new([])
 journal.push_span(rich.Span::styled("Väntar", tui.ink(.Cyan)))
 journal.push_line(rich.Line::raw("Kaj 4"))
 journal.line_mut(0).span_mut(0).set_content("Framme")
+journal.append(rich.Text::raw("Kaj 5\nKaj 6"))
 ```
 
 `lines()` och `spans()` lånar innehållet för läsning. `span.content()` ger den ursprungliga UTF-8-texten. `journal.to_string()` skriver en rad per `Line`. Radslut inne i ett spann utelämnas vid utskrift.
+
+`append(move nästa)` flyttar över raderna med deras egna stilar. Det mottagande dokumentets stil och justering gäller för hela texten. Med `styled_graphemes` kan du läsa precis den symbol och stil som varje spann bidrar med.
+
+```dunder
+for glyph in journal.lines()[0].styled_graphemes(journal.get_style()) {
+    print(glyph.symbol())
+}
+```
+
+Vid tät upprepad läsning kan `visit_graphemes` skicka symbolen och stilen direkt till en funktion. Funktionen får ett eget muterbart tillstånd, en lånad `&str` och en lånad `&tui.Style`. Returnera `false` för att stanna vid aktuell symbol. [Körbart exempel med båda lässätten](benchmarks/graphemes.ddr)
 
 ## Stilar som kan kombineras
 

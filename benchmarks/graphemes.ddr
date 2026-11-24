@@ -1,0 +1,59 @@
+capability stdio
+import ..src.text as rich
+import ..src.tui
+import std.array as array
+import std.time as clock
+import sys
+
+fn line() -> rich.Line {
+    mut spans: []rich.Span = []
+    for _ in 0..8 {
+        spans.push(rich.Span::raw("0123456789abcdef"))
+        spans.push(rich.Span::styled(" e\u{301} 秋 👩🏽‍💻! ",tui.plain().italic()))
+        spans.push(rich.Span::raw("\r\n🇸🇪\x00لا\u{85}"))
+        spans.push(rich.Span::styled(" fin",tui.ink(.Green).without(.Italic)))
+    }
+    rich.Line::new(move spans).styled(tui.plain().bold())
+}
+
+fn add(sum: &mut i32, symbol: &str, style: &tui.Style) -> bool {
+    sum += symbol.len + i32(symbol[0]) + (if style.has(.Italic) { 1 } else { 0 })
+    true
+}
+
+fn scan(row: &rich.Line, visit: bool) -> i32 {
+    mut sum := 0
+    if visit { assert(row.visit_graphemes(tui.plain(),&mut sum,add)) }
+    else {
+        for g in row.styled_graphemes(tui.plain()) { _ := add(&mut sum,g.symbol(),g.get_style()) }
+    }
+    sum
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 3 { return 2 }
+    route := sys.arg(1)
+    mode := sys.arg(2)
+    if route != "iterator" && route != "visitor" { return 2 }
+    if mode != "timing" && mode != "allocations" && mode != "setup" { return 2 }
+    row := line()
+    visit := route == "visitor"
+    mut sum := 0
+    if mode == "timing" {
+        mut times: []i64 = []
+        for n in 0..220 {
+            start := clock.monotonic_ns()
+            for _ in 0..4 { sum += scan(&row,visit) }
+            ns := (clock.monotonic_ns()-start)/4
+            if n >= 20 { times.push(ns) }
+        }
+        array.sort<i64>(&mut times)
+        assert(sum == 20718720)
+        print(f"{route} {times[99]} {times[189]} {sum}")
+    } else {
+        if mode == "allocations" { for _ in 0..100 { sum += scan(&row,visit) } }
+        assert(sum == (if mode == "allocations" { 2354400 } else { 0 }))
+        print(sum)
+    }
+    0
+}

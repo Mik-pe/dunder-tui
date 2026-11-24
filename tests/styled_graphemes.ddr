@@ -1,0 +1,100 @@
+capability filesystem, stdio
+import ..src.tui
+import ..src.text as rich
+import .grapheme_cases as cases
+import std.bytes as bytes
+import std.parse as parse
+import std.text as words
+import sys
+
+fn style(id: i32) -> tui.Style {
+    if id == 0 { return tui.plain() }
+    if id == 1 { return tui.Style::reset() }
+    if id == 2 { return tui.ink(.Green).background_index(173).underline_rgb(0x254f91).bold().with(.SlowBlink).with(.Hidden).without(.Italic) }
+    if id == 3 { return tui.plain().foreground_rgb(0xab7803).underline_color(.Cyan).dim().italic().with(.CrossedOut).without(.Bold) }
+    tui.plain().background(.Blue).underlined().with(.RapidBlink).inverted().without(.Hidden)
+}
+
+fn color(value: Option<tui.Color>) -> i32 { match value { .Some(c) => c.code(), .None => -2, } }
+
+fn fields(s: &tui.Style) -> string {
+    mut added := 0
+    mut removed := 0
+    mut mask := 1
+    modifiers: []tui.Modifier = [.Bold,.Dim,.Italic,.Underlined,.SlowBlink,.RapidBlink,.Reversed,.Hidden,.CrossedOut]
+    for m in &modifiers {
+        if s.has(m) { added += mask }
+        if s.removes(m) { removed += mask }
+        mask *= 2
+    }
+    f"{color(s.get_foreground())} {color(s.get_background())} {color(s.get_underline_color())} {added} {removed}"
+}
+
+fn inspect(g: &rich.StyledGrapheme) {
+    hex := bytes.hex_u8(g.symbol().as_bytes())
+    space := if g.is_whitespace() { 1 } else { 0 }
+    print(f"g {hex} {space} {fields(g.get_style())}")
+}
+
+fn visit(count: &mut i32, symbol: &str, style: &tui.Style) -> bool {
+    print(f"v {bytes.hex_u8(symbol.as_bytes())} {fields(style)}")
+    count += 1
+    true
+}
+
+fn examine(value: string, id: i32) {
+    chars := value.runes()
+    cut := id % (chars.len+1)
+    mut left: []u8 = []
+    mut right: []u8 = []
+    for i in 0..chars.len {
+        if i < cut { bytes.append_utf8(&mut left,chars[i].str()) } else { bytes.append_utf8(&mut right,chars[i].str()) }
+    }
+    base := id%5
+    row := id/5%5
+    print(f"case {base} {row}")
+    mut spans: []rich.Span = []
+    for text in ["",value.clone(),bytes.decode(&left).unwrap(),bytes.decode(&right).unwrap()] {
+        leaf := (spans.len+id/25)%5
+        print(f"span {leaf} {bytes.hex_u8(text.as_str().as_bytes())}")
+        spans.push(rich.Span::styled(move text,style(leaf)))
+    }
+    line := rich.Line::new(move spans).styled(style(row))
+    mut visits := 0
+    for span in line.spans() {
+        print("s")
+        for g in span.styled_graphemes(style(base)) { inspect(&g) }
+        assert(span.visit_graphemes(style(base),&mut visits,visit))
+    }
+    print("l")
+    for g in line.styled_graphemes(style(base)) { inspect(&g) }
+    assert(line.visit_graphemes(style(base),&mut visits,visit))
+    print("end")
+}
+
+fn corpus(rows: string, id: &mut i32) {
+    for row in words.split(rows,"\n") {
+        if row.len == 0 { continue }
+        mut source: []u8 = []
+        for part in words.split(row," ") {
+            if part == "/" { continue }
+            scalar := parse.hex(part)
+            assert(scalar.ok)
+            bytes.append_utf8(&mut source,rune(scalar.value).str())
+        }
+        examine(bytes.decode(&source).unwrap(),id)
+        id += 1
+    }
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 3 { return 2 }
+    mut id := 0
+    for cp in 0..160 { examine("a" + rune(cp).str() + "\u{301}z",id); id += 1 }
+    for s in ["","\r\n\t","\u{a0} \u{200b}\u{202f}","لا","👩🏽‍💻!","🇸🇪🇳🇴","각","﷽"] { examine(s,id); id += 1 }
+    corpus(cases.unicode17(),&mut id)
+    corpus(sys.read(sys.arg(1)).unwrap(),&mut id)
+    corpus(sys.read(sys.arg(2)).unwrap(),&mut id)
+    assert(id == 6920)
+    0
+}

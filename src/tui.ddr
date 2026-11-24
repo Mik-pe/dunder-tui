@@ -129,6 +129,7 @@ impl Modifier {
 
 const INHERIT: i32 = -2
 
+@derive(Eq, Hash)
 pub opaque struct Style {
     fg: i32, bg: i32, underline: i32, added: i32, removed: i32,
 }
@@ -1509,6 +1510,7 @@ impl GlyphRun {
     }
 
     pub fn content(&self) -> &str from self { self.source.as_str() }
+    pub fn source_string(&self) -> &string from self { &self.source }
     pub fn has_zero_width(&self) -> bool { self.zero_width }
     pub fn count(&self) -> i32 { match &self.data { .Some(d) => d.tokens.len / 2, .None => self.source.len, } }
     pub fn width(&self) -> i32 { self.columns }
@@ -1533,10 +1535,18 @@ impl GlyphRun {
         (first, remaining)
     }
     pub fn width_at(&self, index: i32) -> i32 { match &self.data { .Some(d) => d.tokens[index * 2 + 1], .None => 1, } }
+    pub fn symbol_bytes_at(&self, index: i32) -> i32 {
+        match &self.data {
+            .None => 1,
+            .Some(d) => {
+                cp := d.tokens[index*2]
+                if cp < 0 { d.clusters[-1-cp].len } else { width.encoded(cp) }
+            },
+        }
+    }
     pub fn space_at(&self, index: i32) -> bool {
         cp := match &self.data { .Some(d) => d.tokens[index * 2], .None => i32(self.source[index]), }
-        cp == 32 || cp == 0x1680 || (cp >= 0x2000 && cp <= 0x200b) ||
-        cp == 0x2028 || cp == 0x2029 || cp == 0x202f || cp == 0x205f || cp == 0x3000
+        cp == 0x200b || (cp != 0xa0 && width.whitespace(cp))
     }
 
     pub fn symbol_at(&self, index: i32) -> string {

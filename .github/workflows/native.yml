@@ -191,6 +191,29 @@ jobs:
           build/text$EXT --ligatures build/cases.txt | "$ref/text$EXT" --ligatures build/cases.txt
           build/dunder$EXT build --locked --offline benchmarks/terminal.ddr -o "build/benchmark$EXT"
           build/benchmark$EXT --verify | "$ref/terminal_bench$EXT" --verify
+      - name: Compare styled graphemes and time a line traversal
+        run: |
+          cd "$SOURCE_ROOT"
+          manifest=benchmarks/reference/Cargo.toml
+          cargo build --release --locked --offline --manifest-path "$manifest" --features style-oracle --example styled_graphemes --example grapheme_bench --target-dir build/rust
+          ref=build/rust/release/examples
+          build/dunder$EXT build --locked --offline tests/styled_graphemes.ddr -o "build/styled$EXT"
+          build/styled$EXT tests/data/emoji-18.txt tests/data/emoji-variation-18.txt | "$ref/styled_graphemes$EXT"
+          build/dunder$EXT build --locked --offline benchmarks/graphemes.ddr -o "build/traverse$EXT"
+          for round in 1 2 3; do
+            build/traverse$EXT iterator timing
+            "$ref/grapheme_bench$EXT" timing
+            build/traverse$EXT visitor timing
+          done
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            build/dunder build --locked --offline --runtime-profile benchmarks/graphemes.ddr -o build/traverse-profile
+            for route in iterator visitor; do
+              for mode in setup allocations; do
+                build/traverse-profile "$route" "$mode" 2>"build/$route-$mode.json"
+                jq -c --arg run "$route-$mode" '{run:$run,counters:.counters}' "build/$route-$mode.json"
+              done
+            done
+          fi
       - name: Build the earlier library revision for comparison
         if: inputs.before != ''
         env:

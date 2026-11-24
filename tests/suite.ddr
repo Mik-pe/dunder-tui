@@ -21,6 +21,66 @@ import ..src.width
 import ..src.material
 import ..src.tailwind
 
+@test fn styled_graphemes_keep_span_boundaries_and_resolve_each_style() {
+    base := tui.ink(.Red).bold().underline_rgb(0x123456)
+    row := tui.plain().background(.Blue).italic()
+    leaf := tui.ink(.Green).without(.Bold)
+    line := rich.Line::new([
+        rich.Span::raw("\x00\r\n"),rich.Span::raw("e"),rich.Span::styled("\u{301}\u{85}🇸🇪",leaf),
+        rich.Span::raw(""),rich.Span::raw("👩🏽‍💻\u{200b}\u{a0}")
+    ]).styled(row)
+    mut stream := line.styled_graphemes(base)
+    expected := ["e","\u{301}","🇸🇪","👩🏽‍💻","\u{200b}","\u{a0}"]
+    for i in 0..expected.len {
+        item := stream.next().unwrap()
+        assert(item.symbol() == expected[i])
+        assert(item.is_whitespace() == (i == 4))
+        style := base.patch(row)
+        assert(item.get_style() == (if i == 1 || i == 2 { style.patch(leaf) } else { style }))
+        twin := rich.StyledGrapheme::new(&expected[i],item.get_style())
+        assert(item == twin && item.hash() == twin.hash())
+    }
+    assert(stream.next().is_none() && stream.next().is_none())
+    mut count := 0
+    for item in line.spans()[2].styled_graphemes(base) {
+        assert(item.symbol() == expected[count+1] && item.get_style() == base.patch(leaf))
+        count += 1
+    }
+    assert(count == 2)
+    mut seen := 0
+    assert(!line.visit_graphemes(base,&mut seen,fn(count: &mut i32, symbol: &str, style: &tui.Style) -> bool {
+        count += 1
+        if count == 2 { assert(symbol == "\u{301}" && style.removes(.Bold)); return false }
+        true
+    }))
+    assert(seen == 2)
+    for value in ["","\u{a0}","\u{a0} ","\u{200b}","\u{200b} ","\r\n","\u{85}","a"] {
+        mut item := rich.StyledGrapheme::new(&value,base)
+        item.set_style(leaf)
+        assert(item.symbol() == value && item.get_style() == leaf)
+        assert(item.is_whitespace() == (value != "\u{a0}" && value != "\u{200b} " && value != "a"))
+    }
+}
+
+@test fn appending_documents_transfers_lines_and_keeps_the_receivers_style() {
+    for cached in [false,true] {
+        mut first := rich.Text::new([]).styled(tui.ink(.Red)).align(.Right)
+        mut second := rich.Text::raw("a\nbbbb").styled(tui.ink(.Green)).align(.Center)
+        second.line_mut(1).set_style(tui.plain().italic())
+        if !cached { second.line_mut(1).span_mut(0).set_content("秋秋") }
+        first.append(move second)
+        assert(first.width() == 4 && first.height() == 2)
+        assert(first.get_style() == tui.ink(.Red) && first.get_alignment() == .Right)
+        assert(first.lines()[1].get_style().has(.Italic))
+        first.line_mut(1).span_mut(0).set_content("x")
+        first.append(rich.Text::new([]))
+        assert(first.width() == 1)
+        first.append(rich.Text::raw("\nabcdef"))
+        first.push_span(rich.Span::raw("!"))
+        assert(first.width() == 7 && first.height() == 4 && first.to_string() == "a\nx\n\nabcdef!")
+    }
+}
+
 @test fn row_fill_preserves_backgrounds_attributes_and_underlines() {
     for decorated in [false,true] {
         mut frame := tui.Frame::at(tui.Rect{x:4,y:11,w:97,h:3})

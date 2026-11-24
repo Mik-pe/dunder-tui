@@ -22,6 +22,10 @@ style-oracle = ["ratatui/underline-color", "ratatui/palette"]
 name = "styles"
 required-features = ["style-oracle"]
 
+[[example]]
+name = "styled_graphemes"
+required-features = ["style-oracle"]
+
 [dev-dependencies]
 num-rational = "0.4"
 num-bigint = "0.4"

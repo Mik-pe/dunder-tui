@@ -56,4 +56,21 @@ fn main() {
         inspect(&rich.Text::new([rich.Line::raw(value.clone())]))
         inspect(&rich.Text::new([rich.Line::new([rich.Span::raw(value.clone())])]))
     }
+    for empty in [true,false] {
+        for dirty in [true,false] {
+            mut joined := rich.Text::new([]).styled(tui.ink(.Red).bold()).align(.Right)
+            if !empty { joined.push_line(rich.Line::raw("左")); joined.push_line(rich.Line::raw("a")) }
+            mut suffix := rich.Text::new([
+                rich.Line::raw("👩🏽‍💻").align(.Left),
+                rich.Line::new([rich.Span::styled("秋",tui.ink(.Yellow)),rich.Span::raw("B")]).styled(tui.plain().background(.Magenta))
+            ]).styled(tui.ink(.Cyan).italic()).align(.Center)
+            if dirty { suffix.line_mut(1).span_mut(1).set_content("e\u{301}◌") }
+            joined.append(move suffix)
+            inspect(&joined)
+            joined.append(rich.Text::new([]))
+            joined.line_mut(0).span_mut(0).set_content("!")
+            joined.push_span(rich.Span::raw("C"))
+            inspect(&joined)
+        }
+    }
 }
