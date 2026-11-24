@@ -484,6 +484,12 @@ impl Rows {
 fn clip_line(rows: &mut Rows, index: i32, line: &ParagraphLine, limit: i32, alignment: Alignment, scroll: i32) {
     rows.begin(index)
     mut skip := if alignment == .Left || alignment == .Inherit { scroll } else { 0 }
+    full_width := line.before(line.count)
+    if skip == 0 && full_width <= limit {
+        rows.add_segment(&line, 0, line.count)
+        rows.indent(alignment, full_width, limit)
+        return
+    }
     mut columns := 0
     for i in 0..line.count {
         token := line.token(i)

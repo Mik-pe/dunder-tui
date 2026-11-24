@@ -26,6 +26,30 @@ import ..src.material
 import ..src.tailwind
 import ..src.snapshot
 
+@test fn clipped_spans_keep_zero_width_characters_out_of_alignment_and_scroll() {
+    line := rich.Line::new([
+        rich.Span::styled("\u{200b}A\u{200b}", tui.ink(.Cyan)),
+        rich.Span::raw(""),
+        rich.Span::styled("茶\u{200b}B", tui.ink(.Yellow).bold()),
+    ])
+    mut paragraph := rich.Paragraph::from(move line).align(.Center)
+    for width in [4, 5, 8] {
+        mut frame := tui.Frame::new(width, 1)
+        paragraph.render(&mut frame, frame.area())
+        start := width / 2 - 2
+        assert(frame.symbol_at(start, 0).unwrap() == "A")
+        assert(frame.style_at(start, 0).unwrap().get_foreground() == .Some(tui.Color.Cyan))
+        assert(frame.symbol_at(start + 1, 0).unwrap() == "茶")
+        assert(frame.symbol_at(start + 3, 0).unwrap() == "B")
+        assert(frame.style_at(start + 3, 0).unwrap().has(.Bold))
+    }
+    paragraph = paragraph.align(.Left)
+    paragraph.set_scroll(0, 1)
+    mut narrow := tui.Frame::new(3, 1)
+    paragraph.render(&mut narrow, narrow.area())
+    assert(narrow.symbol_at(0, 0).unwrap() == "茶" && narrow.symbol_at(2, 0).unwrap() == "B")
+}
+
 struct Pier { name: string }
 impl rich.IntoText for Pier {
     fn into_text(move self) -> rich.Text {

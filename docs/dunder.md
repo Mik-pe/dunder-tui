@@ -161,6 +161,15 @@ dunder test --locked --offline tests/stdlib_text.ddr
 dunder run --locked --offline tests/pty_handles.ddr
 ```
 
+## Upprepa ett ägt värde
+
+En avgångstavla kan behöva ett antal kopior som bestäms vid körning. I 0.12.0 kräver `[värde; antal]` en konstant längd. När `std.array.resize` fyller en tom array från ett lån klonar den även den första posten. TUI-konstruktorn kan flytta in det sista exemplaret. För 4 096 arrayer med en post om 128 heltal sjönk djupa arraykloner från 4 096 till noll och klonade byte från 2 097 152 till noll. Vid fyra poster sjönk klonerna från 16 384 till 12 288. Båda varianterna gav samma kontrollsumma på macOS ARM64, Linux ARM64 och översatt Linux x86-64. [Mätprogram](../benchmarks/language/repeat_owned.ddr) · [Dunders nästa steg](https://github.com/Mik-pe/dunder/blob/main/docs/next-steps.md#upprepa-ett-ägt-värde-i-en-array)
+
+```sh
+dunder build --locked --offline --runtime-profile benchmarks/language/repeat_owned.ddr -o build/repeat-owned
+for n in 0 1 4; do build/repeat-owned resize "$n"; build/repeat-owned move "$n"; done
+```
+
 ## Tidigare observationer som kunde förklaras
 
 - Ett fast `[string; 2]` accepteras av en funktion som tar `&[]string` med `&names[0..names.len]`. Den historiska E3001-diagnostiken gällde den direkta formen `&names`.

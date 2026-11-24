@@ -412,6 +412,19 @@ cursor.select_cell(.Some((0,1)))
 
 Spara tabell och markering i appens tillstånd. Rita med `departures.render_stateful(&mut frame, area, &mut cursor)`. En `Cell` kan innehålla rik text och spänna över flera kolumner. Ange `row.height` för flerradigt innehåll. Ändra en befintlig cell med `set_cell` och ersätt hela datamängden med `set_rows`. [Tabellprov](docs/parity.md#tabeller-i-080)
 
+Med `repeat` får varje kopia eget innehåll. Här upprepas en stiliserad cell och bara den första kajen stängs. Samma metod finns för spann i en rad, rader i ett dokument och kolumnbredder. [Körbar avgångstavla](benchmarks/manifest_scene.ddr)
+
+```dunder
+import tui.layout as layout
+import tui.text as rich
+
+cell := table.Cell::from(rich.Span::styled("ÖPPEN", tui.ink(.Green)))
+mut kajer := table.Row::repeat(move cell, 4)
+kajer.cells[0] = table.Cell::from(rich.Span::styled("STÄNGD", tui.ink(.Red)))
+bredd: layout.Constraint = .Fill(1)
+mut tavla := table.Table::new([move kajer], bredd.repeat(4))
+```
+
 ## Rik text och radbrytning
 
 Med `import tui.text as rich` kan en rad blanda färger, attribut och breda tecken. Det här stycket kan sparas i appens tillstånd och ritas med `artikel.render(&mut frame, area)`.

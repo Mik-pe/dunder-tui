@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Avgångstavla med 128 rader
+
+Avgångstavlan ger 1 100 jämförda bilder med upprepad rik text och redigerade rader. På en Apple M5 tog skrollning i pseudoterminalen 24/35 µs i Dunder och 35/46 µs i Ratatui (median/p95). [Alla fem arbetslaster, minne och terminalutdata på macOS och Linux](manifest.md)
+
 ## Buffertar och terminaler i 0.24.0
 
 Mätningar på fyra plattformar täcker enkel och stiliserad text vid storleksändring samt fem arbetslaster i körlistan. Den stora bufferten växlar mellan två rektanglar med 1 048 576 celler. [Bildtid, minne, terminalutdata och körinstruktioner](buffer-resize.md)

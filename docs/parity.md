@@ -14,7 +14,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | Övriga widgets | Fristående Clear och Fill med cellvisa symboler, stil och klippning, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, månadskalender med händelser och egna datumstilar, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. Ratatuis båda logotyper och maskot med två ögonfärger. | Se beteendeproven per widget nedan. |
 | Egna widgets och tester | Frame ritar egna och inbyggda widgets med `render_widget` och `render_stateful_widget`. Tillstånd kan uppdateras vid ritning med `run_stateful`. Egna backends kan anslutas till Terminal. TestBackend har skrollhistorik, markör, fem rensningslägen och regionskrollning. | Bredare testning av specialiserade terminalbackends. |
 | Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, markörstyrning från Frame och Terminal, bildräknare, ANSI och Win32. Fast och inbäddad vyport, explicit storleksanpassning, terminalens tecken- och pixelmått, manuell cellutmatning och byte av arbetsbuffert, loggrader, rensning och regionskrollning. Marköråterställning för egna backends samt återhämtning efter skrivfel och uteblivet markörsvar. Regionskrollning och radmatningsbaserad infogning jämförs separat. | Nativ Windows x64 för de senaste ändringarna i logginfogning. |
-| Stabil Rust-integration | Jämförelseprogrammen använder den låsta Rustreferensen. Dunder-appar byggs offline. | Kontrollera Dunder-motsvarigheter till bekvämlighetsmakron, serialisering, cachning och backendval där dessa påverkar appens beteende. |
+| Stabil Rust-integration | Dunders konstruktorer jämförs med alla åtta makron för rik text, tabellrader och layout. Jämförelseprogrammen använder den låsta Rustreferensen. Dunder-appar byggs offline. | Skillnader mellan terminalbackends och exakta gränsfall för layout beskrivs nedan. |
 | Effektivitet och plattformar | Tid, minne, allokeringar och terminalbyte på macOS och Linux. Pseudoterminal på macOS ARM64, Linux ARM64 och nativ Linux x86-64. Win32-prov på Windows Server 2025 x64 och under Wine. | Fler arbetslaster med komplex layout, lägre kostnad för dynamiska färgvärden och likvärdig bildtid på x86-64. |
 
 ### Stabila funktionsflaggor
@@ -25,7 +25,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | `underline-color`, `palette` | Separat understrykningsfärg ingår i cell- och terminalproven. De två palettkonverteringarna från HSL och HSLuv jämförs i stilprovet. |
 | `layout-cache` | `Layout.cache_capacity` styr antal sparade uppdelningar. Layoutproven återanvänder tidigare storlekar efter regelbyten. |
 | `scrolling-regions` | Backendens regionskrollning och reservvägen med radmatning jämförs genom skrollhistorik och terminalutdata. |
-| `macros` | Konstruktorer för spann, rader, text och layout finns. Jämförelse per dokumenterad makroform återstår. |
+| `macros` | Alla åtta makron körs i referensen. Deras tomma, uppräknade, formaterade och upprepade former jämförs med Dunder där respektive makro stöder formen. [Konstruktorprov](#bygg-text-tabellrader-och-layout) |
 | `serde` | Färger, stilar, attribut, celler, diffregler, buffertar, layouter och geometri läses och skrivs med `std.json`. Detsamma gäller testbackenden, widgettillstånden, Tailwind- och Materialpaletter, horisontell och vertikal justering, kanttyper, kantflaggor och utfyllnad. Stilar, celler, buffertar och testterminaler jämförs med och utan `underline-color`. Referensens `Span`, `Line` och `Text` saknar Serde-format. |
 | `crossterm`, `crossterm_0_28`, `crossterm_0_29`, `termina`, `termion`, `termwiz` | Dunder använder POSIX och Win32 direkt. Den låsta Crossterm-referensen och de faktiska terminalproven täcker bland annat ritning, markör och återställning. Skillnader mellan referensens övriga backendval är öppna. |
 | `std`, `portable-atomic`, `default` | Dunder bygger offline med sitt standardbibliotek. `portable-atomic` gäller referensens mål utan atomära typer. `default` väljer kalender, Crossterm, layoutcache, makron och understrykningsfärg. |
@@ -51,6 +51,29 @@ diff -u build/ratatui-colors build/dunder-colors
 ```
 
 Fler körbara prov täcker ändrade bildrader, delade SGR-återställningar, överlappande text, färgade understreck och terminalåterställning. [Bibliotekstester](../tests/suite.ddr) · [Unix-terminal](../tests/posix_terminal.ddr) · [Win32-konsol](../tests/windows_console.ddr) · [Prestandamätningar](../benchmarks/README.md)
+
+### Bygg text, tabellrader och layout
+
+| Ratatui | Dunder |
+| --- | --- |
+| `span!` | `Span::default`, `raw`, `styled` och Dunders formatsträngar |
+| `line!`, `text!` | `Line` och `Text` har `default`, `strings`, `new` och `repeat` |
+| `row!` | `Row::default()` ger höjd noll. `Row::new([])` och `Row::repeat(cell, 0)` har höjd ett. `Cell::from` tar bland annat sträng, spann, rad och dokument. |
+| `constraint!`, `constraints!` | `Constraint` med `Length`, `Min`, `Max`, `Percentage`, `Ratio` och `Fill`, arrayer eller `regel.repeat(antal)` |
+| `horizontal!`, `vertical!` | `Layout::horizontal` och `Layout::vertical` med samma regler |
+
+Provet jämför 740 bilder med 81 992 råa celler över fem ytstorlekar. Det kontrollerar också textbredder, formatering, rad- och kolumnindelning samt mellanrum. Upprepade rader och celler redigeras efter konstruktion. Raderna före och efter en tom tabellrad synliggör skillnaden i höjd. [Dunder](../tests/constructor_reference.ddr) · [Ratatuis åtta makron](../benchmarks/reference/examples/constructors.rs) · [Avgångstavla med 1 100 jämförda bilder](../benchmarks/manifest.md)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/constructor_reference.ddr -o build/constructors
+cargo build --release --locked --offline --manifest-path benchmarks/reference/Cargo.toml \
+  --features macro-oracle --example constructors --target-dir build/reference
+build/reference/release/examples/constructors >build/reference-cells
+build/constructors >build/dunder-cells
+cmp build/reference-cells build/dunder-cells
+dunder run --locked --offline tests/constructor_terminal.ddr
+```
 
 ### Återställ paletter, justering och kanter
 
