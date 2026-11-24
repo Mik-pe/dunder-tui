@@ -84,8 +84,13 @@ impl Span {
     pub fn visit_graphemes<S>(&self, base: tui.Style, state: &mut S, visit: fn(&mut S,&str,&tui.Style) -> bool) -> bool {
         style := base.patch(self.style)
         source := self.content()
+        count := self.count()
+        if count == source.len {
+            for i in 0..count { if !visit(&mut state,&source[i..i+1],&style) { return false } }
+            return true
+        }
         mut end := 0
-        for index in 0..self.count() {
+        for index in 0..count {
             start := visible_start(source,end)
             end = start + self.glyphs.symbol_bytes_at(index)
             if !visit(&mut state,&source[start..end],&style) { return false }

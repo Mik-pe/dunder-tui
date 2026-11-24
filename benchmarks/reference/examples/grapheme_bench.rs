@@ -32,20 +32,20 @@ fn main() {
         let mut samples = Vec::new();
         for n in 0..220 {
             let start = Instant::now();
-            for _ in 0..4 {
+            for _ in 0..16 {
                 sum += scan();
             }
-            let ns = start.elapsed().as_nanos() / 4;
+            let ns = start.elapsed().as_nanos() / 16;
             if n >= 20 {
                 samples.push(ns);
             }
         }
         samples.sort_unstable();
-        assert_eq!(sum, 20_718_720);
+        assert_eq!(sum, 82_874_880);
         println!("ratatui {} {} {sum}", samples[99], samples[189]);
     } else {
         match mode.as_str() {
-            "allocations" => {
+            "count" => {
                 for _ in 0..100 {
                     sum += scan();
                 }
@@ -53,7 +53,7 @@ fn main() {
             "setup" => {}
             _ => panic!("unknown mode"),
         }
-        assert_eq!(sum, if mode == "allocations" { 2_354_400 } else { 0 });
+        assert_eq!(sum, if mode == "count" { 2_354_400 } else { 0 });
         println!("{sum}");
         #[cfg(feature = "allocation-counts")]
         allocation::report();

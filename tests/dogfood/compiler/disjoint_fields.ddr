@@ -1,0 +1,14 @@
+struct Cursor { at: i32 }
+impl Cursor {
+    fn advance(&mut self, value: &string) { self.at += value.len }
+}
+struct Reader { cursor: Cursor, source: &string }
+impl Reader {
+    fn step(&mut self) { self.cursor.advance(self.source) }
+}
+fn main() {
+    s := "abc"
+    mut r := Reader { cursor: Cursor { at: 0 }, source: &s }
+    r.step()
+    assert(r.cursor.at == 3 && s == "abc")
+}

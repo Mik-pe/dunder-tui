@@ -208,12 +208,17 @@ jobs:
           if [[ "$RUNNER_OS" == Linux ]]; then
             build/dunder build --locked --offline --runtime-profile benchmarks/graphemes.ddr -o build/traverse-profile
             for route in iterator visitor; do
-              for mode in setup allocations; do
+              for mode in setup count; do
                 build/traverse-profile "$route" "$mode" 2>"build/$route-$mode.json"
                 jq -c --arg run "$route-$mode" '{run:$run,counters:.counters}' "build/$route-$mode.json"
               done
             done
           fi
+          cargo build --release --locked --offline --manifest-path "$manifest" --features allocation-counts --example grapheme_bench --target-dir build/rust
+          for mode in setup count; do
+            echo "Ratatui traversal $mode"
+            "$ref/grapheme_bench$EXT" "$mode"
+          done
       - name: Build the earlier library revision for comparison
         if: inputs.before != ''
         env:
