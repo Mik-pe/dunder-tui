@@ -136,6 +136,20 @@ for exe in themes buffer_json backend_json; do
 done
 ```
 
+### Jämför testterminalens skärm, skrollhistorik och markör
+
+Ratatuis sex `assert_*`-metoder bestämmer utfallet i 167 fall. De 147 buffertfallen körs i Dunder med både `Frame` och `Buffer`. Av 314 anrop godkändes 98. De övriga 216 gav det förväntade felet för cell, geometri, historik eller markör. Utfallet stämde på macOS ARM64, Linux ARM64, översatt Linux x86-64 och Win64 under Wine. [Testprogram](../tests/backend_assertions.ddr) · [Ratatui-referens](../benchmarks/reference/examples/backend_assertions.rs)
+
+Provet jämför även celler som döljs av ett brett tecken. En oskriven cell och ett uttryckligt mellanslag kan vara lika, medan exempelvis olika understrykningsfärger eller cellflaggor gör att testet visar första avvikande koordinat.
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/backend_assertions.ddr -o build/assertions
+cargo build --locked --offline --release --manifest-path benchmarks/reference/Cargo.toml --features backend-oracle --example backend_assertions --target-dir build/reference
+build/reference/release/examples/backend_assertions >build/assertions.tsv
+build/assertions --verify build/assertions.tsv
+```
+
 ### Återställ testterminalen
 
 `testing.TestBackend` läser och skriver Ratatuis skärmbuffert, skrollhistorik, markörens synlighet och dess två 16-bitarskoordinater. `testing.SavedBackend` kan även läsa en rå ögonblicksbild med avvikande geometri. För att använda den som terminal med `to_backend()` måste båda buffertarna börja i origo, ha rätt cellantal och samma radbredd. Markören kan ligga utanför skärmen. [Dunder-API](../src/testing.ddr) · [Ratatuis implementation](https://github.com/ratatui/ratatui/blob/ratatui-v0.30.2/ratatui-core/src/backend/test.rs)

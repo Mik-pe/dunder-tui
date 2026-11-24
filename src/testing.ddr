@@ -1,3 +1,4 @@
+capability stdio
 import .tui
 import .geometry
 import .json_format
@@ -6,6 +7,7 @@ import .text as rich
 import std.cmp as cmp
 import std.json
 import std.map
+import sys
 
 const HISTORY_LIMIT: i32 = 65535
 
@@ -185,6 +187,84 @@ impl snapshot.Read for TestBackend {
     }
 }
 
+pub trait ExpectedLine {
+    fn expected_width(&self) -> i32
+    fn write_expected(&self, frame: &mut tui.Frame, area: tui.Rect)
+}
+
+impl ExpectedLine for rich.Line {
+    fn expected_width(&self) -> i32 { self.width() }
+    fn write_expected(&self, frame: &mut tui.Frame, area: tui.Rect) { _ := self.write(&mut frame, area) }
+}
+
+impl ExpectedLine for rich.Span {
+    fn expected_width(&self) -> i32 { self.width() }
+    fn write_expected(&self, frame: &mut tui.Frame, area: tui.Rect) { _ := self.write(&mut frame, area) }
+}
+
+impl ExpectedLine for string {
+    fn expected_width(&self) -> i32 { rich.Line::raw(self.clone()).width() }
+    fn write_expected(&self, frame: &mut tui.Frame, area: tui.Rect) { _ := rich.Line::raw(self.clone()).write(&mut frame, area) }
+}
+
+fn frame_from_lines<L>(lines: &L) -> tui.Frame {
+    mut width := 0
+    for line in lines { width = cmp.max<i32>(width, line.expected_width()) }
+    mut screen := tui.Frame::new(i32(u16(width)), i32(u16(lines.len)))
+    for y in 0..lines.len {
+        lines[y].write_expected(&mut screen, tui.Rect::new(0, i32(u16(y)), screen.area().w, 1))
+    }
+    move screen
+}
+
+fn assertion_failure(message: string) {
+    if target_is("windows") { _ := sys.eprint(message) }
+    panic(message)
+}
+
+fn assert_area(name: string, actual: tui.Rect, expected: tui.Rect) {
+    if actual != expected {
+        assertion_failure(f"{name} area differs\nexpected {json.to_string(&expected).unwrap()}\nactual   {json.to_string(&actual).unwrap()}")
+    }
+}
+
+fn cell_failure(name: string, x: i32, y: i32, actual: &tui.RawCell, expected: &tui.RawCell) {
+    assertion_failure(f"{name} differs at ({x}, {y})\nexpected {json.to_string(&expected).unwrap()}\nactual   {json.to_string(&actual).unwrap()}")
+}
+
+pub trait ExpectedBuffer {
+    fn expected_area(&self) -> tui.Rect
+    fn assert_expected_row(&self, name: string, actual: &tui.Frame, actual_y: i32, y: i32)
+}
+
+impl ExpectedBuffer for tui.Frame {
+    fn expected_area(&self) -> tui.Rect { self.area() }
+    fn assert_expected_row(&self, name: string, actual: &tui.Frame, actual_y: i32, y: i32) {
+        match actual.first_row_difference(actual_y, &self, y) {
+            .None => {},
+            .Some(column) => {
+                x := self.area().x + column
+                cell_failure(name, x, y, &actual.raw_cell_at(actual.area().x + column, actual_y).unwrap(), &self.raw_cell_at(x, y).unwrap())
+            },
+        }
+    }
+}
+
+impl ExpectedBuffer for tui.Buffer {
+    fn expected_area(&self) -> tui.Rect {
+        if i64(self.content.len) != self.area.cell_count() { assertion_failure("expected buffer area and cell count differ") }
+        self.area
+    }
+    fn assert_expected_row(&self, name: string, actual: &tui.Frame, actual_y: i32, y: i32) {
+        start := (y - self.area.y) * self.area.w
+        for col in 0..self.area.w {
+            a := actual.raw_cell_at(actual.area().x + col, actual_y).unwrap()
+            e := &self.content[start + col]
+            if a != e { cell_failure(name, self.area.x + col, y, &a, &e) }
+        }
+    }
+}
+
 impl TestBackend {
     pub fn new(width: i32, height: i32) -> Self {
         screen := tui.Frame::new(width,height)
@@ -193,13 +273,32 @@ impl TestBackend {
     }
 
     pub fn with_lines(lines: &[]rich.Line) -> Self {
-        mut width := 0
-        for line in lines { width = cmp.max<i32>(width,line.width()) }
-        mut backend := Self::new(i32(u16(width)),i32(u16(lines.len)))
-        for y in 0..lines.len {
-            _ := lines[y].write(&mut backend.screen,tui.Rect::new(0,i32(u16(y)),backend.screen.area().w,1))
-        }
-        move backend
+        screen := frame_from_lines(&lines)
+        history := Scrollback::new(screen.area().w)
+        Self { screen:move screen, history:move history, x:0, y:0, visible:false, scrolling_regions:true }
+    }
+
+    pub fn assert_buffer<T: ExpectedBuffer>(&self, expected: &T) {
+        area := self.screen.area()
+        assert_area("screen", area, expected.expected_area())
+        for y in area.y..area.bottom() { expected.assert_expected_row("screen", &self.screen, y, y) }
+    }
+
+    pub fn assert_scrollback<T: ExpectedBuffer>(&self, expected: &T) {
+        area := tui.Rect::new(0, 0, self.screen.area().w, self.history.len())
+        assert_area("scrollback", area, expected.expected_area())
+        for y in 0..area.h { expected.assert_expected_row("scrollback", self.history.row(y), 0, y) }
+    }
+
+    pub fn assert_buffer_lines<L>(&self, lines: &L) { self.assert_buffer(&frame_from_lines(&lines)) }
+    pub fn assert_scrollback_lines<L>(&self, lines: &L) { self.assert_scrollback(&frame_from_lines(&lines)) }
+
+    pub fn assert_scrollback_empty(&self) {
+        if self.history.len() != 0 { assertion_failure(f"expected empty scrollback, found {self.history.len()} rows") }
+    }
+
+    pub fn assert_cursor_position(&self, x: i32, y: i32) {
+        if self.x != x || self.y != y { assertion_failure(f"expected cursor ({x}, {y}), found ({self.x}, {self.y})") }
     }
 
     pub fn buffer(&self) -> &tui.Frame from self { &self.screen }

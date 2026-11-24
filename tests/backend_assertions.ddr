@@ -1,0 +1,57 @@
+capability filesystem, process, stdio
+import ..src.testing
+import ..src.tui
+import std.json
+import std.process
+import std.text
+import sys
+
+fn verify(path: string) -> i32 {
+    mut passed := 0
+    mut rejected := 0
+    for line in text.split(sys.read(path).unwrap(), "\n") {
+        if line.len == 0 { continue }
+        fields := text.split(line, "\t")
+        assert(fields.len == 5)
+        outcome := process.Command::new(sys.arg(0), [fields[0].clone(), fields[1].clone(), fields[2].clone()]).exec()
+        if fields[3] == "pass" {
+            if !outcome.succeeded() || text.trim(outcome.stdout_text()) != "OK" {
+                _ := sys.eprint(f"case {passed+rejected} {fields[0]} should pass\n{outcome.stderr_text()}")
+                return 1
+            }
+            passed += 1
+        } else {
+            if outcome.succeeded() || !text.contains(outcome.stderr_text(), fields[4]) {
+                _ := sys.eprint(f"case {passed+rejected} {fields[0]} expected diagnostic '{fields[4]}'\n{outcome.stderr_text()}")
+                return 1
+            }
+            rejected += 1
+        }
+    }
+    assert(passed > 0 && rejected > 0)
+    print(f"{passed} matched, {rejected} rejected with the expected diagnostic")
+    0
+}
+
+fn main() -> i32 {
+    if sys.arg_count() == 3 && sys.arg(1) == "--verify" { return verify(sys.arg(2)) }
+    if sys.arg_count() != 4 { return 2 }
+    backend := json.from_str<testing.TestBackend>(sys.arg(2)).unwrap()
+    value := sys.arg(3)
+    match sys.arg(1) {
+        "screen" => { backend.assert_buffer(&json.from_str<tui.Frame>(value).unwrap()) },
+        "history" => { backend.assert_scrollback(&json.from_str<tui.Frame>(value).unwrap()) },
+        "raw-screen" => { backend.assert_buffer(&json.from_str<tui.Buffer>(value).unwrap()) },
+        "raw-history" => { backend.assert_scrollback(&json.from_str<tui.Buffer>(value).unwrap()) },
+        "lines" => { backend.assert_buffer_lines(&json.from_str<[]string>(value).unwrap()) },
+        "history-lines" => { backend.assert_scrollback_lines(&json.from_str<[]string>(value).unwrap()) },
+        "empty" => { backend.assert_scrollback_empty() },
+        "cursor" => {
+            point := json.from_str<[]i32>(value).unwrap()
+            backend.assert_cursor_position(point[0], point[1])
+        },
+        _ => { return 2 },
+    }
+    print("OK")
+    0
+}

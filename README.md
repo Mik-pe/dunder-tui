@@ -176,7 +176,6 @@ Samma ritfunktion går att prova utan en ansluten terminal.
 ```dunder
 import tui
 import tui.testing as testing
-import std.json
 
 fn draw(frame: &mut tui.Frame, text: &mut string) {
     frame.label(frame.area(),text)
@@ -187,15 +186,20 @@ fn main() {
     mut terminal := tui.Terminal<testing.TestBackend>::new(testing.TestBackend::new(8,2))
     mut text := "Hej"
     assert(terminal.draw(&mut text,draw).is_ok())
-    assert(terminal.backend().buffer().line(0) == "Hej     ")
+    terminal.backend().assert_buffer_lines(&["Hej     ", "        "])
+    terminal.backend().assert_scrollback_empty()
     assert(terminal.backend().cursor_visible())
-    assert(terminal.backend().cursor_position() == (2,0))
+    terminal.backend().assert_cursor_position(2,0)
 }
 ```
+
+`assert_buffer_lines` och `assert_scrollback_lines` tar strängar, `Span` eller `Line`. För byggda bilder tar `assert_buffer` och `assert_scrollback` både `Frame` och `Buffer`. Ett fel visar vilken cell som skiljer sig och vad testet förväntade sig, även när skillnaden bara gäller stil eller diffregel. [Körbara jämförelser](tests/backend_assertions.ddr)
 
 Med `std.json` kan ett integrationstest spara skärm, skrollhistorik och markör och fortsätta rita från samma tillstånd. `testing.TestBackend::with_lines` bygger en testskärm från färdiga textrader. [Körbart exempel](tests/saved_backend.ddr)
 
 ```dunder
+import std.json
+
 saved := json.to_string(&terminal.backend()).unwrap()
 device := json.from_str<testing.TestBackend>(saved).unwrap()
 mut replay := tui.Terminal<testing.TestBackend>::new(move device)

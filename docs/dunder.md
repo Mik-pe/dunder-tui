@@ -1,5 +1,11 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Typinferens och lån i testterminalens API
+
+I 0.12.1 får `total(&[a, b])` E3003 när en metod tar `&[]T`. Med `total<Item>(&[a, b])` blir summan 5. Testterminalens radkontroll tar hela samlingstypen som parameter så att det räcker att skriva `assert_buffer_lines(&["hej"])`. [Minimiprov](../tests/dogfood/compiler/infer_array_argument.ddr)
+
+En metod som lämnar `&str from self` kan låna ett strängfält direkt. Om den i stället lånar en sträng ur samma posts `Option<string>` ger matchgrenen E4003. Båda möjliga returvärdena tillhör mottagaren. Celljämförelsen jämför därför symbolerna inne i matchgrenarna. [Minimiprov med båda grenarna](../tests/dogfood/compiler/borrow_optional_field.ddr)
+
 ## Nollställning och radjämförelse i 0.12.1
 
 För en bild med 96 × 24 celler tog två anrop till `std.bytes.zero_memory` tillsammans 28,64 µs på översatt Linux x86-64. En Dunder-loop över de två heltalsarrayerna tog 2,94 µs. Att jämföra alla rader tog 44,49 µs med `std.bytes.equal_memory` och 20,57 µs med typade index. På macOS ARM64 tog nollställningen 0,92 respektive 1,92 µs och radjämförelserna 1,17 respektive 3,99 µs. Varje program kontrollerar samma 45 120 lika rader vid bredderna 95, 96 och 97. Tiderna är medianer av fem processmedianer. Bygg provet offline och kör med argumentet `memory` eller `cells`. [Körbart mätprogram](../benchmarks/language/cell_planes.ddr) · [Alla mätningar](../benchmarks/results/cell-planes-0.12.1.tsv)

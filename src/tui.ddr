@@ -18,6 +18,7 @@ import .json_format
 import .snapshot
 import .geometry
 import std.json
+import std.hash
 import std.parse as parse
 import std.text as strings
 
@@ -398,6 +399,7 @@ fn decoration_bits(underline: i32, modifiers: i32) -> i64 {
 
 fn detail_underline(details: i64) -> i32 { i32(details.bit_and(0x3ffffff)) - 1 }
 
+@derive(Hash)
 pub struct Rect { x: i32, y: i32, w: i32, h: i32 }
 
 impl json.Encode for Rect {
@@ -671,11 +673,40 @@ impl RawCell {
     pub fn style(&self) -> Style {
         Style { fg:self.fg.encoded(), bg:self.bg.encoded(), underline:self.underline_color.encoded(), added:i32(self.modifier.bits), removed:0 }
     }
+    pub fn symbol_text(&self) -> string {
+        match &self.symbol { .Some(value) => value.clone(), .None => " ", }
+    }
+    pub fn cell_width(&self) -> i32 {
+        match &self.diff_option { .ForcedWidth(w) => w, _ => self.columns(), }
+    }
     fn empty_tail(&self) -> bool {
         self.symbol.is_none() && self.fg == .Default && self.bg == .Default && self.underline_color == .Default && self.modifier.bits == 0
     }
     fn columns(&self) -> i32 {
         match &self.symbol { .Some(value) => width.cell_columns(value), .None => 1, }
+    }
+}
+
+impl Default for RawCell { fn default() -> Self { Self::empty() } }
+
+impl Eq for RawCell {
+    fn eq(&self, other: &Self) -> bool {
+        if self.skip != other.skip || self.diff_option != other.diff_option || self.style() != other.style() { return false }
+        match &self.symbol {
+            .None => match &other.symbol { .Some(b) => b == " ", .None => true, },
+            .Some(a) => match &other.symbol { .Some(b) => a == b, .None => a == " ", },
+        }
+    }
+}
+
+impl Hash for RawCell {
+    fn hash(&self) -> u64 {
+        mut state := hash.Hasher::new()
+        match &self.symbol { .Some(value) => { state.write_str(value) }, .None => { state.write_str(" ") }, }
+        state.write_u64(self.style().hash())
+        state.write_u64(self.diff_option.hash())
+        state.write_u64(self.skip.hash())
+        state.finish()
     }
 }
 
@@ -722,6 +753,7 @@ impl snapshot.Read for RawCell {
     }
 }
 
+@derive(Eq, Hash)
 pub struct Buffer { area: Rect, content: []RawCell }
 
 impl json.Encode for Buffer {
@@ -848,6 +880,35 @@ impl Frame {
         .Some(self.raw_cell(self.index(x,y)))
     }
 
+    pub fn first_row_difference(&self, y: i32, other: &Frame, other_y: i32) -> Option<i32> {
+        width := if y >= self.bounds.y && y < self.bounds.bottom() { self.bounds.w } else { 0 }
+        other_width := if other_y >= other.bounds.y && other_y < other.bounds.bottom() { other.bounds.w } else { 0 }
+        n := cmp.min<i32>(width, other_width)
+        if n > 0 {
+            start := self.index(self.bounds.x, y)
+            old := other.index(other.bounds.x, other_y)
+            if self.packed_cells() && other.packed_cells() {
+                for x in 0..n {
+                    a := self.glyphs[start+x]
+                    b := other.glyphs[old+x]
+                    if self.styles[start+x] != other.styles[old+x] || (a != b && !equivalent_spaces(a,b)) { return .Some(x) }
+                }
+            } else {
+                for x in 0..n {
+                    i := start+x
+                    j := old+x
+                    if self.stored_option(i) != other.stored_option(j) || !self.same_symbol_at(i,&other,j) { return .Some(x) }
+                    a := if self.glyphs[i] < 0 { i64(0) } else { self.styles[i] }
+                    b := if other.glyphs[j] < 0 { i64(0) } else { other.styles[j] }
+                    if !self.equal_style_keys(a,&other,b) { return .Some(x) }
+                }
+            }
+        }
+        if width != other_width { .Some(n) } else { .None }
+    }
+
+    fn packed_cells(&self) -> bool { self.row_flags.len == 0 && self.decorations.len == 0 && self.cluster_cells.len == 0 }
+
     fn store_raw(&mut self, i: i32, cell: &RawCell, span: i32) {
         brush := self.encode(cell.style())
         match &cell.symbol {
@@ -934,8 +995,7 @@ impl DiffScan {
         full := current.bounds != previous.bounds
         precise := current.row_flags.len > 0 || previous.row_flags.len > 0
         Self { at:0, start:0, end:0, cached:-1, trailing:0, limit:current.glyphs.len, force:false, full:full,
-            precise:precise, packed:!precise && current.decorations.len == 0 && previous.decorations.len == 0 &&
-                current.cluster_cells.len == 0 && previous.cluster_cells.len == 0,
+            precise:precise, packed:current.packed_cells() && previous.packed_cells(),
             floor:if full { i64(0) } else { current.shared_style_floor(&previous) } }
     }
 
@@ -1220,8 +1280,10 @@ impl Frame {
     }
 
     fn same_style(&self, previous: &Frame, i: i32) -> bool {
-        key := self.styles[i]
-        other := previous.styles[i]
+        self.equal_style_keys(self.styles[i], &previous, previous.styles[i])
+    }
+
+    fn equal_style_keys(&self, key: i64, previous: &Frame, other: i64) -> bool {
         if key >= 0 || other >= 0 { return key == other }
         current := i32(-1-key)
         prior := i32(-1-other)
@@ -2142,14 +2204,18 @@ impl Frame {
     }
 
     fn same_symbol(&self, previous: &Frame, i: i32) -> bool {
+        self.same_symbol_at(i,&previous,i)
+    }
+
+    fn same_symbol_at(&self, i: i32, previous: &Frame, j: i32) -> bool {
         a := self.normalized_symbol(i)
-        b := previous.normalized_symbol(i)
+        b := previous.normalized_symbol(j)
         if a == b {
-            if a == CLUSTER-32 || a == ZERO_CLUSTER-32 { return self.clusters[i] == previous.clusters[i] }
+            if a == CLUSTER-32 || a == ZERO_CLUSTER-32 { return self.clusters[i] == previous.clusters[j] }
             return true
         }
         if a == CLUSTER-32 || a == ZERO_CLUSTER-32 || b == CLUSTER-32 || b == ZERO_CLUSTER-32 {
-            return self.symbol_value(i,a) == previous.symbol_value(i,b)
+            return self.symbol_value(i,a) == previous.symbol_value(j,b)
         }
         false
     }

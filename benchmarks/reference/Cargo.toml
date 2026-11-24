@@ -39,6 +39,10 @@ name = "palette_json"
 required-features = ["theme-oracle"]
 
 [[example]]
+name = "backend_assertions"
+required-features = ["backend-oracle"]
+
+[[example]]
 name = "backend_json"
 required-features = ["serde-backend"]
 

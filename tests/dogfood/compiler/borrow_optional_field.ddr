@@ -1,0 +1,16 @@
+struct Label { symbol: Option<string>, fallback: string }
+
+impl Label {
+    fn text(&self) -> &str from self {
+        match &self.symbol {
+            .Some(value) => value.as_str(),
+            .None => self.fallback.as_str(),
+        }
+    }
+}
+
+fn main() {
+    first := Label { symbol: .Some("茶"), fallback: " " }
+    blank := Label { symbol: .None, fallback: " " }
+    assert(first.text() == "茶" && blank.text() == " ")
+}
