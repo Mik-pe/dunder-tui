@@ -10,6 +10,10 @@ on:
         type: string
         required: false
         description: Compare this workload with an earlier library commit on each native x64 host (full SHA)
+      release_gallery:
+        type: boolean
+        default: false
+        description: Exercise the published motion executable for the version in dunder.toml
 
 permissions: {}
 
@@ -92,6 +96,39 @@ jobs:
           build/dunder$EXT build --locked --offline "tests/$PROBE.ddr" -o "build/console$EXT"
           build/console$EXT
           echo "$PROBE passed on $RUNNER_OS $RUNNER_ARCH"
+      - name: Compare animated canvas pixels, styles and frame diffs
+        if: runner.os == 'Linux'
+        run: |
+          compiler="$PWD/build/dunder"
+          cd examples/motion
+          "$compiler" test --locked --offline
+      - name: Drive the published gallery in a native terminal
+        if: inputs.release_gallery
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' dunder.toml)
+          base="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/v$version"
+          if [[ "$RUNNER_OS" == Windows ]]; then target=x86_64-windows; suffix=zip
+          else target=x86_64-linux; suffix=tar.gz; fi
+          folder="dunder-tui-$version-$target"
+          archive="$folder.$suffix"
+          mkdir -p build/release
+          (
+            cd build/release
+            curl -fsSL "$base/$archive" -o "$archive"
+            curl -fsSL "$base/SHA256SUMS" -o SHA256SUMS
+            awk -v name="$archive" '$2 == name' SHA256SUMS | sha256sum --check
+            if [[ "$suffix" == zip ]]; then unzip -qo "$archive"; else tar -xzf "$archive"; fi
+          )
+          app="$PWD/build/release/$folder/motion$EXT"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            app=$(cygpath -aw "$app")
+            cd "$SOURCE_ROOT"
+            build/console.exe "$app"
+          else
+            build/dunder build --locked --offline tests/motion_terminal.ddr -o build/motion-test
+            build/motion-test "$app"
+          fi
+          echo "All ten published gallery scenes and terminal restoration passed on $RUNNER_OS $RUNNER_ARCH"
       - name: Check native child process startup
         if: runner.os == 'Windows'
         run: |

@@ -1,0 +1,27 @@
+capability unsafe, stdio, process
+import .terminal_driver as driver
+import sys
+
+fn exercise(master:i32, slave:i32, screen:&mut driver.Screen) -> bool {
+    titles := ["Polarnatt","Prisma","Koidammen","Händelsehorisont","Harmonograf","Efterglöd","Medusa","Tesserakt","Glödbädd","Drivande atlas"]
+    unsafe {
+        if !driver.wait_for(master,&mut screen,0,titles[0],"\x1b[?1049h") { return false }
+        if !driver.send(master," ") || !driver.wait_for(master,&mut screen,screen.h-1,"spela","") { return false }
+        for i in 1..titles.len {
+            if !driver.send(master,"\x1b[C") || !driver.wait_for(master,&mut screen,0,titles[i],"38;2;") { return false }
+        }
+        if !driver.send(master,"\x1b[C") || !driver.wait_for(master,&mut screen,0,titles[0],"") { return false }
+        if !driver.send(master," ") || !driver.wait_for(master,&mut screen,screen.h-1,"pausa","") { return false }
+        if !driver.wait_for(master,&mut screen,0,titles[0],"38;2;") { return false }
+        if !driver.send(master,"q") || !driver.wait_for(master,&mut screen,0,"","\x1b[?1049l") { return false }
+    }
+    true
+}
+
+fn main() -> i32 {
+    if sys.arg_count() == 2 && (target_is("macos") || target_is("linux")) {
+        unsafe { if driver.test(sys.arg(1),64,18,exercise) { print("10 gallery scenes, pause, play and terminal restoration OK"); return 0 } }
+    }
+    _ := sys.eprint("Run on macOS or Linux with the motion executable as argument.")
+    1
+}

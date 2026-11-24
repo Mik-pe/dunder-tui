@@ -11,6 +11,8 @@ import ..src.layout
 import ..src.list as lists
 import ..src.widgets as ui
 import ..src.text as rich
+import std.sys.windows as wide
+import std.text as strings
 import sys
 
 @extern("kernel32.dll", "FreeConsole")
@@ -40,6 +42,14 @@ unsafe fn read_attr(handle: ptr, data: ptr, count: u32, coord: u32, read: ptr) -
 unsafe fn set_window(handle: ptr, absolute: i32, rect: ptr) -> i32
 @extern("kernel32.dll", "WriteConsoleOutputCharacterW")
 unsafe fn stamp(handle: ptr, data: ptr, count: u32, coord: u32, written: ptr) -> i32
+@extern("kernel32.dll", "CreateProcessW")
+unsafe fn start_process(path: ptr, command: ptr, process_attrs: ptr, thread_attrs: ptr, inherit: i32, flags: u32, environment: ptr, directory: ptr, startup: ptr, result: ptr) -> i32
+@extern("kernel32.dll", "WaitForSingleObject")
+unsafe fn wait_process(process: ptr, milliseconds: u32) -> u32
+@extern("kernel32.dll", "GetExitCodeProcess")
+unsafe fn exit_code(process: ptr, code: ptr) -> i32
+@extern("kernel32.dll", "TerminateProcess")
+unsafe fn stop_process(process: ptr, code: u32) -> i32
 
 struct Probe { step: i32, failure: i32, width: i32, input: ptr, started: bool }
 
@@ -305,6 +315,57 @@ unsafe fn embedded(out: ptr) -> i32 {
     0
 }
 
+unsafe fn wait_for_gallery_row(child: ptr, bottom: bool, expected: string) -> bool {
+    device := wide.path("CONOUT$")
+    for _ in 0..250 {
+        if wait_process(child,20) != 258 { return false }
+        screen := open_file(addr(&device[0]),0xc0000000,3,ptr(0),3,0,ptr(0))
+        if usize(screen) == usize(0xffffffffffffffff) { continue }
+        mut bounds: [i16;11] = [0;11]
+        mut units: [u16;128] = [0;128]
+        mut read := u32(0)
+        mut found := false
+        if info(screen,addr(&mut bounds[0])) != 0 {
+            row := if bottom { bounds[8] } else { bounds[6] }
+            at := u32(bounds[5]).bit_or(u32(row).shl(16))
+            count := i32(bounds[7])-i32(bounds[5])+1
+            if read_text(screen,addr(&mut units[0]),u32(if count < 128 { count } else { 128 }),at,addr(&mut read)) != 0 {
+                found = strings.contains(wide.text(addr(&units[0]),i32(read)),expected)
+            }
+        }
+        _ := close_handle(screen)
+        if found { return true }
+    }
+    false
+}
+
+unsafe fn exercise_gallery(program: string, input: ptr) -> i32 {
+    path := wide.path(program)
+    mut command := wide.path("\"" + program + "\"")
+    mut startup: [u64;13] = [0;13]
+    startup[0] = 104
+    mut process: [u64;3] = [0;3]
+    if start_process(addr(&path[0]),addr(&mut command[0]),ptr(0),ptr(0),0,0,ptr(0),ptr(0),addr(&startup[0]),addr(&mut process[0])) == 0 { return 120 }
+    child := ptr(usize(process[0]))
+    _ := close_handle(ptr(usize(process[1])))
+    defer {
+        if wait_process(child,0) == 258 { _ := stop_process(child,124); _ := wait_process(child,5000) }
+        _ := close_handle(child)
+    }
+    titles := ["Polarnatt","Prisma","Koidammen","Händelsehorisont","Harmonograf","Efterglöd","Medusa","Tesserakt","Glödbädd","Drivande atlas"]
+    if !wait_for_gallery_row(child,false,titles[0]) { return 121 }
+    if !push_key(input,32,32) || !wait_for_gallery_row(child,true,"spela") { return 122 }
+    for i in 1..titles.len {
+        if !push_key(input,39,0) || !wait_for_gallery_row(child,false,titles[i]) { return 130+i }
+    }
+    if !push_key(input,39,0) || !wait_for_gallery_row(child,false,titles[0]) { return 123 }
+    if !push_key(input,32,32) || !wait_for_gallery_row(child,true,"pausa") { return 124 }
+    if !push_key(input,81,113) || wait_process(child,5000) != 0 { return 125 }
+    mut code := u32(0)
+    if exit_code(child,addr(&mut code)) == 0 || code != 0 { return 126 }
+    0
+}
+
 fn verify() -> i32 {
     unsafe {
         _ := detach()
@@ -322,11 +383,16 @@ fn verify() -> i32 {
         mut sentinel: u16 = 35
         mut n: u32 = 0
         if stamp(stdout, addr(&sentinel), 1, 0, addr(&mut n)) == 0 || n != 1 { return 19 }
-        mut probe := Probe { step: 0, failure: 0, width: 0, input: stdin, started: false }
-        result := tui.animate(&mut probe, 60, draw, update, tick)
-        if result.is_err() { return 15 }
-        if probe.failure != 0 { return probe.failure }
-        if probe.step != 3 { return 16 }
+        if sys.arg_count() == 2 {
+            gallery := exercise_gallery(sys.arg(1),stdin)
+            if gallery != 0 { return gallery }
+        } else {
+            mut probe := Probe { step: 0, failure: 0, width: 0, input: stdin, started: false }
+            result := tui.animate(&mut probe, 60, draw, update, tick)
+            if result.is_err() { return 15 }
+            if probe.failure != 0 { return probe.failure }
+            if probe.step != 3 { return 16 }
+        }
         mut new_in: u32 = 0
         mut new_out: u32 = 0
         if mode(stdin, addr(&mut new_in)) == 0 || mode(stdout, addr(&mut new_out)) == 0 { return 17 }

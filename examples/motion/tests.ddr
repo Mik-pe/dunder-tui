@@ -1,3 +1,4 @@
+import tui
 import tui.canvas as c
 import .scenes
 
@@ -18,6 +19,22 @@ import .scenes
             if a.pixels[j] != a.pixels[0] { colored += 1 }
         }
         assert(changed > 20 && colored > 100)
+        mut previous := tui.Frame::new(a.w,a.h/2)
+        mut current := tui.Frame::new(b.w,b.h/2)
+        a.render(&mut previous,previous.area())
+        b.render(&mut current,current.area())
+        mut changed_cells := 0
+        for y in 0..current.area().h {
+            for x in 0..b.w {
+                top := 2*y*b.w+x
+                bottom := top+b.w
+                style := current.style_at(x,y).unwrap()
+                assert(style.get_foreground() == .Some(tui.rgb(b.pixels[top])))
+                assert(style.get_background() == .Some(tui.rgb(b.pixels[bottom])))
+                if a.pixels[top] != b.pixels[top] || a.pixels[bottom] != b.pixels[bottom] { changed_cells += 1 }
+            }
+        }
+        assert(current.diff_positions(&previous).unwrap().len == changed_cells)
         mut tiny := c.Canvas::new(1, 2, 0)
         render(&mut tiny, 20.0)
     }
