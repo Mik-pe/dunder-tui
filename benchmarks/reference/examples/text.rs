@@ -82,6 +82,57 @@ fn overflow(p: &Paragraph, w: u16) -> Option<u16> {
 }
 fn main() {
     let mut input = io::stdin().lock().lines();
+    if std::env::args().nth(1).as_deref() == Some("--emoji") {
+        let corpus =
+            std::fs::read_to_string(std::env::args().nth(2).expect("path to emoji corpus"))
+                .unwrap();
+        let mut count = 0;
+        let mut errors = 0;
+        for row in corpus.lines() {
+            let symbol: String = row
+                .split_whitespace()
+                .map(|s| char::from_u32(u32::from_str_radix(s, 16).unwrap()).unwrap())
+                .collect();
+            let glyphs = Span::raw(&symbol)
+                .styled_graphemes(Style::default())
+                .count();
+            let span = Span::from(format!("{symbol}!")).red().bold();
+            let widths = format!("{glyphs} {} {}", symbol.cell_width(), span.width());
+            let mut buf = Buffer::empty(Rect::new(0, 0, 12, 8));
+            for cell in &mut buf.content {
+                cell.set_symbol(".").set_fg(Color::Cyan);
+            }
+            for (y, w) in [1, 2, 3, 10].into_iter().enumerate() {
+                (&span).render(Rect::new(1, y as u16, w, 1), &mut buf);
+                buf.set_stringn(
+                    1,
+                    y as u16 + 4,
+                    format!("K{symbol}!"),
+                    usize::from(w),
+                    span.style,
+                );
+            }
+            let actual = input.next().unwrap().unwrap();
+            let frame = input.next().unwrap().unwrap();
+            if actual != widths || frame != snapshot(&buf) {
+                if errors < 12 {
+                    eprintln!(
+                        "{row}: Dunder {actual}, Ratatui {widths}, frame matches {}",
+                        frame == snapshot(&buf)
+                    );
+                }
+                errors += 1;
+            }
+            count += 1;
+        }
+        assert!(count > 0, "empty sequence corpus");
+        assert!(input.next().is_none());
+        assert_eq!(errors, 0);
+        println!(
+            "{count} emoji sequences match Ratatui in width, grapheme count and styled cells at four clipping widths"
+        );
+        return;
+    }
     if std::env::args().nth(1).as_deref() == Some("--widths") {
         let encoded = input.next().unwrap().unwrap();
         let mut widths = encoded.bytes();

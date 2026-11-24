@@ -368,9 +368,18 @@ impl DiffScan {
             floor:if full { i64(0) } else { current.shared_style_floor(&previous) } }
     }
 
-    fn next_cell(&mut self, frame: &Frame, previous: &Frame, limit: i32) -> i32 {
+    fn next_cell(&mut self, frame: &Frame, previous: &Frame, limit: i32, ordinary_widths: bool) -> i32 {
         while self.at < limit {
             i := self.at
+            if ordinary_widths && !self.full && i >= self.trailing {
+                current := frame.glyphs[i]
+                old := previous.glyphs[i]
+                if current >= 0 && current < WIDE && old >= 0 && old < WIDE {
+                    self.at += 1
+                    if frame.changed(&previous, i) { return i }
+                    continue
+                }
+            }
             option := frame.option_code(i)
             if i < self.trailing {
                 self.at += frame.output_width(i,option)
@@ -414,19 +423,35 @@ impl DiffScan {
                 if frame.row_flags.len > 0 { flags = frame.row_flags[y] }
                 if !self.full && previous.row_flags.len > 0 { flags = flags.bit_or(previous.row_flags[y]) }
             }
-            if !self.full && i == row && self.cached < 0 && i >= self.trailing && flags.bit_and(1) == 0 &&
-                !frame.overlaps && !previous.overlaps && frame.same_row(&previous,row,self.floor) {
+            ordinary_widths := flags.bit_and(1) == 0 && !frame.overlaps && !previous.overlaps
+            if self.full && ordinary_widths && self.cached < 0 && i >= self.trailing {
+                self.start = i
+                self.end = limit
+                self.at = limit
+                return true
+            }
+            if !self.full && i == row && self.cached < 0 && i >= self.trailing && ordinary_widths && frame.same_row(&previous,row,self.floor) {
                 self.at = limit
                 continue
             }
             if self.precise && (flags != 0 || frame.overlaps || previous.overlaps || self.cached >= 0 || self.at < self.trailing) {
-                self.start = if self.cached >= 0 { self.cached } else { self.next_cell(&frame,&previous,limit) }
+                self.start = if self.cached >= 0 { self.cached } else { self.next_cell(&frame,&previous,limit,ordinary_widths) }
                 self.cached = -1
                 if self.start < 0 { continue }
                 mut last := self.start
                 self.end = self.start+frame.advance(self.start)
                 while self.end < limit && self.end == self.at && frame.option_code(last) <= 0 {
-                    cell := self.next_cell(&frame,&previous,limit)
+                    if ordinary_widths && self.at >= self.trailing && !self.full {
+                        while self.end < limit {
+                            current := frame.glyphs[self.end]
+                            old := previous.glyphs[self.end]
+                            if current < 0 || current >= WIDE || old < 0 || old >= WIDE || !frame.changed(&previous, self.end) { break }
+                            self.end += 1
+                        }
+                        self.at = self.end
+                        if self.end == limit { break }
+                    }
+                    cell := self.next_cell(&frame,&previous,limit,ordinary_widths)
                     if cell != self.end { self.cached = cell; break }
                     self.end += frame.advance(cell)
                     last = cell
@@ -658,18 +683,18 @@ impl Frame {
 
     fn ascii_line(&mut self, area: Rect, value: string, brush: i64, overlay: &Style) -> bool {
         for j in 0..value.len { if value[j] < 32 || value[j] >= 127 { return false } }
-        self.ascii_slice(area, value, 0, value.len, brush, &overlay)
+        self.ascii_slice(i64(area.x), i64(area.y), area.w, value, 0, value.len, brush, &overlay)
         true
     }
 
-    fn ascii_slice(&mut self, area: Rect, value: string, offset: i32, finish: i32, brush: i64, overlay: &Style) {
-        if area.y < self.bounds.y || area.y >= self.bounds.y+self.bounds.h { return }
-        start := cmp.max<i64>(0,i64(self.bounds.x)-i64(area.x))
-        fit := i64(self.bounds.x+self.bounds.w) - i64(area.x)
-        end := i64(clamp(finish - offset, area.w))
+    fn ascii_slice(&mut self, x: i64, y: i64, width: i32, value: string, offset: i32, finish: i32, brush: i64, overlay: &Style) {
+        if y < i64(self.bounds.y) || y >= i64(self.bounds.y+self.bounds.h) { return }
+        start := cmp.max<i64>(0,i64(self.bounds.x)-x)
+        fit := i64(self.bounds.x+self.bounds.w) - x
+        end := i64(clamp(finish - offset, width))
         limit := if fit < end { fit } else { end }
         if start >= limit { return }
-        i := self.index(i32(i64(area.x)+start),area.y)
+        i := self.index(i32(x+start),i32(y))
         mut at := i
         if overlay.empty() {
             for j in i32(start)..i32(limit) {
@@ -709,6 +734,19 @@ impl Frame {
         mut offset := 0
         while at < chars.len && y < area.h {
             cp := i32(chars[at])
+            if cp >= 32 && cp < 127 {
+                mut end := offset + 1
+                while end < value.len && value[end] >= 32 && value[end] < 127 { end += 1 }
+                if end < value.len && value[end] >= 128 { end -= 1 }
+                if end > offset {
+                    count := end - offset
+                    self.ascii_slice(i64(area.x)+i64(x), i64(area.y)+i64(y), area.w-x, value, offset, end, brush, &overlay)
+                    x += cmp.min<i32>(count, area.w-x)
+                    offset = end
+                    at += count
+                    continue
+                }
+            }
             glyph := width.glyph(&chars, at)
             start := offset
             single := glyph.end == at + 1
@@ -1390,7 +1428,7 @@ impl GlyphRun {
         match &self.data {
             .Some(data) => data.write(&mut frame, bounds, start, finish, brush, style),
             .None => {
-                frame.ascii_slice(bounds, self.source, start, finish, brush, &style)
+                frame.ascii_slice(i64(bounds.x), i64(bounds.y), bounds.w, self.source, start, finish, brush, &style)
                 cmp.max<i32>(0, i32(cmp.min<i64>(i64(finish - start), cmp.min<i64>(i64(bounds.w), i64(frame.bounds.x+frame.bounds.w) - i64(bounds.x)))))
             },
         }

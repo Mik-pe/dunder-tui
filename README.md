@@ -84,7 +84,7 @@ Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.18.0", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.18.1", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.

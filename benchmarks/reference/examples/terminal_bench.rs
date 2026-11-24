@@ -68,15 +68,57 @@ impl Backend for Output {
         CrosstermBackend::new(&mut self.bytes).scroll_region_down(r, n)
     }
 }
+fn emoji_log(buf: &mut ratatui::buffer::Buffer, mode: &str, step: usize) {
+    use ratatui::style::{Color, Style};
+    use ratatui::widgets::{Fill, Widget};
+    let lines = [
+        "08.32   😶‍🌫️  Dimma vid kusten. Ny rapport efter nästa mätning.    📡  Station 7  🇸🇪",
+        "08.46   👩🏾‍⚕️  Jouren har lämnat kajen. Beräknad ankomst 09.10.    🛟  På väg    ✅",
+        "09.10   😶‍🌫  Sikten förbättras i väster. Nästa observation 09.40.    ☀︎  Väst     🧭",
+        "09.40   👩🏽‍💻  Mätserie mottagen. Loggen innehåller samtliga värden.  🔬  Klart    1️⃣",
+    ];
+    let offset = if mode == "scroll" { step } else { 0 };
+    let style = if mode == "repaint" && step % 2 == 1 {
+        Style::new().fg(Color::Yellow).bg(Color::Blue)
+    } else {
+        Style::new().fg(Color::Cyan)
+    };
+    for (y, row) in buf.area.rows().take(23).enumerate() {
+        Fill::new(".").style(style).render(row, buf);
+        buf.set_stringn(
+            0,
+            row.y,
+            lines[(y + offset) % lines.len()],
+            usize::from(row.width),
+            style,
+        );
+    }
+    buf.set_string(
+        0,
+        23,
+        if mode == "cell" && step % 2 == 1 {
+            "+"
+        } else {
+            "-"
+        },
+        Style::new(),
+    );
+}
+
 fn main() {
     ratatui::crossterm::style::force_color_output(true);
     let timed = !std::env::args().any(|a| a == "--allocations");
     let physical = std::env::args().any(|a| a == "--terminal");
-    let data = chart_scene::Data::new();
-    let mut scene = chart_scene::Scene::new(&data);
+    let data =
+        (std::env::var("TUI_BENCH_SCENE").as_deref() != Ok("emoji")).then(chart_scene::Data::new);
+    let mut chart = data.as_ref().map(chart_scene::Scene::new);
     let shared = std::env::var("TUI_BENCH_DIFF_OPTIONS").as_deref() == Ok("1");
     let mut draw = |buf: &mut ratatui::buffer::Buffer, mode: &str, n| {
-        scene.draw(buf, mode, n);
+        if let Some(scene) = &mut chart {
+            scene.draw(buf, mode, n);
+        } else {
+            emoji_log(buf, mode, n as usize);
+        }
         if shared {
             use ratatui::buffer::CellDiffOption;
             buf.set_string(4, 23, "external    +   >", ratatui::style::Style::new());

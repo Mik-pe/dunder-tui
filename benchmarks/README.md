@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Loggvy i 0.18.1
+
+Loggvyn mäter ritning och omritning av blandad text med sammansatta emoji. På macOS ARM64 tog skrollning 85 µs i median med Dunder och 92 µs med Ratatui. På översatt Linux x86-64 var motsvarande tider 772 och 139 µs. [Alla fem arbetslaster med bildtid, terminalbyte, minne och allokeringar](emoji.md)
+
 ## Resultat för 0.11.0
 
 Efter införandet av vyportar jämfördes samma fem terminalarbetslaster och 1 100 bilder igen. På macOS var medianen för hel omritning 163 µs med Dunder och 188 µs med Ratatui. [Tider, terminalbyte, minne och allokeringar](terminal.md#version-0110)

@@ -13,12 +13,16 @@ const V: i32 = 10
 const T: i32 = 11
 const LV: i32 = 12
 const LVT: i32 = 13
+const EMOJI_PRESENTATION: i32 = 512
+const MODIFIER_BASE: i32 = 1024
+const VARIATION_BASE: i32 = 2048
 
 fn pair(table: string, i: i32) -> i32 {
     (i32(table[i * 2]) - 35) * 64 + i32(table[i * 2 + 1]) - 35
 }
 
 fn property(cp: i32) -> i32 {
+    if cp < 256 { return pair(width_data.latin1(), cp) }
     page := pair(width_data.pages(), cp.shr(10))
     group := pair(width_data.groups(), page * 32 + cp.shr(5).bit_and(31))
     state := i32(width_data.states()[group * 32 + cp.bit_and(31)]) - 35
@@ -55,41 +59,79 @@ fn joins(before: i32, after: i32, indic: i32, emoji_join: bool, regional: i32, p
     before == RI && after == RI && regional.bit_and(1) == 1
 }
 
+fn skin_tone(cp: i32) -> bool { cp >= 0x1f3fb && cp <= 0x1f3ff }
+
+fn presentation_width(chars: &[]rune, start: i32, end: i32) -> i32 {
+    mut total := 0
+    mut at := start
+    mut previous_emoji := false
+    mut joined := false
+    while at < end {
+        cp := i32(chars[at])
+        at += 1
+        if cp == 0x200d {
+            joined = previous_emoji
+            previous_emoji = false
+            continue
+        }
+        props := property(cp)
+        mut cells := props.shr(7).bit_and(3)
+        mut emoji := props.bit_and(EMOJI_PRESENTATION) != 0 && cells == 2
+        if at < end {
+            next := i32(chars[at])
+            if next == 0xfe0f && props.bit_and(VARIATION_BASE) != 0 {
+                cells = 2
+                emoji = true
+                at += 1
+                if at < end && i32(chars[at]) == 0x20e3 && (cp == 35 || cp == 42 || (cp >= 48 && cp <= 57)) { at += 1 }
+            } else if next == 0xfe0e && emoji && props.bit_and(VARIATION_BASE) != 0 && (cp < 0x1f200 || cp > 0x1f2ff) {
+                cells = 1
+                emoji = false
+                at += 1
+            } else if skin_tone(next) && props.bit_and(MODIFIER_BASE) != 0 {
+                cells = 2
+                emoji = true
+                at += 1
+            } else if next == 0xfe01 && (cp == 0x2018 || cp == 0x2019 || cp == 0x201c || cp == 0x201d) {
+                cells = 2
+                at += 1
+            }
+        }
+        if !joined || !emoji { total += cells }
+        previous_emoji = emoji
+        joined = false
+    }
+    total
+}
+
 pub fn glyph(chars: &[]rune, start: i32) -> Glyph {
     first := i32(chars[start])
     mut out := Glyph { end: start + 1, bytes: encoded(first), span: columns(first) }
     if out.end == chars.len { return out }
     if first < 127 && first != 13 && i32(chars[out.end]) < 127 { return out }
-    mut props := property(first)
+    props := property(first)
     mut kind := props.bit_and(15)
     mut indic := if props.shr(4).bit_and(3) == 1 { 1 } else { 0 }
     mut emoji_tail := props.bit_and(64) != 0
     mut emoji_join := false
     mut regional := if kind == RI { 1 } else { 0 }
-    mut previous := first
-    mut emoji_base := props.bit_and(1024) != 0
+    mut presentation := false
     while out.end < chars.len {
         cp := i32(chars[out.end])
         next := property(cp)
         after := next.bit_and(15)
         if !joins(kind, after, indic, emoji_join, regional, next) { break }
-        mut extra := next.shr(7).bit_and(3)
-        if cp == 0xfe0f && props.bit_and(2048) != 0 && props.shr(7).bit_and(3) == 1 { extra = 1 }
-        if cp == 0xfe0e && props.bit_and(2560) == 2560 && (previous < 0x1f200 || previous > 0x1f2ff) { extra = -1 }
-        if cp >= 0x1f3fb && cp <= 0x1f3ff && emoji_base { extra = if out.span == 1 { 1 } else { 0 } }
-        if emoji_join && next.bit_and(64) != 0 && out.span >= 2 { extra = 0 }
-        if out.span >= 0 { out.span += extra }
+        if cp == 0xfe0f || cp == 0xfe0e || cp == 0xfe01 || skin_tone(cp) || emoji_join { presentation = true }
+        if out.span >= 0 { out.span += next.shr(7).bit_and(3) }
         out.end += 1
         out.bytes += encoded(cp)
         incb := next.shr(4).bit_and(3)
         if incb == 1 { indic = 1 } else if incb == 3 && indic > 0 { indic = 2 } else if incb != 2 { indic = 0 }
         emoji_join = after == ZWJ && emoji_tail
         emoji_tail = next.bit_and(64) != 0 || (after == EXTEND && emoji_tail)
-        if cp != 0xfe0f { emoji_base = next.bit_and(1024) != 0 }
         regional = if after == RI { regional + 1 } else { 0 }
         kind = after
-        previous = cp
-        props = next
     }
+    if presentation { out.span = presentation_width(&chars, start, out.end) }
     out
 }

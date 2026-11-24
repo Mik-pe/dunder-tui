@@ -8,7 +8,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | --- | --- | --- |
 | Buffer och Cell | Återanvända bildbuffertar, breda tecken, celldiff, exakt och ungefärlig sammanslagning av linjesymboler, färgutdata och avläsning av rader och cellstilar. Buffertar med förskjutet origo, rektangulär kopiering, linjär storleksändring och tillämpning av en diff på en delyta. Buffertsammanslagning, avläsning av en hel cell, fyra cellregler och strömmande besök av ändringar. | Större ytor än bibliotekets nuvarande gräns på 4 096 celler per axel och 1 048 576 celler totalt. |
 | Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. Tailwind och Material ger 500 namngivna RGB-värden. | Beständiga dataformat och full täckning för konvertering mellan stilrepresentationer. |
-| Text | Span, Line, Text, Paragraph, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. | Strängbredder för skriftspecifika ligaturer över grafemgränser, full täckning för sammansatta emoji och alla operationer på fristående texttyper. |
+| Text | Span, Line, Text, Paragraph, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. Bredd och stiliserade celler jämförda för hela emojitestfilen och samtliga registrerade emoji- och textpresentationer i Unicode 18.0. | Strängbredder för skriftspecifika ligaturer över grafemgränser och alla operationer på fristående texttyper. |
 | Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering och cache. 15 076 jämförda layouter, 1 200 rektangelprov och 1 100 jämförda bilder. | Utökad täckning av överbestämda system med många olika paneler och upprepade ändringar av reglerna. |
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna tecken, individuella kanter, justerade titlar, utfyllnad och skuggor. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
 | Övriga widgets | Clear och Fill på Frame, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, månadskalender med händelser och egna datumstilar, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. | Logotyp och maskot. |
@@ -296,4 +296,23 @@ mkdir -p build
 dunder build --locked --offline tests/plot_reference.ddr -o build/plot-check
 cargo build --locked --release --manifest-path benchmarks/reference/Cargo.toml --features layout-cache --example plot --target-dir build/rust
 build/plot-check --paths | build/rust/release/examples/plot --paths
+```
+
+## Emojipresentation i 0.18.1
+
+😶‍🌫️ med U+FE0F och 😶‍🌫 utan väljaren består båda av ett grafem. I Ratatui 0.30.2 tar den första två terminalkolumner och den andra tre. I 0.18.0 gav 1 950 av de 5 244 sekvenserna i Unicodes emojitest annan bredd eller placering än referensen. I 0.18.1 matchar alla. Det gäller även de 742 registrerade paren av grundtecken och väljare för text- eller emojipresentation. [Unicodes emojitest](https://www.unicode.org/Public/18.0.0/emoji/emoji-test.txt) · [Presentationsvarianter](https://www.unicode.org/Public/18.0.0/ucd/emoji/emoji-variation-sequences.txt) · [Unicode-licens](../src/UNICODE-LICENSE.txt)
+
+För varje post jämför provet antalet grafem, symbolens cellbredd, ett textspanns bredd och åtta ritade rader. Fyra rader ritar ett stiliserat spann följt av ett utropstecken. Fyra rader skriver direkt till bufferten med en bokstav före samma text. Bredderna 1, 2, 3 och 10 provar både klippning och platsen för nästa tecken. Tecken, position och stil jämförs över hela bilden, inklusive cellerna utanför ritytan. Ett separat prov läser de faktiska markörkommandona från en pseudoterminal när bara bokstaven efter en emoji ändras. [Dunderprov](../tests/text_reference.ddr) · [Ratatui-prov](../benchmarks/reference/examples/text.rs) · [Terminalprov](../tests/posix_terminal.ddr) · [Mätning av loggvyn](../benchmarks/emoji.md)
+
+Båda datafilerna under `tests/data` innehåller första fältet från varje datarad i respektive Unicode-fil, i originalets ordning. Proven går att upprepa med filerna i repot.
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/text_reference.ddr -o build/text
+cargo build --release --locked --manifest-path benchmarks/reference/Cargo.toml --example text --target-dir build/rust
+for corpus in tests/data/emoji-18.txt tests/data/emoji-variation-18.txt; do
+    build/text --emoji "$corpus" > build/emoji-cells
+    build/rust/release/examples/text --emoji "$corpus" < build/emoji-cells
+done
+dunder run --locked --offline tests/posix_terminal.ddr
 ```

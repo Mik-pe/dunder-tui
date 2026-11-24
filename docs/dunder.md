@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Terminalbredd för lånade grafem
+
+I Dunder 0.11.2 ger `std.text.graphemes` ett element för både 😶‍🌫️ och 😶‍🌫. Ändå behöver en terminalapp placera nästa bokstav två respektive tre kolumner längre fram. En breddfunktion i standardbiblioteket skulle låta terminalappar använda den lånade vyn direkt. TUI-provet kontrollerar bland annat var bokstaven hamnar efter en omritning i en pseudoterminal. [Grafemprovet](../tests/stdlib_text.ddr) · [Dunders nästa steg](https://github.com/Mik-pe/dunder/blob/4d72641f341c500c4c6f8421836409838b717964/docs/next-steps.md#mät-ett-grafem-i-terminalkolumner)
+
 ## Läs koordinatpar genom lån
 
 I Dunder 0.11.2 ger `a := points[i]` en ägd kopia av koordinatparet, medan `a := &points[i]` lånar elementet. Det fristående provet summerar två angränsande punkter i taget. Med 1 100 genomgångar av 96 punkter gav kopievarianten 209 000 tupelkopior och lånevarianten noll. Båda gav summan 836 000. Två diagramserier gjorde samma läsning i TUI-mätningen. Enbart ändringen till lån tog bort 418 000 allokeringsanrop från den körningen. [Mätprogram](../benchmarks/language/borrowed_points.ddr) · [Förslag till Dunders kompilator](https://github.com/Mik-pe/dunder/blob/1d4d815f1e7cd60ca7e68f2eed97f44eeb0bc24e/docs/next-steps.md#undvik-kopior-vid-läsning-av-koordinatpar)

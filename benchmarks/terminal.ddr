@@ -23,8 +23,30 @@ impl tui.Backend for Output {
     }
 }
 
-struct State { scene: chart_scene.Scene, mode: string, step: i32, shared: bool }
-fn render(frame: &mut tui.Frame, s: &mut State) {
+struct State<S> { scene: S, mode: string, step: i32, shared: bool }
+
+struct EmojiLog {}
+impl EmojiLog {
+    fn draw(&mut self, frame: &mut tui.Frame, mode: string, step: i32) {
+        mut area := frame.area()
+        offset := if mode == "scroll" { step } else { 0 }
+        style := if mode == "repaint" && step % 2 == 1 { tui.ink(.Yellow).background(.Blue) } else { tui.ink(.Cyan) }
+        for y in 0..23 {
+            line := match (y + offset) % 4 {
+                0 => "08.32   😶‍🌫️  Dimma vid kusten. Ny rapport efter nästa mätning.    📡  Station 7  🇸🇪",
+                1 => "08.46   👩🏾‍⚕️  Jouren har lämnat kajen. Beräknad ankomst 09.10.    🛟  På väg    ✅",
+                2 => "09.10   😶‍🌫  Sikten förbättras i väster. Nästa observation 09.40.    ☀︎  Väst     🧭",
+                _ => "09.40   👩🏽‍💻  Mätserie mottagen. Loggen innehåller samtliga värden.  🔬  Klart    1️⃣",
+            }
+            row := area.take_rows(1)
+            frame.fill(row, `.`, style)
+            frame.text(row, line, style)
+        }
+        frame.label(area, if mode == "cell" && step % 2 == 1 { "+" } else { "-" })
+    }
+}
+
+fn render<S>(frame: &mut tui.Frame, s: &mut State<S>) {
     s.scene.draw(&mut frame,s.mode,s.step)
     if s.shared {
         frame.label(tui.Rect{x:4,y:23,w:24,h:1},"external    +   >")
@@ -36,17 +58,23 @@ fn render(frame: &mut tui.Frame, s: &mut State) {
 }
 
 fn main() {
+    if proc.env("TUI_BENCH_SCENE") == .Some("emoji") { benchmark(EmojiLog {}) }
+    else { benchmark(chart_scene.Scene::new()) }
+}
+
+fn benchmark<S>(move scene: S) {
     timed := sys.arg_count() < 2 || sys.arg(1) != "--allocations"
     physical := sys.arg_count() == 2 && sys.arg(1) == "--terminal"
-    mut state := State { scene: chart_scene.Scene::new(), mode: "", step: 0, shared:proc.env("TUI_BENCH_DIFF_OPTIONS") == .Some("1") }
+    mut state := State<S> { scene: move scene, mode: "", step: 0, shared:proc.env("TUI_BENCH_DIFF_OPTIONS") == .Some("1") }
     if sys.arg_count() == 2 && sys.arg(1) == "--verify" {
         for mode in ["idle","cell","scroll","resize","repaint"] {
             mut t := tui.Terminal<testing.TestBackend>::new(testing.TestBackend::new(96,24))
             state.mode = mode
             for step in 0..220 {
                 state.step = step
-                t.backend_mut().resize(if state.mode == "resize" && step%2 == 0 { 80 } else { 96 },24)
-                assert(t.draw(&mut state,render).is_ok())
+                columns := if state.mode == "resize" && step%2 == 0 { 80 } else { 96 }
+                t.backend_mut().resize(columns,24)
+                assert(t.draw(&mut state,render<S>).is_ok())
                 assert(t.completed().count() == u64(step) && t.backend().cursor_visible() && t.backend().cursor_position() == (0,23))
                 cells.snapshot(&t.backend().buffer())
             }
@@ -63,7 +91,7 @@ fn main() {
             t.backend_mut().width = if mode == "resize" && step%2 == 0 { 80 } else { 96 }
             start := if timed { clock.monotonic_ns() } else { i64(0) }
             t.backend_mut().data.clear()
-            assert(t.draw(&mut state,render).is_ok())
+            assert(t.draw(&mut state,render<S>).is_ok())
             batch := &t.backend().data
             if physical { assert(posix.write_bytes(&batch)) }
             if step >= 20 {

@@ -3,6 +3,18 @@ import std.text as text
 import std.bytes as bytes
 import std.bytes.utf8 as utf8
 import std.parse as parse
+import ..src.tui
+
+@test fn equally_many_graphemes_can_take_different_terminal_widths() {
+    for (value, columns) in [("😶‍🌫️", 2), ("😶‍🌫", 3), ("界", 2), ("e\u{301}", 1)] {
+        mut count := 0
+        for part in text.graphemes(value) {
+            assert(part.as_str() == value)
+            count += 1
+        }
+        assert(count == 1 && tui.GlyphRun::new(value.clone()).width() == columns)
+    }
+}
 
 @test fn released_grapheme_iterator_matches_unicode17_byte_offsets() {
     mut tested := 0

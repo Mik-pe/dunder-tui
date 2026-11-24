@@ -67,6 +67,23 @@ import ..src.tailwind
     assert(frame.line(0) == "Åe\u{301} zX")
     frame.text(tui.Rect { x: -1, y: 1, w: 4, h: 1 }, "abcd", tui.plain())
     assert(frame.line(1) == "bcdb ")
+    for x in [-5, -1, 0, 2, 7, 2147483647] {
+        for w in [1, 4, 9, 2147483647] {
+            mut direct := tui.Frame::new(9, 2)
+            direct.fill_symbol(direct.area(), "界", tui.ink(.Yellow))
+            mut prepared := direct.clone()
+            style := tui.plain().italic()
+            area := tui.Rect { x: x, y: 0, w: w, h: 2 }
+            direct.text(area, "abc\u{301}d☺️xyz\r\n雪123", style)
+            mut y := 0
+            for line in ["abc\u{301}d☺️xyz", "雪123"] {
+                run := tui.GlyphRun::new(line.clone())
+                run.render(&mut prepared, tui.Rect { x: x, y: y, w: w, h: 1 }, 0, run.count(), style)
+                y += 1
+            }
+            assert(direct.diff_positions(&prepared).unwrap().len == 0)
+        }
+    }
     assert(width.columns(0x1f30d) == 2)
 }
 
@@ -115,6 +132,14 @@ import ..src.tailwind
     assert(frame.line(1) == "❤️1️⃣.")
     frame.label(tui.Rect { x: 1, y: 2, w: 2, h: 1 }, "💻")
     assert(frame.line(2) == "A💻界")
+    for (symbol, cells) in [("😶‍🌫️", 2), ("😶‍🌫", 3), ("👩🏾‍⚕️", 2), ("👩🏾‍⚕", 3),
+        ("👁️‍🗨️", 2), ("👁‍🗨", 2), ("☀︎", 1), ("“\u{fe01}", 2)] {
+        frame.clear()
+        span := rich.Span::raw(symbol + "!")
+        assert(span.width() == cells + 1)
+        span.render(&mut frame, frame.area())
+        assert(frame.symbol_at(0, 0).unwrap() == symbol && frame.symbol_at(cells, 0).unwrap() == "!")
+    }
 }
 
 @test fn diff_tracks_glyph_width_spacing_and_separated_changes() {

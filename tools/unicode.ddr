@@ -80,6 +80,8 @@ fn function(name: string, data: &[]u8) -> string {
 }
 
 fn encode(table: &[]i32) -> string {
+    mut latin1: []u8 = []
+    for cp in 0..256 { append_pair(&mut latin1, table[cp].bit_and(4095)) }
     mut ranks: []i32 = []
     for _ in 0..4096 { ranks.push(-1) }
     for prop in table { ranks[prop.bit_and(4095)] = 0 }
@@ -105,7 +107,7 @@ fn encode(table: &[]i32) -> string {
             page.clear()
         }
     }
-    function("pages", &pages) + function("groups", &groups) + function("states", &states) + function("values", &values)
+    function("latin1", &latin1) + function("pages", &pages) + function("groups", &groups) + function("states", &states) + function("values", &values)
 }
 
 fn main() -> i32 {

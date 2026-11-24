@@ -1,4 +1,4 @@
-capability stdio
+capability filesystem, stdio
 
 import ..benchmarks.paragraph_doc as fixture
 import ..src.text as rich
@@ -6,6 +6,8 @@ import ..src.tui
 import ..src.width
 import sys
 import std.bytes as bytes
+import std.parse as parse
+import std.text as words
 
 fn sample(case: i32) -> rich.Text {
     if case == 0 { return rich.Text::raw("  alpha   beta \n\n gamma\n  \n\r\nZ\n") }
@@ -37,6 +39,32 @@ fn snapshot(frame: &tui.Frame, area: tui.Rect, out: &mut []u8) {
 }
 
 fn main() -> i32 {
+    if sys.arg_count() == 3 && sys.arg(1) == "--emoji" {
+        mut out: []u8 = []
+        for row in words.split(sys.read(sys.arg(2)).unwrap(), "\n") {
+            if row == "" { continue }
+            mut value: []u8 = []
+            for cp in words.split(row, " ") {
+                part := parse.hex(cp)
+                assert(part.ok)
+                bytes.append_utf8(&mut value, rune(part.value).str())
+            }
+            symbol := bytes.decode(&value).unwrap()
+            run := tui.GlyphRun::new(symbol.clone())
+            span := rich.Span::styled(symbol + "!", tui.ink(.Red).bold())
+            print(run.count().str() + " " + run.width().str() + " " + span.width().str())
+            mut frame := tui.Frame::new(12, 8)
+            frame.fill(frame.area(), `.`, tui.ink(.Cyan))
+            mut y := 0
+            for w in [1, 2, 3, 10] {
+                span.render(&mut frame, tui.Rect { x: 1, y: y, w: w, h: 1 })
+                frame.text(tui.Rect { x: 1, y: y + 4, w: w, h: 1 }, "K" + symbol + "!", tui.ink(.Red).bold())
+                y += 1
+            }
+            snapshot(&frame, frame.area(), &mut out)
+        }
+        return 0
+    }
     if sys.arg_count() > 1 && sys.arg(1) == "--widths" {
         mut columns: []u8 = []
         columns.reserve(0x110000)
