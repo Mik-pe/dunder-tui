@@ -6,6 +6,10 @@ on:
         type: boolean
         default: false
         description: Profile the idle rich-text workload on native Linux x64
+      before:
+        type: string
+        required: false
+        description: Compare this workload with an earlier library commit on native Linux x64 (full SHA)
 
 permissions: {}
 
@@ -196,6 +200,21 @@ jobs:
           fi
           cargo build --release --locked --offline --manifest-path benchmarks/reference/Cargo.toml --features layout-cache,allocation-counts --example terminal_bench --target-dir build/rust
           "$ref" --allocations
+      - name: Compare two Dunder library revisions on the same CPU
+        if: runner.os == 'Linux' && inputs.before != ''
+        env:
+          BEFORE: ${{ inputs.before }}
+        run: |
+          [[ "$BEFORE" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --quiet --depth=1 --no-tags "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" "$BEFORE"
+          test "$(git rev-parse FETCH_HEAD)" = "$BEFORE"
+          base="$RUNNER_TEMP/tui-before"
+          mkdir -p "$base"
+          git archive HEAD benchmarks tests | tar -xf - -C "$base"
+          git archive "$BEFORE" src | tar -xf - -C "$base"
+          build/dunder build --offline --locked "$base/benchmarks/terminal.ddr" -o build/before
+          build/before --verify | build/rust/release/examples/terminal_bench --verify
+          build/measure build/before build/benchmark build/pty --labels before after
       - name: Profile native x64 instructions for an idle frame
         if: runner.os == 'Linux' && inputs.profile
         run: |

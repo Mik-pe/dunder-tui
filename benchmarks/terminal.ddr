@@ -3,6 +3,7 @@ import ..src.tui
 import ..src.text as rich
 import ..src.posix
 import ..src.testing
+import ..src.widgets
 import ..tests.widget_cells as cells
 import .chart_scene
 import std.bytes as bytes
@@ -41,9 +42,11 @@ impl ScriptLog {
         mut area := frame.area()
         offset := if mode == "scroll" { step } else { 0 }
         style := if mode == "repaint" && step % 2 == 1 { tui.ink(.Yellow).background(.Blue) } else { tui.ink(.Cyan) }
+        mut fill := widgets.Fill::new(".")
+        fill.style = style
         for y in 0..23 {
             row := area.take_rows(1)
-            frame.fill(row, `.`, style)
+            frame.render_widget(&fill,row)
             self.lines[(y + offset) % self.lines.len].render(&mut frame, row)
         }
         frame.label(area, if mode == "cell" && step % 2 == 1 { "+" } else { "-" })

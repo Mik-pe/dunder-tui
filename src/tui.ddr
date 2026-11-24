@@ -355,7 +355,7 @@ const ALWAYS_UPDATE: i32 = -2
 const FRAME_SIDE_LIMIT: i32 = 4096
 const FRAME_CELL_LIMIT: i32 = 1048576
 
-pub opaque struct Frame { bounds: Rect, cursor_x: i32, cursor_y: i32, cursor_changed: bool, number: u64, glyphs: []i32, styles: []i64, decorations: []i64, clusters: []string, cluster_cells: []i32, options: []i32, row_flags: []u8, has_options: bool, overlaps: bool }
+pub opaque struct Frame { bounds: Rect, cursor_x: i32, cursor_y: i32, cursor_changed: bool, number: u64, glyphs: []i32, styles: []i64, decorations: []i64, clusters: []string, cluster_cells: []i32, cluster_ranges: []i32, options: []i32, row_flags: []u8, has_options: bool, overlaps: bool }
 
 struct DiffScan {
     at: i32, start: i32, end: i32, cached: i32, trailing: i32, limit: i32, force: bool,
@@ -486,7 +486,7 @@ impl Frame {
         glyphs.reserve(n)
         styles.reserve(n)
         for _ in 0..n { glyphs.push(0); styles.push(0) }
-        Self { bounds: Rect { x:x, y:y, w:cols, h:rows }, cursor_x: -1, cursor_y: 0, cursor_changed:false, number: 0, glyphs: glyphs, styles: styles, decorations: [], clusters: [], cluster_cells: [], options: [], row_flags:[], has_options:false, overlaps:false }
+        Self { bounds: Rect { x:x, y:y, w:cols, h:rows }, cursor_x: -1, cursor_y: 0, cursor_changed:false, number: 0, glyphs: glyphs, styles: styles, decorations: [], clusters: [], cluster_cells: [], cluster_ranges: [], options: [], row_flags:[], has_options:false, overlaps:false }
     }
 
     pub fn area(&self) -> Rect { self.bounds }
@@ -790,7 +790,16 @@ impl Frame {
         }
         self.put(x, y, if cells == 0 { ZERO_CLUSTER } else { CLUSTER }, cmp.max<i32>(1, cells), brush)
         i := self.index(x,y)
-        if self.clusters[i] == "" { self.cluster_cells.push(i) }
+        if self.clusters[i] == "" {
+            self.cluster_cells.push(i)
+            if self.cluster_ranges.len == 0 {
+                self.cluster_ranges.reserve(self.bounds.h*2)
+                for _ in 0..self.bounds.h { self.cluster_ranges.push(self.glyphs.len); self.cluster_ranges.push(0) }
+            }
+            offset := (y-self.bounds.y)*2
+            if i < self.cluster_ranges[offset] { self.cluster_ranges[offset] = i }
+            if i >= self.cluster_ranges[offset+1] { self.cluster_ranges[offset+1] = i+1 }
+        }
         self.clusters[i] = move value
     }
 
@@ -879,10 +888,14 @@ impl Frame {
             mut combined := self.composite(0, &style)
             for y in area.y..(area.y + area.h) {
                 start := self.index(area.x,y)
+                if self.row_flags.len > 0 && self.row_flags[y-self.bounds.y].bit_and(2) != 0 {
+                    for i in start..(start+area.w) {
+                        if self.glyphs[i] < 0 || self.glyphs[i] >= WIDE { self.erase_span(i) }
+                    }
+                }
                 for i in start..(start + area.w) {
                     old := self.styles[i]
                     if old != last { last = old; combined = self.composite(old, &style) }
-                    if self.glyphs[i] < 0 || self.glyphs[i] >= WIDE { self.erase_span(i) }
                     self.glyphs[i] = code
                     self.styles[i] = combined
                 }
@@ -1173,6 +1186,7 @@ impl Frame {
         self.overlaps = false
         for i in &self.cluster_cells { self.clusters[i] = "" }
         self.cluster_cells.clear()
+        self.cluster_ranges.clear()
         if self.glyphs.len > 0 {
             unsafe {
                 bytes.zero_memory(addr(&mut self.glyphs[0]), usize(self.glyphs.len) * size_of(i32))
@@ -1224,8 +1238,9 @@ impl Frame {
             if !bytes.equal_memory(addr(&self.glyphs[row]), addr(&previous.glyphs[row]), usize(self.bounds.w) * size_of(i32)) ||
             !bytes.equal_memory(addr(&self.styles[row]), addr(&previous.styles[row]), usize(self.bounds.w) * size_of(i64)) { return false }
         }
-        if self.cluster_cells.len > 0 {
-            for i in row..(row + self.bounds.w) {
+        if self.cluster_ranges.len > 0 {
+            offset := row/self.bounds.w*2
+            for i in self.cluster_ranges[offset]..self.cluster_ranges[offset+1] {
                 code := self.glyphs[i].bit_and(WIDE - 1) + 32
                 if self.glyphs[i] >= 0 && (code == CLUSTER || code == ZERO_CLUSTER) && self.clusters[i] != previous.clusters[i] { return false }
             }
