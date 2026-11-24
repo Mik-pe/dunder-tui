@@ -1,0 +1,90 @@
+capability stdio
+import ..src.tui
+import std.json
+import sys
+
+fn tile(f: &mut tui.Frame, x:i32, y:i32, move symbol:string, style:tui.Style, option:tui.CellDiffOption, skip:bool) {
+    mut c := tui.RawCell::empty()
+    _ := c.set_symbol(move symbol).set_style(style).set_diff_option(option).set_skip(skip)
+    assert(f.set_raw_cell(x,y,&c))
+}
+
+fn picture(a:tui.Rect, step:i32, rules:bool, decorated:bool) -> tui.Frame {
+    mut f := tui.Frame::at(a)
+    if step == 0 { return move f }
+    col := a.x+(step%a.w)
+    last := a.right()-1
+    ink := tui.ink(.Cyan).background(.Black)
+    edge := if decorated { ink.underline_rgb(if step%2 == 0 { 0x182745 } else { 0x315462 }) } else { ink }
+    if decorated && step%4 == 1 { tile(&mut f,a.x,a.y,".",ink.underline_rgb(0x222222),.None,false) }
+    for y in a.y..a.bottom() {
+        f.fill(tui.Rect::new(a.x,y,a.w,1),if (y+step)%11 == 0 { ` ` } else { `.` },ink)
+    }
+    f.text(tui.Rect::new(col,a.y,a.right()-col,1),"same",ink)
+    _ := f.set_raw_cell(last,a.y,&tui.RawCell::empty())
+    if step%2 == 1 { tile(&mut f,last,a.y," ",ink,.None,false) }
+    if step%3 != 0 {
+        tile(&mut f,a.x,a.y+1,if step%2 == 0 { "é" } else { "ä" },edge,.None,false)
+        tile(&mut f,last,a.y+1,if step%4 == 1 { "abc" } else { "❤️" },edge,.None,false)
+    }
+    if step%4 != 0 {
+        tile(&mut f,col,a.y+2,"界",tui.ink(.Red),.None,false)
+        f.paint_rune(tui.Rect::new(a.x,a.y+3,a.w,1),`*`,tui.plain())
+    }
+    if rules {
+        r:tui.CellDiffOption = match step%5 {
+            0 => .AlwaysUpdate, 1 => .ForcedWidth(3), 2 => .Skip, 3 => .ForcedWidth(65535), _ => .None,
+        }
+        tile(&mut f,last,a.y+3,if step%3 == 1 { "🌊" } else { "." },edge,r,step%3 == 2)
+        tile(&mut f,col,a.y+4,"*",ink,.AlwaysUpdate,false)
+    }
+    if decorated { f.apply_cell_style(tui.Rect::new(col,a.y+5,a.right()-col,1),edge) }
+    move f
+}
+
+fn transition(old: &tui.Frame, a:tui.Rect, t:i32, rules:bool, decorated:bool) -> tui.Frame {
+    if t <= 16 { return picture(a,if t%5 == 0 { t-1 } else { t },rules,decorated) }
+    mut next := old.clone()
+    match t {
+        17 => { next.resize(a.w,3) },
+        18 => { next.resize(a.w,8) },
+        19 => {
+            source := picture(a,7,rules,decorated)
+            next.copy_region(&source,a,a.x,a.y+1)
+        },
+        20 => { next.scroll_rows(a.y+1,a.y+7,-2) },
+        21 => { next.resize(a.w+1,6); next.resize(a.w,6) },
+        22 => { next.clear() },
+        23 => { next.text(a,"🦀 é",tui.ink(.Green)) },
+        _ => { next.resize(a.w,0) },
+    }
+    move next
+}
+
+fn main() {
+    ansi := sys.arg_count() == 2 && sys.arg(1) == "--ansi"
+    for width in [1,2,7,31,96] { for x in [0,5] { for rules in [false,true] { for decorated in [false,true] {
+        a := tui.Rect::new(x,x,width,6)
+        mut old := picture(a,0,rules,decorated)
+        if !ansi { print("seed"); print(json.to_string(&old).unwrap()) }
+        for t in 1..25 {
+            next := transition(&old,a,t,rules,decorated)
+            if ansi {
+                mut bytes: []u8 = []
+                next.ansi_diff(&old,&mut bytes)
+                print(json.to_string(&bytes).unwrap())
+            } else {
+                changes := next.diff_positions(&old).unwrap()
+                print(json.to_string(&next).unwrap())
+                mut out := json.Writer::new()
+                out.array()
+                for (x,y) in &changes {
+                    out.array(); out.integer(i64(x)); out.integer(i64(y)); out.end()
+                }
+                out.end()
+                print(out.finish().unwrap())
+            }
+            old = move next
+        }
+    } } } }
+}

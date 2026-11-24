@@ -186,3 +186,7 @@ required-features = ["theme-oracle"]
 [[example]]
 name = "collection_cells"
 required-features = ["theme-oracle"]
+
+[[example]]
+name = "frame_diff"
+required-features = ["theme-oracle"]

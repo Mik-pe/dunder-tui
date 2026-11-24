@@ -73,3 +73,29 @@ Med Ratatui 0.30.2 och Dunder 0.12.1 kördes varje arbetslast nio gånger lokalt
 | Linux x86-64, översatt | 231 / 242 | 95 / 115 | 402 / 434 | 85 / 99 |
 
 Dunder skrev 1 441 240 byte för listan och 1 499 730 för tabellen under 1 320 bilder per program. Ratatui skrev 1 595 009 och 1 848 065. I ett separat kontrollbygge på Mac gjordes en sex element lång array vid varje ritning för att jämföra radmarginalerna. Genom att läsa de sparade värdena direkt sjönk tabellprovets allokeringsanrop från 339 193 till 336 555. Ratatui gjorde 170 509. Högsta RSS för tabellen var 19 232 KiB respektive 10 096 KiB, medianen av tre processer. [Allokeringsanrop, begärda byte och minne per värd](results/list-table-resources-0.12.1.tsv)
+
+## Celldiff på blandade rader
+
+En flerradig tabell blandar ofta korta etiketter med breda tecken, kombinerande tecken och långa remsor där cellerna är lika. Ritmotorn jämför nu enkla rader direkt även när en annan rad har breda tecken. På en rad med överlappande tecken kan den passera en följd av identiska ASCII-celler så länge cellernas stilar och uppdateringsregler tillåter det. [Ritmotor](../src/tui.ddr) · [Jämförelse mot Ratatui](../docs/parity.md#ändrade-celler-på-blandade-rader)
+
+Tabellen visar p50 / p95 i mikrosekunder för skrollning av 4 096 tabellrader i en pseudoterminal. Först kördes två Dunderbyggen mot varandra, sedan det nya bygget mot Ratatui 0.30.2. Varje jämförelse växlade körordning mellan processerna och använde medianen av sju mätningar efter två uppvärmningar.
+
+| Värd | Dunder före | Dunder efter | Dunder mot Ratatui | Ratatui |
+| --- | ---: | ---: | ---: | ---: |
+| macOS ARM64 | 51 / 60 | 35 / 48 | 35 / 47 | 53 / 63 |
+| Linux ARM64 | 63 / 67 | 47 / 54 | 47 / 54 | 54 / 59 |
+| Linux x86-64, översatt | 403 / 439 | 256 / 318 | 256 / 315 | 85 / 94 |
+
+TSV-filen innehåller även listan, alla sex arbetslaster i minne och pseudoterminal, samt åtta prov med vanliga och färgade ASCII-bilder. För varje percentil redovisas lägsta och högsta utfall. För hel omritning av färgad ASCII på Linux ARM64 ökade medianen från 74,9 till 75,3 µs. Högsta RSS för tabellen på Mac var 19 232 KiB för Dunder och 10 112 KiB för Ratatui. [Bildtid och mätintervall](results/frame-diff-0.12.1.tsv) · [Faktiska terminalbyte, allokeringsanrop och högsta RSS](results/frame-diff-resources-0.12.1.tsv)
+
+För att jämföra Dunderbyggena lokalt, bygg den aktuella tabellen, PTY-drivrutinen och mätprogrammet enligt kommandona ovan. Bygg sedan den tidigare revisionen med samma Dunder 0.12.1 och jämför de två terminalutskrifterna.
+
+```sh
+baseline=$(mktemp -d)
+git archive 8a9ad4bf68d95a6deec9aa99298a4e9b000b2bbb | tar -xf - -C "$baseline"
+dunder build --locked --offline "$baseline/benchmarks/tables.ddr" -o build/table-before
+build/measure build/table-before build/table-bench build/pty --labels before after
+build/pty "$PWD/build/table-before" build/before.ansi
+build/pty "$PWD/build/table-bench" build/after.ansi
+cmp build/before.ansi build/after.ansi
+```

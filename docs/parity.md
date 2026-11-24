@@ -246,6 +246,19 @@ cmp build/expected-cells build/actual-cells
 dunder run --locked --offline tests/buffer_json_terminal.ddr
 ```
 
+### Ändrade celler på blandade rader
+
+Provet skickar två faktiska bildbuffertar till Ratatui 0.30.2 och jämför de ändrade koordinaterna i ordning. I 960 bildpar matchade alla 46 287 positioner på macOS ARM64, Linux ARM64, översatt Linux x86-64 och Win64 under Wine. Provet täcker fem bredder, två ursprung, lägre och högre bild, breda tecken över radslut, understrykningsfärg, `Skip`, `AlwaysUpdate`, `ForcedWidth(65535)`, kopiering, skrollning och rensning. [Dunderprov](../tests/frame_diff.ddr) · [Ratatui-prov](../benchmarks/reference/examples/frame_diff.rs) · [Buffer::diff_iter](https://docs.rs/ratatui/0.30.2/ratatui/buffer/struct.Buffer.html#method.diff_iter)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/frame_diff.ddr -o build/frame-diff
+cargo build --release --locked --offline --manifest-path benchmarks/reference/Cargo.toml --features theme-oracle --example frame_diff --target-dir build/rust
+build/frame-diff | build/rust/release/examples/frame_diff
+```
+
+Dunders ANSI-utdata för samtliga bildpar jämfördes byte för byte med samma prov byggt mot `8a9ad4b`. I de två stora terminalproven gav alla 1 320 bilder per program också samma byteström före och efter ändringen. [Hela bildtider och terminalmätningar](../benchmarks/tables.md#celldiff-på-blandade-rader)
+
 ### Rader, kolumner och positioner i en rektangel
 
 `iter_rows()` och `iter_columns()` kan läsas från båda ändarna tills de möts. En rad kan ha bredd noll och en kolumn kan ha höjd noll. `positions()` går radvis och lämnar bara koordinater som ligger i ytan. Den kan användas i en `for`-loop eller med `advance()`, följt av `x()` och `y()`.

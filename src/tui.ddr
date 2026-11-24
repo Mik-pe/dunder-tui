@@ -55,6 +55,16 @@ fn packed_boundary(glyphs: &[]i32, other_glyphs: &[]i32, styles: &[]i64, other_s
     end
 }
 
+fn skip_unchanged_ascii(glyphs: &[]i32, previous: &[]i32, styles: &[]i64, old_styles: &[]i64,
+                   start: i32, end: i32, shared_floor: i64) -> i32 {
+    for i in start..end {
+        glyph := glyphs[i]
+        if (glyph < 0 || glyph >= PRINTABLE_ASCII_COUNT) && glyph != WRITTEN_SPACE { return i }
+        if glyph != previous[i] || styles[i] < shared_floor || styles[i] != old_styles[i] { return i }
+    }
+    end
+}
+
 fn fill_packed(glyphs: &mut []i32, styles: &mut []i64, start: i32, end: i32, code: i32, keep: i64, set: i64) {
     for i in start..end {
         glyphs[i] = code
@@ -676,6 +686,7 @@ impl Rect {
     }
 }
 
+const PRINTABLE_ASCII_COUNT: i32 = 127-32
 const WIDE_LENGTH_TAG: i32 = 65536
 const CLUSTER: i32 = 0x110000
 const ZERO_CLUSTER: i32 = 0x110001
@@ -1426,6 +1437,10 @@ impl Frame {
         if width != other_width { .Some(n) } else { .None }
     }
 
+    fn packed_row_data(&self, y: i32) -> bool {
+        self.decorations.len == 0 && (self.cluster_ranges.len == 0 || self.cluster_ranges[y*2] >= self.cluster_ranges[y*2+1])
+    }
+
     fn packed_cells(&self) -> bool { self.row_flags.len == 0 && self.decorations.len == 0 && self.cluster_cells.len == 0 }
 
     fn store_raw(&mut self, i: i32, cell: &RawCell, span: i32) {
@@ -1548,8 +1563,12 @@ impl DiffScan {
             floor:if full { i64(0) } else { current.shared_style_floor(&previous) } }
     }
 
-    fn next_cell(&mut self, frame: &Frame, previous: &Frame, limit: i32, ordinary_widths: bool) -> i32 {
+    fn next_cell(&mut self, frame: &Frame, previous: &Frame, limit: i32, ordinary_widths: bool, no_rules: bool) -> i32 {
         while self.at < limit {
+            if no_rules && !self.full && self.at >= self.trailing {
+                self.at = skip_unchanged_ascii(&frame.glyphs,&previous.glyphs,&frame.styles,&previous.styles,self.at,limit,self.floor)
+                if self.at == limit { break }
+            }
             i := self.at
             if ordinary_widths && !self.full && i >= self.trailing {
                 current := frame.glyphs[i]
@@ -1569,22 +1588,24 @@ impl DiffScan {
         w := frame.bounds.w
         while self.at < self.limit || self.cached >= 0 {
             i := if self.cached >= 0 { self.cached } else { self.at }
-            row := i-i%w
+            y := i/w
+            row := y*w
             limit := row+w
-            if self.packed && !self.full {
+            mut flags: u8 = 0
+            if self.precise {
+                if frame.row_flags.len > 0 { flags = frame.row_flags[y] }
+                if !self.full && previous.row_flags.len > 0 { flags = flags.bit_or(previous.row_flags[y]) }
+            }
+            if !self.full && (self.packed || (flags == 0 && self.cached < 0 && i >= self.trailing &&
+                frame.packed_row_data(y) && previous.packed_row_data(y))) {
                 self.start = packed_boundary(&frame.glyphs, &previous.glyphs, &frame.styles, &previous.styles, i, limit, true)
                 if self.start == limit { self.at = limit; continue }
                 self.end = packed_boundary(&frame.glyphs, &previous.glyphs, &frame.styles, &previous.styles, self.start + 1, limit, false)
                 self.at = self.end
                 return true
             }
-            mut flags: u8 = 0
-            if self.precise {
-                y := row/w
-                if frame.row_flags.len > 0 { flags = frame.row_flags[y] }
-                if !self.full && previous.row_flags.len > 0 { flags = flags.bit_or(previous.row_flags[y]) }
-            }
-            ordinary_widths := flags.bit_and(OVERLAPPING_WIDTHS.bit_or(1)) == 0
+            no_rules := flags.bit_and(1) == 0
+            ordinary_widths := no_rules && flags.bit_and(OVERLAPPING_WIDTHS) == 0
             if self.full && ordinary_widths && self.cached < 0 && i >= self.trailing {
                 self.start = i
                 self.end = limit
@@ -1596,7 +1617,7 @@ impl DiffScan {
                 continue
             }
             if self.precise && (flags != 0 || self.cached >= 0 || self.at < self.trailing) {
-                self.start = if self.cached >= 0 { self.cached } else { self.next_cell(&frame,&previous,limit,ordinary_widths) }
+                self.start = if self.cached >= 0 { self.cached } else { self.next_cell(&frame,&previous,limit,ordinary_widths,no_rules) }
                 self.cached = -1
                 if self.start < 0 { continue }
                 mut last := self.start
@@ -1612,7 +1633,7 @@ impl DiffScan {
                         self.at = self.end
                         if self.end == limit { break }
                     }
-                    cell := self.next_cell(&frame,&previous,limit,ordinary_widths)
+                    cell := self.next_cell(&frame,&previous,limit,ordinary_widths,no_rules)
                     if cell != self.end { self.cached = cell; break }
                     self.end += frame.advance(cell)
                     last = cell
@@ -2709,7 +2730,7 @@ impl Frame {
         if option > 0 { return option }
         value := self.glyphs[i]
         if !self.overlaps || value >= WIDE { return self.advance(i) }
-        if value <= 0 || value == WRITTEN_SPACE { return 1 }
+        if value < PRINTABLE_ASCII_COUNT || value == WRITTEN_SPACE { return 1 }
         code := value+32
         if code == EMPTY_SYMBOL { return 1 }
         if code == CLUSTER || code == ZERO_CLUSTER {
