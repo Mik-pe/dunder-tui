@@ -411,3 +411,5 @@ build/artwork | cargo run --quiet --locked --offline --release --manifest-path b
 ```
 
 Affischen kan också köras i en riktig terminal. Pseudoterminalprovet läser logotypens tecken, båda ögonfärgernas styrsekvenser och återställningen. Win32-provet läser de faktiska tecknen och bakgrundsfärgen ur den aktiva konsolbufferten. [Pseudoterminal](../tests/artwork_terminal.ddr) · [Windowskonsol](../tests/windows_console.ddr)
+
+Affischen och den skrollande programlistan jämförs även i 1 100 kompletta terminalbilder. Prestandaprovet mäter samma fem arbetslaster på alla fyra målplattformar. [Mätresultat och körinstruktioner](../benchmarks/artwork.md) · [Nativa prov av de publicerade x64-paketen](https://github.com/Mik-pe/dunder-tui/actions/runs/45327111173)

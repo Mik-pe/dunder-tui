@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Logotyp och maskot i 0.22.0
+
+Affischen ritar logotyp, maskot och en skrollande programlista. Jämförelsen omfattar fem arbetslaster med faktisk terminalutdata på macOS ARM64, Linux ARM64 och x64 samt Windows x64. [Bildtider, minne och allokeringar](artwork.md)
+
 ## Lånad grafemläsning i 0.21.0
 
 En rad innehåller 32 spann och 248 synliga grafem. Båda programmen summerar teckenföljdens första byte, dess längd och den ärvda kursivstilen. Tiderna nedan är median / p95 i µs för att läsa hela raden. Varje värd körde tre serier. Varje serie omfattar 20 uppvärmningar och 200 mätningar om 16 hela genomläsningar. Tabellen visar medianen av seriernas p50 respektive p95. [Alla serier och kontrollsummor](results/graphemes-0.21.0.tsv) · [Dunder](graphemes.ddr) · [Ratatui](reference/examples/grapheme_bench.rs)
