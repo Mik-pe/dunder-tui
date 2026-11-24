@@ -32,6 +32,8 @@ På båda systemen tog Dunder längre tid i alla fem fallen, även i minnet. Öv
 
 Linux räknade 82 996 allokeringsanrop i Dunder och 23 184 i Ratatui. På Windows registrerade Ratatui 23 227. Dunders profilerade program på Windows avslutades normalt utan att skriva sin räknarrapport. [Dunders Windowsuppföljning](https://github.com/Mik-pe/dunder/blob/main/docs/next-steps.md#verifiera-windows-som-kompilatorvärd)
 
+Callgrind räknade 497 802 698 exekverade instruktioner i ett separat Dunderprogram på Linux x86-64 som ritade den oförändrade vyn 220 gånger. `Frame::fill_cells` stod för 25,74 % och `Frame::same_row` för 21,11 % i funktionernas egna instruktioner. Procenttalen gäller hela processen inklusive första bilden och uppstarten. [Profil med instruktionsadresser](https://github.com/Mik-pe/dunder-tui/actions/runs/45304057607/job/138143422641) · [Funktionerna i Frame](../src/tui.ddr)
+
 ## Allokering och minne
 
 Dunders profil räknade 82 996 allokeringsanrop och 1 839 634 begärda byte. 265 anrop hämtade nytt minne och 82 731 återanvände poolen. Ratatui räknade 23 188 anrop och 1 265 238 begärda byte på macOS, samt 23 184 anrop på Linux. Medianen av tre processers högsta RSS var 2 032 / 2 480 KiB på macOS, 432 / 1 940 KiB på Linux ARM64 och 6 104 / 5 468 KiB på översatt Linux x86-64, med Dunder först i varje par.

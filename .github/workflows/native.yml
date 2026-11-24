@@ -204,4 +204,17 @@ jobs:
           fi
           build/dunder build -g --locked --offline benchmarks/terminal.ddr -o build/benchmark-symbols
           valgrind --tool=callgrind --callgrind-out-file=build/idle.calls build/benchmark-symbols --idle
-          callgrind_annotate --threshold=90 --auto=no build/idle.calls
+          callgrind_annotate --threshold=90 --auto=no build/idle.calls >build/idle-report
+          nm -n build/benchmark-symbols >build/native-symbols
+          awk '
+            NR == FNR {
+              address = $1
+              if (sub(/^[[:xdigit:]]+[[:space:]]+[A-Za-z][[:space:]]+/, "")) names[address] = $0
+              next
+            }
+            match($0, /0x[[:xdigit:]]+/) {
+              address = substr($0, RSTART + 2, RLENGTH - 2)
+              if (address in names) { print $0, names[address]; next }
+            }
+            { print }
+          ' build/native-symbols build/idle-report

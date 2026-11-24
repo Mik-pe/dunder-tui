@@ -6,6 +6,8 @@ Bygg interaktiva terminalappar i Dunder för macOS, Linux och Windows. Skriv en 
 
 Vill du se animationerna direkt? Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i en terminal. Samma paket innehåller kustkartan `kustlinjer`, signalvisualiseraren `signal`, boklistan `bokhylla` samt tidtabellen `avganger`, loggboken `loggbok` och kalendern `almanacka`. [Ladda ner för macOS, Linux eller Windows](https://github.com/Mik-pe/dunder-tui/releases/latest)
 
+På Linux använder den färdigbyggda almanackan systemets glibc (`libc.so.6`) för lokal tid. Övriga sex Linuxappar i paketet har inga dynamiska biblioteksberoenden.
+
 På macOS och Linux kan du starta exemplen med deras namn från Dunder 0.11.1. På Windows fungerar de färdigbyggda apparna direkt. Dunder 0.11.2 ger ett fel när kompilatorn öppnar ett paketmanifest på Windows, även för ett paket utan beroenden. [Installera Dunder](https://github.com/Mik-pe/dunder#installera-och-kör) · [Windowsprovet](https://github.com/Mik-pe/dunder-tui/actions/runs/45302071651/job/138136790534)
 
 ```sh
