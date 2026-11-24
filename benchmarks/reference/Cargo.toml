@@ -19,6 +19,10 @@ terminal-oracle = ["dep:ratatui-crossterm", "ratatui-crossterm/scrolling-regions
 style-oracle = ["ratatui/underline-color", "ratatui/palette"]
 
 [[example]]
+name = "artwork"
+required-features = ["style-oracle"]
+
+[[example]]
 name = "styles"
 required-features = ["style-oracle"]
 

@@ -90,7 +90,7 @@ fn main() {
     else { benchmark(chart_scene.Scene::new()) }
 }
 
-fn benchmark<S>(move scene: S) {
+pub fn benchmark<S>(move scene: S) {
     timed := sys.arg_count() < 2 || sys.arg(1) != "--allocations"
     physical := sys.arg_count() == 2 && sys.arg(1) == "--terminal"
     console := sys.arg_count() == 2 && sys.arg(1) == "--win-console"

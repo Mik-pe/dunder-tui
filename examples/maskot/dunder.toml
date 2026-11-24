@@ -1,0 +1,5 @@
+name = "maskot"
+root = "main.ddr"
+
+[dependencies]
+tui = { path = "../..", capabilities = ["stdio", "unsafe"] }

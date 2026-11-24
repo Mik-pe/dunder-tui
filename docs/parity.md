@@ -11,7 +11,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | Text | Span, Line, Text, Paragraph, inkrementell redigering, sammanslagning av dokument och läsning av stiliserade grafem, stiländringar, läsning av textens delar, utskrift, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. Cellprov för Unicode 18:s emojitest, presentationsvarianter och skriftspecifika ligaturer inom och över grafemgränser. | Byte, borttagning och omordning av en hel samling rader eller spann under pågående redigering. |
 | Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering och cache. 21 124 jämförda layouter, 1 200 rektangelprov och 1 100 jämförda bilder. Omfattar upprepade regelbyten och upp till nio paneler i gränsprovet för minsta storlek. | Överbestämda system med fler paneler och kombinationer av marginaler vid koordinatgränsen. |
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna tecken, individuella kanter, justerade titlar, utfyllnad och skuggor. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
-| Övriga widgets | Fristående Clear och Fill med cellvisa symboler, stil och klippning, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, månadskalender med händelser och egna datumstilar, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. | Logotyp och maskot. |
+| Övriga widgets | Fristående Clear och Fill med cellvisa symboler, stil och klippning, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, månadskalender med händelser och egna datumstilar, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. Ratatuis båda logotyper och maskot med två ögonfärger. | Se beteendeproven per widget nedan. |
 | Egna widgets och tester | Frame ritar egna och inbyggda widgets med `render_widget` och `render_stateful_widget`. Tillstånd kan uppdateras vid ritning med `run_stateful`. Egna backends kan anslutas till Terminal. TestBackend har skrollhistorik, markör, fem rensningslägen och regionskrollning. | Bredare testning av specialiserade terminalbackends. |
 | Terminal och backend | Alternativ skärm, tangentbord, storleksändringar, återställning, markörstyrning från Frame och Terminal, bildräknare, ANSI och Win32. Fast och inbäddad vyport, explicit storleksanpassning, terminalens tecken- och pixelmått, manuell cellutmatning och byte av arbetsbuffert, loggrader, rensning och regionskrollning. Marköråterställning för egna backends samt återhämtning efter skrivfel och uteblivet markörsvar. | Fel mitt i regionskrollning. |
 | Stabil Rust-integration | Jämförelseprogrammen använder den låsta Rustreferensen. Dunder-appar byggs offline. | Kontrollera Dunder-motsvarigheter till bekvämlighetsmakron, serialisering, cachning och backendval där dessa påverkar appens beteende. |
@@ -400,3 +400,14 @@ dunder build --locked --offline tests/styled_graphemes.ddr -o build/graphemes
 cargo build --locked --offline --release --manifest-path benchmarks/reference/Cargo.toml --features style-oracle --example styled_graphemes --target-dir build/rust
 build/graphemes tests/data/emoji-18.txt tests/data/emoji-variation-18.txt | build/rust/release/examples/styled_graphemes
 ```
+
+## Logotyp och maskot i 0.22.0
+
+`tui.artwork` ritar logotypen i 15 × 2 eller 27 × 2 celler och maskoten i 32 × 16 celler. I 280 bilder jämförs 87 360 celler och varje ordnad celldiff med Ratatui 0.30.2. Provet täcker bland annat halvblock med genomskinlig bakgrund, byte av ögonfärg, förskjutet origo och klippning genom breda tecken. Befintliga attribut, understrykningsfärger och diffregler ingår i jämförelsen. [Dunderprovet](../tests/artwork.ddr) · [Referensprovet](../benchmarks/reference/examples/artwork.rs)
+
+```sh
+dunder build --locked --offline tests/artwork.ddr -o build/artwork
+build/artwork | cargo run --quiet --locked --offline --release --manifest-path benchmarks/reference/Cargo.toml --features style-oracle --example artwork
+```
+
+Affischen kan också köras i en riktig terminal. Pseudoterminalprovet läser logotypens tecken, båda ögonfärgernas styrsekvenser och återställningen. Win32-provet läser de faktiska tecknen och bakgrundsfärgen ur den aktiva konsolbufferten. [Pseudoterminal](../tests/artwork_terminal.ddr) · [Windowskonsol](../tests/windows_console.ddr)

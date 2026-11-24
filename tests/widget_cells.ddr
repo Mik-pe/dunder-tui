@@ -1,6 +1,14 @@
 import ..src.tui
 import std.bytes as bytes
 
+fn write_color(out: &mut []u8, color: tui.Color) {
+    match color {
+        .Indexed(n) => bytes.append_utf8(&mut out,f"i{n};"),
+        .Rgb(_,_,_) => bytes.append_utf8(&mut out,color.str()),
+        _ => out.push(u8(66+color.code())),
+    }
+}
+
 pub fn snapshot(frame: &tui.Frame) {
     mut out: []u8 = []
     for y in 0..frame.area().h {
@@ -8,8 +16,8 @@ pub fn snapshot(frame: &tui.Frame) {
             ch := frame.symbol_at(x,y).unwrap()
             if ch == "" { out.push(b'~'); continue }
             s := frame.style_at(x,y).unwrap()
-            out.push(u8(66 + s.get_foreground().unwrap().code()))
-            out.push(u8(66 + s.get_background().unwrap().code()))
+            write_color(&mut out,s.get_foreground().unwrap())
+            write_color(&mut out,s.get_background().unwrap())
             flags := (if s.has(.Bold) { 1 } else { 0 }) + (if s.has(.Italic) { 2 } else { 0 }) +
                 (if s.has(.Reversed) { 4 } else { 0 }) + (if s.has(.Dim) { 8 } else { 0 })
             out.push(u8(65 + flags))

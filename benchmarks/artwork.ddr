@@ -1,0 +1,25 @@
+import .terminal
+import ..src.tui
+import ..src.artwork as art
+
+struct Poster {}
+impl Poster {
+    pub fn draw(&mut self, frame: &mut tui.Frame, mode: string, step: i32) {
+        area := frame.area()
+        night := mode == "repaint" && step%2 == 1
+        style := if night { tui.ink(.Yellow).background(.Blue) } else { tui.ink(.Cyan) }
+        frame.fill(area,` `,style)
+        labels := ["09.15   Atelier", "11.30   Utstallning", "13.45   Grafik", "15.00   Typografi"]
+        offset := if mode == "scroll" { step } else { 0 }
+        for y in 0..23 {
+            frame.text(tui.Rect{x:0,y:y,w:32,h:1},labels[(y+offset)%4],tui.plain())
+        }
+        x := area.w/2
+        frame.render_widget(art.RatatuiLogo::small(),tui.Rect{x:x,y:1,w:27,h:2})
+        eye: art.EyeColor = if night { .Red } else { .Default }
+        frame.render_widget(art.RatatuiMascot { eye:eye },tui.Rect{x:x,y:5,w:32,h:16})
+        frame.label(tui.Rect{x:0,y:23,w:1,h:1},if mode == "cell" && step%2 == 1 { "+" } else { "-" })
+    }
+}
+
+fn main() { terminal.benchmark(Poster {}) }

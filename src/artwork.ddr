@@ -1,0 +1,115 @@
+import .tui
+import std.cmp as cmp
+
+pub enum LogoSize { Tiny, Small }
+pub struct RatatuiLogo { size: LogoSize }
+impl Default for RatatuiLogo {
+    fn default() -> Self { RatatuiLogo::tiny() }
+}
+
+impl RatatuiLogo {
+    pub fn new(size: LogoSize) -> Self { Self { size: size } }
+    pub fn tiny() -> Self { RatatuiLogo::new(.Tiny) }
+    pub fn small() -> Self { RatatuiLogo::new(.Small) }
+    pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
+        area := bounds.intersection(frame.area())
+        if area.is_empty() { return }
+        for y in 0..cmp.min<i32>(2, area.h) {
+            row := match self.size {
+                .Tiny => if y == 0 { "▛▚▗▀▖▜▘▞▚▝▛▐ ▌▌" } else { "▛▚▐▀▌▐ ▛▜ ▌▝▄▘▌" },
+                .Small => if y == 0 { "█▀▀▄ ▄▀▀▄▝▜▛▘▄▀▀▄▝▜▛▘█  █ █" } else { "█▀▀▄ █▀▀█ ▐▌ █▀▀█ ▐▌ ▀▄▄▀ █" },
+            }
+            frame.split_wide_cell(area.x, area.y + y)
+            frame.text(tui.Rect { x: area.x, y: area.y+y, w: area.w, h: 1 }, row, tui.plain())
+        }
+    }
+}
+
+pub enum EyeColor { Default, Red }
+pub struct RatatuiMascot { eye: EyeColor }
+impl Default for RatatuiMascot {
+    fn default() -> Self { RatatuiMascot::new() }
+}
+
+fn pixels(row: i32) -> string {
+    match row {
+        0 => "               hhh",
+        1 => "             hhhhhh",
+        2 => "            hhhhhhh",
+        3 => "           hhhhhhhh",
+        4 => "          hhhhhhhhh",
+        5 => "         hhhhhhhhhh",
+        6 => "        hhhhhhhhhhhh",
+        7 => "        hhhhhhhhhhhhh",
+        8 => "        hhhhhhhhhhhhh     RRRRRR",
+        9 => "         hhhhhhhhhhh    RRRRRRRR",
+        10 => "              hhhhh RRRRRRRRRRR",
+        11 => "               hhh RReeRRRRRRRR",
+        12 => "                h RRRRRRRRRRRRR",
+        13 => "            RRRR RRRRRRRRRRRRR",
+        14 => "           RRRRRRRRRRRRRRRRR",
+        15 => "           RRRRRRRRRRRRRRRR",
+        16 => "           RRRRRRRRRRRRRRRR",
+        17 => "            RRR RRRRRRRRRR",
+        18 => "          bb    RRRRRRRRR",
+        19 => "         bssb   RRRRRRRRR",
+        20 => "        bssssb RRRRRRRRRR",
+        21 => "       bsscsssb RRRRRRRRR",
+        22 => "      bssccssssb RRRRRRRR",
+        23 => "     bssssssssssb RRRRRRRRRR",
+        24 => "    bssssssssssssb RRRRRRRRRR",
+        25 => "   bsssssssccsssssb RRRRRRRRR",
+        26 => "  bsssssssssccsssssb RRRR  RRR",
+        27 => " bssssssssssssssssssb RR   RRR",
+        28 => "bssssssssssssssssssssb R   RRR",
+        29 => "bsssssssssssssssssssssb   RRR",
+        30 => " bsssssssssssssssssssssb RRR",
+        _ => "  bsssssssssssssssssssssb R",
+    }
+}
+
+fn pigment(pixel: u8, eye: EyeColor) -> u8 {
+    match pixel {
+        b'R' => 252, b'h' => 231, b'e' => if eye == .Red { 196 } else { 236 },
+        b's' => 232, b'b' => 237, _ => 248,
+    }
+}
+
+fn paint_run(frame: &mut tui.Frame, area: tui.Rect, top: u8, bottom: u8, eye: EyeColor) {
+    if top == b' ' && bottom == b' ' { return }
+    foreground := if top == b' ' || (top == b's' && bottom != b' ') { bottom } else { top }
+    mut style := tui.plain().foreground_index(pigment(foreground, eye))
+    if top != b' ' && bottom != b' ' {
+        background := if top == b's' { top } else { bottom }
+        style = style.background_index(pigment(background, eye))
+    }
+    symbol := if top == b's' && bottom == b's' { ` ` }
+        else if bottom == b' ' || bottom == b's' { `▀` }
+        else if top == b' ' || top == b's' { `▄` }
+        else if top == bottom { `█` } else { `▀` }
+    frame.split_wide_cell(area.x, area.y)
+    frame.split_wide_cell(area.right(), area.y)
+    frame.fill(area, symbol, style)
+}
+
+impl RatatuiMascot {
+    pub fn new() -> Self { Self { eye: .Default } }
+    pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
+        area := bounds.intersection(frame.area())
+        if area.is_empty() { return }
+        for y in 0..cmp.min<i32>(16, area.h) {
+            top := pixels(2*y)
+            bottom := pixels(2*y+1)
+            columns := cmp.min<i32>(area.w, cmp.min<i32>(top.len, bottom.len))
+            mut x := 0
+            while x < columns {
+                upper := top[x]
+                lower := bottom[x]
+                mut end := x+1
+                while end < columns && top[end] == upper && bottom[end] == lower { end += 1 }
+                paint_run(&mut frame, tui.Rect { x: area.x+x, y: area.y+y, w: end-x, h: 1 }, upper, lower, self.eye)
+                x = end
+            }
+        }
+    }
+}

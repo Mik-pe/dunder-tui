@@ -1,0 +1,22 @@
+capability unsafe, stdio, process
+import .terminal_driver as driver
+import sys
+
+fn exercise(master: i32, slave: i32, screen: &mut driver.Screen) -> bool {
+    unsafe {
+        if !driver.wait_for(master,&mut screen,screen.h-1,"mellanslag","48;5;236") { return false }
+        if !screen.contains(0,"█▀▀▄ ▄▀▀▄") || !screen.contains(7,"▄█▀▀████") { return false }
+        if !driver.send(master," ") || !driver.wait_for(master,&mut screen,7,"▄█▀▀████","48;5;196") { return false }
+        if !driver.send(master," ") || !driver.wait_for(master,&mut screen,7,"▄█▀▀████","48;5;236") { return false }
+        if !driver.send(master,"t") || !driver.wait_for(master,&mut screen,0,"▛▚▗▀▖","") { return false }
+        if !driver.send(master,"q") || !driver.wait_for(master,&mut screen,0,"","\x1b[?1049l") { return false }
+    }
+    true
+}
+
+fn main() -> i32 {
+    if sys.arg_count() == 2 && (target_is("macos") || target_is("linux")) {
+        unsafe { if driver.test(sys.arg(1),64,19,exercise) { print("Logo sizes, mascot eye colors and terminal restoration OK"); return 0 } }
+    }
+    1
+}

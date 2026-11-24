@@ -1,0 +1,45 @@
+capability stdio
+import tui
+import tui.artwork as art
+import std.cmp as cmp
+import sys
+
+struct Poster { red: bool, small_logo: bool }
+
+fn draw(frame: &mut tui.Frame, poster: &Poster) {
+    area := frame.area()
+    paper := tui.plain().background_index(17)
+    frame.fill(area, ` `, paper)
+    (body, footer) := area.rows(cmp.max<i32>(0, area.h-1))
+    (title, picture) := body.rows(2)
+    width := if poster.small_logo { 27 } else { 15 }
+    logo := art.RatatuiLogo::new(if poster.small_logo { .Small } else { .Tiny })
+    x := title.x + cmp.max<i32>(0, (title.w-width)/2)
+    mark := tui.Rect { x: x, y: title.y, w: width, h: title.h }
+    frame.apply_style(mark, tui.plain().foreground_index(159).bold())
+    frame.render_widget(logo, mark)
+    left := picture.x + cmp.max<i32>(0, (picture.w-32)/2)
+    top := picture.y + cmp.max<i32>(0, (picture.h-16)/2)
+    eye: art.EyeColor = if poster.red { .Red } else { .Default }
+    frame.render_widget(art.RatatuiMascot { eye: eye }, tui.Rect { x: left, y: top, w: picture.w, h: picture.bottom()-top })
+    frame.text(footer, "Ratatui   mellanslag  blinka    t  logotyp    q  avsluta", tui.plain().foreground_index(195))
+}
+
+fn update(poster: &mut Poster, key: tui.Key) -> bool {
+    match key {
+        .Char(c) if c == ` ` => { poster.red = !poster.red },
+        .Char(c) if c == `t` => { poster.small_logo = !poster.small_logo },
+        .Char(c) if c == `q` => { return false },
+        .Escape => { return false },
+        _ => {},
+    }
+    true
+}
+
+fn main() -> i32 {
+    mut poster := Poster { red: false, small_logo: true }
+    match tui.run(&mut poster, draw, update) {
+        .Ok => 0,
+        .Err(message) => { _ := sys.eprint(message); 1 },
+    }
+}

@@ -4,9 +4,9 @@ Bygg interaktiva terminalappar i Dunder för macOS, Linux och Windows. Skriv en 
 
 ## Prova
 
-Vill du se animationerna direkt? Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i en terminal. Samma paket innehåller kustkartan `kustlinjer`, signalvisualiseraren `signal`, boklistan `bokhylla` samt tidtabellen `avganger`, loggboken `loggbok` och kalendern `almanacka`. [Ladda ner för macOS, Linux eller Windows](https://github.com/Mik-pe/dunder-tui/releases/latest)
+Vill du se animationerna direkt? Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i en terminal. Samma paket innehåller kustkartan `kustlinjer`, signalvisualiseraren `signal`, boklistan `bokhylla` samt tidtabellen `avganger`, loggboken `loggbok`, kalendern `almanacka` och affischen `maskot`. [Ladda ner för macOS, Linux eller Windows](https://github.com/Mik-pe/dunder-tui/releases/latest)
 
-På Linux använder den färdigbyggda almanackan systemets glibc (`libc.so.6`) för lokal tid. Övriga sex Linuxappar i paketet har inga dynamiska biblioteksberoenden.
+På Linux använder den färdigbyggda almanackan systemets glibc (`libc.so.6`) för lokal tid. Övriga sju Linuxappar i paketet har inga dynamiska biblioteksberoenden.
 
 Bygg från källkod med Dunder 0.11.2. Riktextmodulen använder lånade iteratorresultat som 0.11.0 och 0.11.1 avvisar. På Windows fungerar de färdigbyggda apparna direkt. Dunder 0.11.2 ger ett fel när kompilatorn öppnar ett paketmanifest på Windows, även för ett paket utan beroenden. [Installera Dunder](https://github.com/Mik-pe/dunder#installera-och-kör) · [Windowsprovet](https://github.com/Mik-pe/dunder-tui/actions/runs/45302071651/job/138136790534)
 
@@ -74,6 +74,10 @@ Signalen syntetiseras i appen och kräver ingen ljudenhet. [Källkod](examples/s
 
 ![En orange meridian sveper över en turkos världskarta och markerar motsvarande intervall i diagrammet](docs/kustlinjer.webp)
 
+### Ratatuis maskot
+
+Kör `dunder run --example maskot` för att se hur en widget kan ritas ovanpå en färgad yta. Mellanslag växlar maskotens ögonfärg och `t` växlar mellan logotyperna på 15 respektive 27 kolumner. Importera `tui.artwork` för att använda samma widgets i en egen app. [Körbart exempel](examples/maskot/main.ddr) · [Grafikens upphov och licens](src/ARTWORK-NOTICES.txt)
+
 ### Almanacka
 
 Kör `dunder run --example almanacka` för att öppna aktuell månad. ← och → flyttar en dag, ↑ och ↓ en vecka och hakparenteserna byter månad. Markera ett datum med `m` och gå tillbaka till dagens lokala datum med Home. Prova skottdagen med `dunder run --example almanacka -- 2024 2 29`. [Exemplets källkod](examples/almanacka/main.ddr)
@@ -86,7 +90,7 @@ Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.21.0", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.22.0", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.

@@ -138,6 +138,51 @@ fn emoji_log(buf: &mut ratatui::buffer::Buffer, mode: &str, step: usize) {
     );
 }
 
+fn poster(buf: &mut ratatui::buffer::Buffer, mode: &str, step: usize) {
+    use ratatui::{
+        layout::Rect,
+        style::Style,
+        widgets::{Fill, MascotEyeColor, RatatuiLogo, RatatuiMascot, Widget},
+    };
+    let night = mode == "repaint" && step % 2 == 1;
+    let style = if night {
+        Style::new().yellow().on_blue()
+    } else {
+        Style::new().cyan()
+    };
+    Fill::new(" ").style(style).render(buf.area, buf);
+    let labels = [
+        "09.15   Atelier",
+        "11.30   Utstallning",
+        "13.45   Grafik",
+        "15.00   Typografi",
+    ];
+    let offset = if mode == "scroll" { step } else { 0 };
+    for y in 0..23 {
+        buf.set_string(0, y, labels[(usize::from(y) + offset) % 4], Style::new());
+    }
+    let x = buf.area.width / 2;
+    RatatuiLogo::small().render(Rect::new(x, 1, 27, 2), buf);
+    let eye = if night {
+        MascotEyeColor::Red
+    } else {
+        MascotEyeColor::Default
+    };
+    RatatuiMascot::new()
+        .set_eye(eye)
+        .render(Rect::new(x, 5, 32, 16), buf);
+    buf.set_string(
+        0,
+        23,
+        if mode == "cell" && step % 2 == 1 {
+            "+"
+        } else {
+            "-"
+        },
+        Style::new(),
+    );
+}
+
 fn main() {
     use ratatui::style::{Color, Style, Stylize};
     use ratatui::text::Line;
@@ -150,7 +195,8 @@ fn main() {
     #[cfg(windows)]
     let mut written = 0;
     let scene = std::env::var("TUI_BENCH_SCENE").unwrap_or_default();
-    let data = (!matches!(scene.as_str(), "emoji" | "ligatures")).then(chart_scene::Data::new);
+    let data =
+        (!matches!(scene.as_str(), "emoji" | "ligatures" | "artwork")).then(chart_scene::Data::new);
     let mut chart = data.as_ref().map(chart_scene::Scene::new);
     let scripts = (scene == "ligatures").then(|| {
         ["لَا  لا", "א‍ל  א‍ל", "ᨕᨗ‍ᨐ  ᨕᨗ‍ᨐ", "ꓹꓼ  ꓺꓽ", "𐰲‍𐰃  𐰲‍𐰃", "ល្ង  ង", "ⵏ‍ⴾ  ⵏ‍ⴾ"].map(|sample| {
@@ -182,6 +228,8 @@ fn main() {
                 },
                 Style::new(),
             );
+        } else if scene == "artwork" {
+            poster(buf, mode, n as usize);
         } else {
             emoji_log(buf, mode, n as usize);
         }

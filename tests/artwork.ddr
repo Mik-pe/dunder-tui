@@ -1,0 +1,82 @@
+capability stdio
+import ..src.tui
+import ..src.artwork as art
+import std.bytes as bytes
+
+fn seeded(a: tui.Rect) -> tui.Frame {
+    mut frame := tui.Frame::at(a)
+    for y in a.y..a.bottom() {
+        style := if (y-a.y)%2 == 0 { tui.ink(.Cyan).background(.Blue).bold().underlined().underline_index(81) }
+            else { tui.ink(.Rgb(21,42,63)).background(.Indexed(13)).italic().with(.Reversed) }
+        frame.fill(tui.Rect{x:a.x,y:y,w:a.w,h:1}, `.`, style)
+        for col in [1,12,20] {
+            _ := frame.set_cell(a.x+col,y,if col == 12 { "❤️" } else { "界" },tui.ink(.Green))
+        }
+        _ := frame.set_diff_option(a.x+2,y,.Skip)
+        _ := frame.set_diff_option(a.x+4,y,.AlwaysUpdate)
+        _ := frame.set_diff_option(a.x+11,y,.ForcedWidth(3))
+    }
+    move frame
+}
+
+fn region(a: tui.Rect, n: i32) -> tui.Rect {
+    match n {
+        0 => a,
+        1 => tui.Rect{x:0,y:0,w:a.x+14,h:a.y+8},
+        2 => tui.Rect{x:a.x+2,y:a.y+1,w:32,h:16},
+        3 => tui.Rect{x:a.right(),y:a.y,w:4,h:4},
+        4 => tui.Rect{x:a.x,y:a.y,w:8,h:0},
+        _ => {
+            widths := [0,1,14,15,26,27,31,32,33]
+            heights := [2,1,15,16,17,1,15,16,17]
+            tui.Rect{x:a.x+1,y:a.y+2,w:widths[n-5],h:heights[n-5]}
+        },
+    }
+}
+
+fn paint(frame: &mut tui.Frame, area: tui.Rect, step: i32) {
+    match step {
+        0 => frame.render_widget(art.RatatuiLogo::tiny(), area),
+        1 => frame.render_widget(art.RatatuiLogo::small(), area),
+        2 => frame.render_widget(art.RatatuiMascot::new(), area),
+        3 => frame.render_widget(art.RatatuiMascot{eye:.Red}, area),
+        _ => frame.render_widget(art.RatatuiMascot::new(), area),
+    }
+}
+
+fn compare(frame: &tui.Frame, prior: &tui.Frame) {
+    a := frame.area()
+    for y in a.y..a.bottom() {
+        mut row: []u8 = []
+        for x in a.x..a.right() {
+            cell := frame.cell_at(x,y).unwrap()
+            s := cell.style
+            fg := s.get_foreground().unwrap().str()
+            bg := s.get_background().unwrap().str()
+            ul := s.get_underline_color().unwrap().str()
+            attr := (if s.has(.Bold) { 1 } else { 0 }) + (if s.has(.Italic) { 4 } else { 0 }) +
+                (if s.has(.Underlined) { 8 } else { 0 }) + (if s.has(.Reversed) { 64 } else { 0 })
+            opt := match cell.diff_option { .None => 0, .Skip => -1, .AlwaysUpdate => -2, .ForcedWidth(w) => w, }
+            bytes.append_utf8(&mut row, f"{cell.symbol}:{fg}/{bg}/{ul}/{attr}/{opt}|")
+        }
+        print(bytes.decode(&row).unwrap())
+    }
+    mut diff: []u8 = []
+    for (x,y) in frame.diff_positions(&prior).unwrap() { bytes.append_utf8(&mut diff,f"{x},{y} ") }
+    print(bytes.decode(&diff).unwrap())
+}
+
+fn main() {
+    for a in [tui.Rect{x:0,y:0,w:34,h:18},tui.Rect{x:6,y:4,w:34,h:18},tui.Rect{x:3,y:2,w:8,h:3},tui.Rect{x:1,y:2,w:0,h:1}] {
+        for n in 0..14 {
+            area := region(a,n)
+            mut prior := seeded(a)
+            for step in 0..5 {
+                mut next := seeded(a)
+                for phase in 0..step+1 { paint(&mut next,area,phase) }
+                compare(&next,&prior)
+                prior = move next
+            }
+        }
+    }
+}

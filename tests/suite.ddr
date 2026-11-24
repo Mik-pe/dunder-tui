@@ -1,4 +1,5 @@
 import ..src.calendar as cal
+import ..src.artwork as art
 import ..src.testing
 import ..src.layout as layout
 import ..src.table as table
@@ -20,6 +21,24 @@ import ..src.input
 import ..src.width
 import ..src.material
 import ..src.tailwind
+
+@test fn artwork_defaults_preserve_the_surface_and_change_two_eye_cells() {
+    area := tui.Rect { x:3, y:2, w:32, h:16 }
+    mut frame := tui.Frame::at(area)
+    frame.fill(area,`.`,tui.ink(.Green).background(.Blue).italic())
+    frame.render_widget(art.RatatuiLogo::default(),area)
+    assert(frame.symbol_at(3,2).unwrap() == "▛")
+    assert(frame.symbol_at(18,2).unwrap() == ".")
+    frame.render_widget(art.RatatuiMascot::default(),area)
+    assert(frame.symbol_at(3,2).unwrap() == "▛")
+    for x in 24..26 {
+        eye := frame.cell_at(x,7).unwrap()
+        assert(eye.symbol == "▀" && eye.style.has(.Italic))
+        assert(eye.style.get_background().unwrap() == .Indexed(236))
+    }
+    frame.render_widget(art.RatatuiMascot { eye:.Red },area)
+    for x in 24..26 { assert(frame.style_at(x,7).unwrap().get_background().unwrap() == .Indexed(196)) }
+}
 
 @test fn styled_graphemes_keep_span_boundaries_and_resolve_each_style() {
     base := tui.ink(.Red).bold().underline_rgb(0x123456)

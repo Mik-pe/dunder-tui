@@ -131,3 +131,7 @@ dunder run --locked --offline tests/pty_handles.ddr
 ## Jämförelse av lånade arrayintervall
 
 Två lånade intervall av heltal går att jämföra med `==` när de först binds till lokala namn. Skriver man båda intervallen direkt som operander föreslår Dunder 0.11.2 att lägga till ett `&` trots att det redan finns. Den namngivna varianten kördes med noll arraykloner och noll kopierade byte. [Båda fallen och föreslagen uppföljning](https://github.com/Mik-pe/dunder/blob/a08b0e3/docs/next-steps.md#jämför-två-lånade-arrayintervall-direkt)
+
+## Konstanta strängtabeller
+
+Maskotens 32 pixelrader har olika längd. Dunder 0.11.2 avvisar en modulkonstant av typen `[string; 4]` med E3007. Maskoten väljer därför en strängliteral per rad med `match`. På macOS ARM64 gav 65 536 uppslag i fyra lokala strängar 131 073 allokeringsanrop mot ett för `match`, inklusive uppstart. Båda summerade längderna till 131 072. [Mätprogram](../benchmarks/language/string_rows.ddr) · [Förbättring i Dunders nästa steg](https://github.com/Mik-pe/dunder/blob/ade0095/docs/next-steps.md#dela-oföränderliga-lokala-uppslagstabeller)

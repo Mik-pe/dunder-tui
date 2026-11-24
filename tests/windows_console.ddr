@@ -339,7 +339,33 @@ unsafe fn wait_for_gallery_row(child: ptr, bottom: bool, expected: string) -> bo
     false
 }
 
-unsafe fn exercise_gallery(program: string, input: ptr) -> i32 {
+unsafe fn wait_for_mascot_eye(child: ptr, previous: i32) -> i32 {
+    device := wide.path("CONOUT$")
+    for _ in 0..250 {
+        if wait_process(child,20) != 258 { break }
+        screen := open_file(addr(&device[0]),0xc0000000,3,ptr(0),3,0,ptr(0))
+        if usize(screen) == usize(0xffffffffffffffff) { continue }
+        mut bounds: [i16;11] = [0;11]
+        mut background := -1
+        if info(screen,addr(&mut bounds[0])) != 0 {
+            w := i32(bounds[7])-i32(bounds[5])+1
+            h := i32(bounds[8])-i32(bounds[6])+1
+            x := i32(bounds[5]) + (if w > 32 { (w-32)/2 } else { 0 }) + 21
+            y := i32(bounds[6]) + (if h > 19 { (h-19)/2 } else { 0 }) + 7
+            at := u32(x).bit_or(u32(y).shl(16))
+            mut attr := u16(0)
+            mut n := u32(0)
+            if unit_at(screen,x,y) == 0x2580 && read_attr(screen,addr(&mut attr),1,at,addr(&mut n)) != 0 && n == 1 {
+                background = i32(attr).shr(4).bit_and(15)
+            }
+        }
+        _ := close_handle(screen)
+        if background >= 0 && background != previous { return background }
+    }
+    -1
+}
+
+unsafe fn exercise_app(program: string, input: ptr, mascot: bool) -> i32 {
     path := wide.path(program)
     mut command := wide.path("\"" + program + "\"")
     mut startup: [u64;13] = [0;13]
@@ -352,14 +378,23 @@ unsafe fn exercise_gallery(program: string, input: ptr) -> i32 {
         if wait_process(child,0) == 258 { _ := stop_process(child,124); _ := wait_process(child,5000) }
         _ := close_handle(child)
     }
-    titles := ["Polarnatt","Prisma","Koidammen","Händelsehorisont","Harmonograf","Efterglöd","Medusa","Tesserakt","Glödbädd","Drivande atlas"]
-    if !wait_for_gallery_row(child,false,titles[0]) { return 121 }
-    if !push_key(input,32,32) || !wait_for_gallery_row(child,true,"spela") { return 122 }
-    for i in 1..titles.len {
-        if !push_key(input,39,0) || !wait_for_gallery_row(child,false,titles[i]) { return 130+i }
+    if mascot {
+        if !wait_for_gallery_row(child,true,"mellanslag") || !wait_for_gallery_row(child,false,"█▀▀▄ ▄▀▀▄") { return 141 }
+        normal := wait_for_mascot_eye(child,-1)
+        if normal < 0 || !push_key(input,32,32) { return 142 }
+        red := wait_for_mascot_eye(child,normal)
+        if red < 0 || !push_key(input,32,32) || wait_for_mascot_eye(child,red) != normal { return 143 }
+        if !push_key(input,84,116) || !wait_for_gallery_row(child,false,"▛▚▗▀▖") { return 144 }
+    } else {
+        titles := ["Polarnatt","Prisma","Koidammen","Händelsehorisont","Harmonograf","Efterglöd","Medusa","Tesserakt","Glödbädd","Drivande atlas"]
+        if !wait_for_gallery_row(child,false,titles[0]) { return 121 }
+        if !push_key(input,32,32) || !wait_for_gallery_row(child,true,"spela") { return 122 }
+        for i in 1..titles.len {
+            if !push_key(input,39,0) || !wait_for_gallery_row(child,false,titles[i]) { return 130+i }
+        }
+        if !push_key(input,39,0) || !wait_for_gallery_row(child,false,titles[0]) { return 123 }
+        if !push_key(input,32,32) || !wait_for_gallery_row(child,true,"pausa") { return 124 }
     }
-    if !push_key(input,39,0) || !wait_for_gallery_row(child,false,titles[0]) { return 123 }
-    if !push_key(input,32,32) || !wait_for_gallery_row(child,true,"pausa") { return 124 }
     if !push_key(input,81,113) || wait_process(child,5000) != 0 { return 125 }
     mut code := u32(0)
     if exit_code(child,addr(&mut code)) == 0 || code != 0 { return 126 }
@@ -383,8 +418,8 @@ fn verify() -> i32 {
         mut sentinel: u16 = 35
         mut n: u32 = 0
         if stamp(stdout, addr(&sentinel), 1, 0, addr(&mut n)) == 0 || n != 1 { return 19 }
-        if sys.arg_count() == 2 {
-            gallery := exercise_gallery(sys.arg(1),stdin)
+        if sys.arg_count() == 2 || (sys.arg_count() == 3 && sys.arg(2) == "--mascot") {
+            gallery := exercise_app(sys.arg(1),stdin,sys.arg_count() == 3)
             if gallery != 0 { return gallery }
         } else {
             mut probe := Probe { step: 0, failure: 0, width: 0, input: stdin, started: false }
