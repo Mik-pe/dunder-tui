@@ -42,6 +42,24 @@ import ..src.snapshot
     terminal.assert_buffer_lines(&["förstaraden", "界"])
 }
 
+@test fn rectangle_iterators_share_the_two_ends_and_keep_wide_counts() {
+    area := tui.Rect::new(5,7,3,2)
+    mut rows := area.iter_rows()
+    assert(rows.next_back().unwrap() == tui.Rect::new(5,8,3,1))
+    assert(rows.next().unwrap() == tui.Rect::new(5,7,3,1))
+    assert(rows.remaining() == 0 && rows.next_back().is_none() && rows.next().is_none())
+    mut sum := 0
+    for (x,y) in area.positions() { sum = (sum*2+x+y) }
+    assert(sum == 799)
+    mut cols := tui.Rect {x:65534,y:3,w:5,h:0}.iter_columns()
+    assert(cols.remaining() == 1 && cols.size_hint() == 5)
+    assert(cols.next_back().unwrap() == tui.Rect::new(65534,3,1,0))
+    assert(cols.remaining() == 0 && cols.size_hint() == 4)
+    mut large := tui.Rect::new(0,0,65535,65535).positions()
+    assert(large.remaining() == 4294836225 && large.size_hint() == 65535)
+    assert(large.next() == .Some((0,0)) && large.remaining() == 4294836224)
+}
+
 @test fn raw_buffer_changes_borrow_cells_and_stop_on_request() {
     mut old := tui.Buffer::empty(tui.Rect::new(3,2,4,2))
     mut next := tui.Buffer::empty(tui.Rect::new(3,2,4,3))

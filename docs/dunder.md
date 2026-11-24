@@ -1,5 +1,11 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Gå igenom koordinatpar i en ritloop
+
+I Dunder 0.12.1 gav både `for (x,y) in pairs` och en explicit `match pairs.next()` 506 881 allokeringsanrop över 253 440 koordinater. Med `advance()` och läsning av två heltalsfält blev det ett anrop för hela processen. Alla tre gav summan 14 952 960. Provet kördes på macOS ARM64, Linux ARM64, översatt Linux x64 och Windows x64 under Wine. [Fristående prov](../benchmarks/language/iterate_pairs.ddr) · [Mätning i råbufferten](../benchmarks/rect-paint.md)
+
+För en enum som även har en RGB-variant gav fyra enkla varianter valda med `match` 126 736 allokeringsanrop, jämfört med 16 för uppslag i en förberedd tabell med samma värden. Alla 253 440 skrivna element verifierades på macOS och Linux ARM64. Bygg båda proven med `--runtime-profile`. Kör parprovet med `for`, `next` och `advance`, och enumprovet med `match` och `table`. [Enumprovet](../benchmarks/language/enum_table.ddr)
+
 ## Skapa varje nytt element när en array växer
 
 För 110 buffertar med vardera 2 304 tomma celler begärde `std.array.resize` 760 543 allokeringar. När varje ny cell konstruerades direkt sjönk antalet till 507 103 och postklonerna från 760 321 till 253 441. Båda varianterna reserverade samma kapacitet och gav summan 253 440 på macOS och Linux ARM64 med Dunder 0.12.1. Bygg med `--runtime-profile` och kör med `clone` respektive `fresh`. [Mätprogram](../benchmarks/language/fresh_cells.ddr)

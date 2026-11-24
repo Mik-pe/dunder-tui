@@ -27,6 +27,14 @@ backend-oracle = ["theme-oracle", "serde-backend"]
 macro-oracle = ["theme-oracle", "ratatui/macros", "dep:ratatui-widgets"]
 
 [[example]]
+name = "rect_paint"
+required-features = ["theme-oracle"]
+
+[[example]]
+name = "rect_iterations"
+required-features = ["theme-oracle"]
+
+[[example]]
 name = "constructors"
 required-features = ["macro-oracle"]
 

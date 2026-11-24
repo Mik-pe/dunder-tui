@@ -1,0 +1,49 @@
+capability stdio
+import ..src.tui
+import std.array
+import std.time
+import std.json
+import sys
+
+fn tile(b: &mut tui.Buffer, x: i32, y: i32, phase: i32, palette: &[tui.Color;4]) {
+    _ := b.get_mut(x,y).set_fg(palette[(x+3*y+phase).bit_and(3)])
+}
+
+fn paint(b: &mut tui.Buffer, area: tui.Rect, phase: i32, mode: string, palette: &[tui.Color;4]) {
+    if mode == "for" {
+        for (x,y) in area.positions() { tile(&mut b,x,y,phase,&palette) }
+    } else if mode == "cursor" {
+        mut positions := area.positions()
+        while positions.advance() { tile(&mut b,positions.x(),positions.y(),phase,&palette) }
+    } else {
+        for y in area.y..area.bottom() { for x in area.x..area.right() { tile(&mut b,x,y,phase,&palette) } }
+    }
+}
+
+fn main() -> i32 {
+    if sys.arg_count() < 2 { return 2 }
+    mode := sys.arg(1)
+    if mode != "for" && mode != "nested" && mode != "cursor" { return 2 }
+    arg := if sys.arg_count() > 2 { sys.arg(2) } else { "" }
+    area := tui.Rect::new(7,11,96,24)
+    palette: [tui.Color;4] = [.Cyan,.Magenta,.Yellow,.Green]
+    mut b := tui.Buffer::empty(area)
+    if arg == "--cells" {
+        for phase in 0..4 { paint(&mut b,area,phase,mode,&palette); print(json.to_string(&b).unwrap()) }
+        return 0
+    }
+    timed := arg == ""
+    mut samples: []i64 = []
+    mut checksum := 0
+    for phase in 0..(if arg == "--setup" { 0 } else { 110 }) {
+        t := if timed { time.monotonic_ns() } else { i64(0) }
+        paint(&mut b,area,phase,mode,&palette)
+        if timed && phase >= 10 { samples.push(time.monotonic_ns()-t) }
+        checksum += b.get(area.x+phase%area.w,area.y).fg.code()
+    }
+    if timed {
+        array.sort<i64>(&mut samples)
+        print(f"{checksum} {samples[49]} {samples[94]}")
+    } else { print(checksum) }
+    0
+}

@@ -1,0 +1,31 @@
+capability stdio
+import sys
+
+enum Color { Cyan, Magenta, Yellow, Green, Rgb(u8,u8,u8) }
+const CODES: [i32;4] = [6,5,3,2]
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 2 }
+    mode := sys.arg(1)
+    if mode != "match" && mode != "table" { return 2 }
+    palette: [Color;4] = [.Cyan,.Magenta,.Yellow,.Green]
+    mut cells: []Color = []
+    for _ in 0..2304 { cells.push(.Cyan) }
+    mut sum := 0
+    for frame in 0..110 {
+        for i in 0..cells.len {
+            n := (i+frame)%4
+            if mode == "match" {
+                cells[i] = match n { 0 => .Cyan, 1 => .Magenta, 2 => .Yellow, _ => .Green, }
+            } else { cells[i] = palette[n] }
+        }
+        for i in 0..cells.len {
+            code := match &cells[i] { .Cyan => 6, .Magenta => 5, .Yellow => 3, .Green => 2, .Rgb(_,_,_) => 0, }
+            assert(code == CODES[(i+frame)%4])
+            sum += code
+        }
+    }
+    assert(sum == 1013760)
+    print(sum)
+    0
+}

@@ -9,7 +9,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | Buffer och Cell | Förskjutet origo, koordinater och linjära index, råa celler och stilar, celldiff och fyra diffregler. Kopiering, storleksändring och sammanslagning inom hela koordinatintervallet. | Minnesgränsen för sammanhängande Dunder-arrayer och avvikelsen i Ratatuis sammanslagning vid stora index beskrivs nedan. |
 | Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. Tailwind och Material ger 500 namngivna RGB-värden. | JSON för färger och stilar jämförs nedan. Fler konverteringar mellan backendens stilrepresentationer återstår. |
 | Text | Span, Line, Text, Paragraph, byte och omordning av rad- och spannsamlingar, inkrementell redigering, sammanslagning av dokument och läsning av stiliserade grafem, stiländringar, läsning av textens delar, utskrift, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. Cellprov för Unicode 18:s emojitest, presentationsvarianter och skriftspecifika ligaturer inom och över grafemgränser. | Fler jämförelser av sammansatta dokument i listor och tabeller. Se de tolv gränsfallen vid fysisk högerkant nedan. |
-| Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering, riktningsbyte och cache. 22 408 jämförda layouter, 2 460 rektangelprov och två vyer med vardera 1 100 bilder. Blandade regler provas med upp till 24 paneler. | Större blandade system och nativa x64-mätningar för frekvensbanden. För stora marginaler och råa rektanglar vid koordinatgränsen, se JSON-provet nedan. |
+| Layout | Rektangeloperationer, rad- och kolumniteratorer från båda ändar, radvis genomgång av cellkoordinater, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering, riktningsbyte och cache. 22 408 jämförda layouter, 2 460 rektangelprov och två vyer med vardera 1 100 bilder. Blandade regler provas med upp till 24 paneler. | Större blandade system och nativa x64-mätningar för frekvensbanden. För stora marginaler och råa rektanglar vid koordinatgränsen, se JSON-provet nedan. |
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna strängar för hörn och sidor, individuella kanter, justerade titlar, utfyllnad och skuggor. För skuggor jämförs 85 050 råa celler och celldiffarnas ordning med referensen. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
 | Övriga widgets | Fristående Clear och Fill med cellvisa symboler, stil och klippning, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, månadskalender med händelser och egna datumstilar, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. Ratatuis båda logotyper och maskot med två ögonfärger. | Se beteendeproven per widget nedan. |
 | Egna widgets och tester | Frame ritar egna och inbyggda widgets med `render_widget` och `render_stateful_widget`. Tillstånd kan uppdateras vid ritning med `run_stateful`. Egna backends kan anslutas till Terminal. TestBackend har skrollhistorik, markör, fem rensningslägen och regionskrollning. | Bredare testning av specialiserade terminalbackends. |
@@ -244,6 +244,24 @@ ref=build/rust/release/examples/buffer_json
 build/cells build/cell-input >build/actual-cells
 cmp build/expected-cells build/actual-cells
 dunder run --locked --offline tests/buffer_json_terminal.ddr
+```
+
+### Rader, kolumner och positioner i en rektangel
+
+`iter_rows()` och `iter_columns()` kan läsas från båda ändarna tills de möts. En rad kan ha bredd noll och en kolumn kan ha höjd noll. `positions()` går radvis och lämnar bara koordinater som ligger i ytan. Den kan användas i en `for`-loop eller med `advance()`, följt av `x()` och `y()`.
+
+`remaining()` anger exakt antal återstående element, även för en yta med 4 294 836 225 celler. `size_hint()` återger Ratatuis gemensamma undre och övre tips. Positionstipset mättas vid 65 535. För en rå rektangel vars lagrade mått går utanför koordinatintervallet kan tipset också omfatta oåtkomliga rader eller kolumner. [Referensens iteratorer](https://github.com/ratatui/ratatui/blob/ratatui-v0.30.2/ratatui-core/src/layout/rect/iter.rs)
+
+Provet jämför 400 kombinationer av origo och mått, fyra sätt att växla riktning samt fyra långa positionsföljder. Det kontrollerar koordinater, uttömning och storlekstips, med radgränser och kontrollsummor över samtliga 624 583 besökta positioner. Dessutom jämförs symboler och stilar i 6 840 celler över 630 bilder. Unixprovet visar den färgade bokstavsytan efter ett tangenttryck och Win32-provet läser tillbaka båda raderna. [Dunderprov](../tests/rect_iterations.ddr) · [Ratatui-prov](../benchmarks/reference/examples/rect_iterations.rs) · [Mätningar för en färglagd ruta](../benchmarks/rect-paint.md)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/rect_iterations.ddr -o build/rect
+cargo build --release --offline --locked --no-default-features --features theme-oracle \
+    --manifest-path benchmarks/reference/Cargo.toml --example rect_iterations --target-dir build/reference
+build/reference/release/examples/rect_iterations >build/expected
+build/rect >build/actual
+cmp build/expected build/actual
 ```
 
 ### Sparade layouter och geometri

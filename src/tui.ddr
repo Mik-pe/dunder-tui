@@ -446,6 +446,67 @@ fn clamp(n: i32, limit: i32) -> i32 {
     n
 }
 
+pub opaque struct RectLines { area: Rect, columns: bool, front: i32, back: i32, clipped: i32 }
+
+impl RectLines {
+    pub fn remaining(&self) -> i32 { self.back-self.front }
+    pub fn size_hint(&self) -> i32 { self.remaining()+self.clipped }
+
+    fn line(&self, index: i32) -> Option<Rect> {
+        if self.columns { self.area.column_at(index) } else { self.area.row_at(index) }
+    }
+
+    pub fn next_back(&mut self) -> Option<Rect> {
+        if self.front == self.back { return .None }
+        self.back -= 1
+        self.line(self.back)
+    }
+}
+
+impl Iterator for RectLines {
+    fn next(&mut self) -> Option<Rect> {
+        if self.front == self.back { return .None }
+        i := self.front
+        self.front += 1
+        self.line(i)
+    }
+}
+
+pub opaque struct RectPositions {
+    left: i32, right: i32, bottom: i32, width: i32, next_x: i32, next_y: i32, x: i32, y: i32
+}
+
+impl RectPositions {
+    pub fn remaining(&self) -> i64 {
+        if self.next_y == self.bottom { return 0 }
+        i64(self.bottom-self.next_y-1)*i64(self.right-self.left) + i64(self.right-self.next_x)
+    }
+
+    pub fn size_hint(&self) -> i32 {
+        if self.next_y == self.bottom { return 0 }
+        count := i64(self.bottom-self.next_y-1)*i64(self.width) + i64(self.right-self.next_x)
+        i32(cmp.min<i64>(65535,count))
+    }
+
+    pub fn advance(&mut self) -> bool {
+        if self.next_y == self.bottom || self.left == self.right { return false }
+        self.x = self.next_x
+        self.y = self.next_y
+        self.next_x += 1
+        if self.next_x == self.right { self.next_x = self.left; self.next_y += 1 }
+        true
+    }
+
+    pub fn x(&self) -> i32 { self.x }
+    pub fn y(&self) -> i32 { self.y }
+}
+
+impl Iterator for RectPositions {
+    fn next(&mut self) -> Option<(i32,i32)> {
+        if self.advance() { .Some((self.x,self.y)) } else { .None }
+    }
+}
+
 impl Eq for Rect {
     fn eq(&self, other: &Self) -> bool { self.x == other.x && self.y == other.y && self.w == other.w && self.h == other.h }
 }
@@ -518,6 +579,21 @@ impl Rect {
         w := cmp.min<i64>(2147483647, i64(cmp.max<i32>(self.right(), other.right())) - i64(x))
         h := cmp.min<i64>(2147483647, i64(cmp.max<i32>(self.bottom(), other.bottom())) - i64(y))
         Rect { x: x, y: y, w: i32(w), h: i32(h) }
+    }
+
+    pub fn iter_rows(self) -> RectLines {
+        count := self.bottom()-self.y
+        RectLines { area:self, columns:false, front:0, back:count, clipped:cmp.max<i32>(0,self.h)-count }
+    }
+
+    pub fn iter_columns(self) -> RectLines {
+        count := self.right()-self.x
+        RectLines { area:self, columns:true, front:0, back:count, clipped:cmp.max<i32>(0,self.w)-count }
+    }
+
+    pub fn positions(self) -> RectPositions {
+        RectPositions { left:self.x, right:self.right(), bottom:self.bottom(), width:cmp.max<i32>(0,self.w),
+            next_x:self.x, next_y:self.y, x:self.x, y:self.y }
     }
 
     pub fn row_at(self, index: i32) -> Option<Rect> {

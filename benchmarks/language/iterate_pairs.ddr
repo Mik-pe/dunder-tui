@@ -1,0 +1,39 @@
+capability stdio
+import sys
+
+struct Pairs { count: i32, x: i32, y: i32 }
+
+impl Pairs {
+    fn advance(&mut self) -> bool {
+        if self.count == 2304 { return false }
+        self.x = self.count%96
+        self.y = self.count/96
+        self.count += 1
+        true
+    }
+}
+
+impl Iterator for Pairs {
+    fn next(&mut self) -> Option<(i32,i32)> {
+        if self.advance() { .Some((self.x,self.y)) } else { .None }
+    }
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 2 }
+    mode := sys.arg(1)
+    mut sum := 0
+    for _ in 0..110 {
+        mut pairs := Pairs { count:0, x:0, y:0 }
+        if mode == "for" { for (x,y) in pairs { sum += x+y } }
+        else if mode == "next" {
+            while true {
+                match pairs.next() { .Some((x,y)) => { sum += x+y }, .None => { break }, }
+            }
+        } else if mode == "advance" { while pairs.advance() { sum += pairs.x+pairs.y } }
+        else { return 2 }
+    }
+    assert(sum == 14952960)
+    print(sum)
+    0
+}

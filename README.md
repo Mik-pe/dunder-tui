@@ -289,6 +289,8 @@ Om terminalen bara stöder radmatningar, anropa `term.backend_mut().set_scrollin
 | --- | --- |
 | `frame.area()` | Hela ritytan i terminalkolumner och rader. |
 | `area.rows(n)`, `area.cols(n)` | Dela av de första `n` raderna eller kolumnerna. Båda delarna returneras och ryms i ytan. |
+| `area.iter_rows()`, `area.iter_columns()` | Gå igenom en rad eller kolumn i taget. `next_back()` hämtar från andra änden av samma iterator. |
+| `for (x,y) in area.positions()` | Besök cellerna från vänster till höger, uppifrån och ned. |
 | `area.inset(n)` | Lämna en marginal innanför ytan. |
 | `frame.panel(area, title, style)` | Rita en ram och få tillbaka innerytan för innehållet. |
 | `frame.label(area, text)`, `frame.text(area, text, style)` | Visa text med radbrytningar. Långa rader klipps vid kanten. |
