@@ -191,6 +191,21 @@ dunder run --locked --offline tests/widget_state_terminal.ddr
 
 ### Sparade celler och bildbuffertar
 
+En `Buffer` kan skapas tom, förifylld eller från strängar, spann och rader. Celler kan lånas, ändras och återställas på plats. Provet jämför sammanslagning av kantsymboler, alla diffregler inklusive äldre `skip`, stiländringar med överlappande attribut, klippt text, oanvända celler under breda tecken, storleksändring och sammanslagning av buffertar med olika origo. Förberett och direkt skrivet innehåll provas även med 5 986 emoji- och presentationssekvenser. [Dunderprov](../tests/cell_edits.ddr) · [Ratatui-prov](../benchmarks/reference/examples/cell_edits.rs)
+
+Alla 7 383 tillstånd, 65 050 fysiska celler och returnerade skrivpositioner stämde på macOS ARM64, Linux ARM64, översatt Linux x86-64 och Win64 under Wine. En rå cell kan vara oskriven eller innehålla ett uttryckligt mellanslag. Här jämförs även den skillnaden. Ett separat prov skrev var och en av Unicodes 1 112 064 skalärer och jämförde symbol och skrivbredd mot Ratatui på samma mål. De lokala Unix-pseudoterminalerna och Win32-konsolen under Wine kontrollerade utmatningen när en extern skrivning träffade en skyddad cell. [Terminalprov](../tests/buffer_terminal.ddr) · [Win32-prov](../tests/windows_console.ddr)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/cell_edits.ddr -o build/cells
+cargo build --locked --release --offline --manifest-path benchmarks/reference/Cargo.toml --features theme-oracle --example cell_edits --target-dir build/reference
+set -- tests/data/emoji-18.txt tests/data/emoji-variation-18.txt
+build/cells "$@" >build/cells.out
+build/reference/release/examples/cell_edits "$@" <build/cells.out
+build/cells --scalars >build/scalars.out
+build/reference/release/examples/cell_edits --scalars <build/scalars.out
+```
+
 Med Ratatuis `serde` och `underline-color` jämförs 4 520 fall. Provet läser 536 enskilda celler, 517 attributuppsättningar, 16 diffregler och 744 buffertar. Ytterligare 2 700 bildpar jämför ordningen på de ändrade cellerna. I sju prov ritar båda biblioteken färgad text, sparar bilden, läser tillbaka den och skriver på nästa rad. Båda bilderna jämförs byte för byte i JSON. [Dunderprov](../tests/buffer_json.ddr) · [Ratatui och indata](../benchmarks/reference/examples/buffer_json.rs)
 
 En orörd cell, ett explicit mellanslag och en tom sträng behåller var sitt JSON-värde. Orörda celler och mellanslag med samma stil och diffregel är lika vid omritning. Proven täcker också 16-bitars attributmasker, färgade understreck, celler bakom breda symboler, `ForcedWidth` och det äldre fältet `skip`. `tui.Buffer` kan läsa en rå bild med avvikande cellantal. För att bli en ritbar `Frame` måste antalet stämma med ytan och koordinaterna rymmas i terminalen. Formatet utan understrykningsfält återstår att jämföra.

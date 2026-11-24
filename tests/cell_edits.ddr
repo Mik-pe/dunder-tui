@@ -1,0 +1,155 @@
+capability filesystem, stdio
+import ..src.tui
+import ..src.text as rich
+import ..src.lines
+import std.json
+import std.bytes
+import std.parse
+import std.text
+import sys
+
+fn record(b: &tui.Buffer, end: (i32,i32)) {
+    (x,y) := end
+    print(f"{x} {y}\t{json.to_string(&b).unwrap()}")
+}
+
+fn seed() -> tui.RawCell {
+    mut c := tui.RawCell::from_char(`.`)
+    _ := c.set_fg(.Indexed(1)).set_bg(.Blue).set_style(tui.plain().underline_rgb(0x08090a).italic())
+        .set_diff_option(.AlwaysUpdate).set_skip(true)
+    move c
+}
+
+fn styles() -> []tui.Style {
+    [
+        tui.plain(), tui.ink(.Red).background(.Default).bold(),
+        tui.plain().underline_color(.Indexed(13)).without(.Italic).with(.SlowBlink),
+        tui.ink(.Indexed(1)).background_rgb(0x030507).italic(),
+        json.from_str<tui.Style>("{\"fg\":null,\"bg\":null,\"underline_color\":null,\"add_modifier\":\"BOLD | 0x8000\",\"sub_modifier\":\"BOLD | SLOW_BLINK\"}").unwrap(),
+        tui.Style::reset(),
+    ]
+}
+
+fn words() -> []string {
+    ["", " ", "A", "ABCD", "茶", "éZ", "🧑‍🚀a", "\u{301}カﾞﾟ", "\tA\r\nB\u{85}C", "لا", "😶‍🌫", "X🇸🇪Y", "X\u{200b}Y", "࢏"]
+}
+
+fn cell_edits() {
+    area := tui.Rect::new(3,7,3,1)
+    mut b := tui.Buffer::filled(area, &seed())
+    for old in ["", " ", "┘", "╭", "┏", "茶", "ab", "é"] {
+        for new in ["", "┏", "┘", "╆", "茶", "ab", " "] {
+            for strategy in [lines.Merge.Replace, lines.Merge.Exact, lines.Merge.Fuzzy] {
+                b.get_mut(3,7).reset()
+                _ := b.get_mut(4,7).set_symbol(old.clone())
+                _ := b.get_mut(5,7).set_char(`┤`)
+                for x in 3..6 { _ := b.get_mut(x,7).merge_symbol(new,strategy) }
+                record(&b,(0,0))
+            }
+        }
+    }
+    rules: []tui.CellDiffOption = [.None, .Skip, .AlwaysUpdate, .ForcedWidth(1), .ForcedWidth(65535)]
+    for rule in &rules {
+        for skip in [false,true] {
+            for s in styles() {
+                _ := b.get_mut(3,7).set_skip(skip).set_diff_option(rule).set_style(s)
+                record(&b,(b.get(3,7).cell_width(),0))
+            }
+        }
+    }
+}
+
+fn write_text() {
+    area := tui.Rect::new(10,6,7,2)
+    cases := words()
+    for value in &cases {
+        for x in [10,12,16,17] {
+            for limit in [0,1,2,3,7,65535] {
+                mut b := tui.Buffer::filled(area, &seed())
+                style := tui.ink(.LightRed).without(.Italic)
+                pos := b.set_stringn(x,6,value.as_str(),limit,style)
+                record(&b,pos)
+                pos2 := b.set_span(x,7,&rich.Span::styled(value.clone(),style),limit)
+                record(&b,pos2)
+                line := rich.Line::new([rich.Span::styled(value.clone(),style),rich.Span::raw("a茶"),rich.Span::raw("!")])
+                    .styled(tui.plain().background(.Green).italic()).align(.Right)
+                pos3 := b.set_line(x,7,&line,limit)
+                record(&b,pos3)
+            }
+        }
+    }
+    mut b := tui.Buffer::filled(area,&seed())
+    for y in 6..8 { b.set_string(11,y,"A茶Z",tui.ink(.Magenta)) }
+    record(&b,(0,0))
+    for box in [tui.Rect::new(0,5,15,2),area,tui.Rect::new(17,7,2,1)] {
+        for s in styles() {
+            b.set_style(box,s)
+            record(&b,(0,0))
+        }
+    }
+    for next in [tui.Rect::new(14,7,2,7), tui.Rect::new(1,1,3,1),tui.Rect::new(65530,65533,5,2),tui.Rect::new(4,4,0,5)] {
+        b.resize(next)
+        record(&b,(0,0))
+    }
+}
+
+fn line_buffers() {
+    empty: []string = []
+    record(&tui.Buffer::with_lines(&empty),(0,0))
+    for v in words() {
+        short := rich.Span::styled(v.clone(),tui.ink(.Cyan))
+        row := rich.Line::new([short.clone(),rich.Span::raw("!")]).styled(tui.plain().background(.Blue)).align(.Center)
+        record(&tui.Buffer::with_lines(&[v.clone(), "A\r\n茶\nz", "XY"]),(0,0))
+        record(&tui.Buffer::with_lines(&[short, rich.Span::raw("XY")]),(0,0))
+        mut b := tui.Buffer::with_lines(&[row, rich.Line::raw("XY")])
+        record(&b,(0,0))
+        b.reset()
+        record(&b,(0,0))
+    }
+}
+
+fn main() {
+    if sys.arg_count() == 2 && sys.arg(1) == "--scalars" {
+        mut b := tui.Buffer::empty(tui.Rect::new(0,0,4,1))
+        mut widths: []u8 = []
+        widths.reserve(0x110000-2048)
+        for cp in 0..0x110000 {
+            if cp >= 0xd800 && cp <= 0xdfff { continue }
+            s := rune(cp).str()
+            (x,_) := b.set_stringn(0,0,s.as_str(),4,tui.plain())
+            if x > 0 { assert(b.get(0,0).symbol_text() == s) }
+            widths.push(u8(65+x))
+        }
+        print(bytes.decode(&widths).unwrap())
+        return
+    }
+    cell_edits()
+    write_text()
+    line_buffers()
+    for w in [0,1,4] {
+        for h in [0,1,3] {
+            for x in [0,3,9] {
+                for y in [0,2,6] {
+                    mut base := tui.Buffer::filled(tui.Rect::new(3,2,w,h),&seed())
+                    for i in 0..base.content.len { _ := base.content[i].set_char(rune(65+i)) }
+                    overlay := tui.Buffer::filled(tui.Rect::new(x,y,h,w), &tui.RawCell::new(" "))
+                    base.merge(&overlay).unwrap()
+                    record(&base,(0,0))
+                }
+            }
+        }
+    }
+    for arg in 1..sys.arg_count() {
+        for codepoints in text.split(sys.read(sys.arg(arg)).unwrap(), "\n") {
+            if codepoints == "" { continue }
+            mut s := "X"
+            for cp in text.split(codepoints, " ") { s += rune(parse.hex(cp).value).str() }
+            s += "."
+            mut b := tui.Buffer::filled(tui.Rect::new(1,2,4,2), &seed())
+            style := tui.ink(.Cyan)
+            (x,y) := b.set_stringn(1,2,s.as_str(),4,style)
+            assert(b.set_span(1,3,&rich.Span::styled(move s,style),4) == (x,3))
+            record(&b,(x,y))
+        }
+    }
+}

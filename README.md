@@ -8,7 +8,7 @@ Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i 
 
 På Linux använder den färdigbyggda almanackan systemets glibc (`libc.so.6`) för lokal tid. Övriga åtta Linuxappar i paketet har inga dynamiska biblioteksberoenden.
 
-Bygg `main` med Dunder 0.12.0. Biblioteket använder standardbibliotekets terminalbredder, lokala datum, arrayoperationer och UTF-16-kodning. De färdigbyggda apparna i v0.24.0 använder Dunder 0.11.2. [Installera Dunder 0.12.0](https://github.com/Mik-pe/dunder/releases/tag/v0.12.0)
+Bygg `main` med Dunder 0.12.1. Biblioteket använder standardbibliotekets terminalbredder, lokala datum, arrayoperationer och UTF-16-kodning. De färdigbyggda apparna i v0.24.0 använder Dunder 0.11.2. [Installera Dunder 0.12.1](https://github.com/Mik-pe/dunder/releases/tag/v0.12.1)
 
 ```sh
 git clone https://github.com/Mik-pe/dunder-tui.git
@@ -90,11 +90,11 @@ Kör `dunder run --example almanacka` för att öppna aktuell månad. ← och �
 
 ## Skriv en egen app
 
-Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `dunder.toml`.
+Skapa ett projekt med `dunder init min-app`. Exemplen här följer `main`. Lägg till beroendet i projektets `dunder.toml` och spara den genererade `dunder.lock` för att bygga samma revision igen.
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.24.0", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", branch = "main", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.
@@ -166,6 +166,23 @@ _ := frame.set_diff_option(2,0,.AlwaysUpdate)
 ```
 
 `set_cell_with_width(x, y, symbol, columns, style)` låter en widget skriva en egen teckenföljd och ange antalet kolumner den tar i anspråk. `cell_at` läser tecken, stil och cellregel tillsammans. Med `frame.merge(&overlay)?` kan du kombinera två buffertar med olika origo. Överlappande celler hämtas från `overlay`, även tomma celler. [Exempel och terminalprov](tests/buffer_terminal.ddr) · [Jämförelse mot Ratatui](docs/parity.md#bildbuffert-och-celldiff-i-0130)
+
+### Redigera celler direkt
+
+Bygg en `Buffer` från strängar eller stiliserade rader. `get_mut` lånar cellen på den angivna skärmkoordinaten. Här ärver frågetecknet bakgrunden från den förifyllda raden.
+
+```dunder
+import tui
+
+fn main() {
+    mut strip := tui.Buffer::with_lines(&["Status: klar"])
+    strip.set_style(tui.Rect::new(8,0,4,1), tui.plain().background(.Blue))
+    _ := strip.get_mut(11,0).set_char(`?`).set_fg(.Yellow)
+    assert(strip.get(11,0).bg == .Blue)
+}
+```
+
+`cell(x,y)` ger ett valfritt delat lån. `update_cell(x,y,edit)` anropar din funktion om cellen finns. Med `set_stringn`, `set_span` och `set_line` får du koordinaten där nästa text kan börja. Vid en storleksändring behåller bufferten början av den linjära cellföljden. Med `to_frame()` kan du rita den redigerade bilden i en terminal. [Körbart terminalexempel](tests/buffer_app.ddr)
 
 ## Markör och testterminal
 
@@ -495,7 +512,7 @@ Använd `base.patch(overlay)` för att kombinera två stilar, `.without(.Bold)` 
 
 För animerade färger tar `foreground_rgb(0x54dcbe)`, `background_rgb(...)` och `underline_index(199)` färgdata direkt. Det undviker temporära färgvärden i ritloopen.
 
-På `main` kan du läsa ett JSON-tema en gång och återanvända stilen när bilden ritas. Använd `branch = "main"` i beroenderaden för att få stödet. `tui.Style` och `tui.Color` fungerar även inuti arrayer med Dunders `std.json`. En färg som saknas ärvs, medan `"Reset"` väljer terminalens grundfärg.
+Du kan läsa ett JSON-tema en gång och återanvända stilen när bilden ritas. `tui.Style` och `tui.Color` fungerar även inuti arrayer med Dunders `std.json`. En färg som saknas ärvs, medan `"Reset"` väljer terminalens grundfärg.
 
 ```dunder
 import std.json

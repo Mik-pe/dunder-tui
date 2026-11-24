@@ -2,6 +2,8 @@
 
 ## Typinferens och lån i testterminalens API
 
+Ett kontrollerat uppslag i en redigerbar buffert skulle kunna lämna `Option<&mut Cell>`. Även `Option<&mut i32>` i en metod med `from self` avvisas i 0.12.1 med E3099. Buffertens `get_mut` ger ett direkt lån och `update_cell` tar en kortlivad callback enligt samma mönster som `std.map.Map.update`. Biblioteksprovet kontrollerar att callbacken bara körs för en giltig koordinat. [Minimiprov](../tests/dogfood/compiler/optional_mutable_element.ddr) · [Körbar cellredigering](../tests/suite.ddr)
+
 I 0.12.1 får `total(&[a, b])` E3003 när en metod tar `&[]T`. Med `total<Item>(&[a, b])` blir summan 5. Testterminalens radkontroll tar hela samlingstypen som parameter så att det räcker att skriva `assert_buffer_lines(&["hej"])`. [Minimiprov](../tests/dogfood/compiler/infer_array_argument.ddr)
 
 En metod som lämnar `&str from self` kan låna ett strängfält direkt. Om den i stället lånar en sträng ur samma posts `Option<string>` ger matchgrenen E4003. Båda möjliga returvärdena tillhör mottagaren. Celljämförelsen jämför därför symbolerna inne i matchgrenarna. [Minimiprov med båda grenarna](../tests/dogfood/compiler/borrow_optional_field.ddr)

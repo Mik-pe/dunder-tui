@@ -1,0 +1,40 @@
+capability stdio
+import ..src.tui
+import ..src.text as rich
+import std.array
+import std.time
+import sys
+
+fn sample(mode: string, head: string, timed: bool) {
+    area := tui.Rect::new(0,0,96,24)
+    mut b := tui.Buffer::empty(area)
+    mut row := ""
+    for _ in 0..12 { row += head }
+    mut span := rich.Span::raw(row.clone())
+    mut samples: []i64 = []
+    for i in 0..110 {
+        style := if i%2 == 0 { tui.ink(.Green).underlined() } else { tui.ink(.Cyan).italic() }
+        start := if timed { time.monotonic_ns() } else { i64(0) }
+        if mode == "style" { b.set_style(area, style) }
+        else if mode == "span" {
+            span.set_style(style)
+            for y in 0..24 { _ := b.set_span(0,y,&span,96) }
+        } else { for y in 0..24 { b.set_string(0,y,row.as_str(),style) } }
+        if timed && i >= 10 { samples.push(time.monotonic_ns() - start) }
+    }
+    assert(b.get(95,23).fg == .Cyan && b.get(95,23).modifier.contains(.Italic))
+    if mode == "style" { assert(b.get(95,23).symbol.is_none()) }
+    else { assert(b.get(95,23).symbol_text() == ".") }
+    if timed {
+        array.sort<i64>(&mut samples)
+        print(f"{mode} {samples[49]} {samples[94]}")
+    }
+}
+
+fn main() {
+    timed := sys.arg_count() == 1
+    sample("ascii","1234567.",timed)
+    sample("unicode","A茶é🦀..",timed)
+    sample("span","A茶é🦀..",timed)
+    sample("style","",timed)
+}

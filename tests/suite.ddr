@@ -27,6 +27,35 @@ import ..src.material
 import ..src.tailwind
 import ..src.snapshot
 
+@test fn edit_a_borrowed_raw_cell_and_leave_neighbors_intact() {
+    area := tui.Rect::new(2, 3, 4, 1)
+    mut tile := tui.RawCell::new("┘")
+    _ := tile.set_fg(.Cyan).set_bg(.Blue).set_style(tui.plain().underlined()).set_diff_option(.Skip)
+    mut b := tui.Buffer::filled(area, &tile)
+    mut edits := 0
+    visit := fn[&mut edits](cell: &mut tui.RawCell) {
+        _ := cell.merge_symbol("┏", .Exact).set_skip(true)
+        edits += 1
+    }
+    assert(b.update_cell(3, 3, &mut visit))
+    assert(!b.update_cell(3, 4, &mut visit))
+    assert(b.cell(1, 3).is_none())
+    assert(b.get(2, 3) == tile && b.get(4, 3) == tile)
+    assert(b.cell(3, 3).unwrap().symbol_text() == "╆")
+    assert(b.get(3, 3).skip && b.get(3, 3).diff_option == .Skip)
+    assert(b.get(3, 3).modifier.contains(.Underlined))
+    huge := tui.Rect::new(0, 0, 65535, 65535)
+    assert(tui.Buffer::try_filled(huge, &tile).is_err() && b.try_resize(huge).is_err())
+    assert(b.area == area && b.content.len == 4)
+    b.resize(tui.Rect::new(4, 1, 2, 2))
+    assert(b.get(5, 1).symbol_text() == "╆")
+    b.get_mut(5, 1).reset()
+    assert(b.get(5, 1).symbol.is_none() && b.get(5, 1) == tui.RawCell::empty())
+    b.content.truncate(1)
+    assert(b.cell(5, 1).is_none() && !b.update_cell(5, 1, &mut visit))
+    assert(edits == 1)
+}
+
 @test fn backend_expectations_compare_styled_rows_and_cursor_after_scrolling() {
     head := rich.Line::new([rich.Span::styled("茶", tui.ink(.Cyan)), rich.Span::raw("Q")])
     mut backend := testing.TestBackend::with_lines(&[head.clone(), rich.Line::raw("abc")])
@@ -772,9 +801,16 @@ struct SavedPreferences { name: string, styles: []Option<snapshot.WithoutUnderli
             } else { chars.push(rune(parse.hex(token).value)) }
         }
         mut pos := 0
+        mut source := ""
+        for cp in &chars { source += cp.str() }
+        mut offset := 0
         for expected in ends {
             next := width.glyph(&chars, pos)
             assert(next.end == expected)
+            mut columns := 0
+            end := width.next_cell(source.as_str(), offset, &mut columns)
+            assert(end == offset + next.bytes && columns == next.span)
+            offset = end
             pos = next.end
         }
         count += 1

@@ -1,0 +1,7 @@
+target	implementation	allocation_requests	requested_bytes	median_peak_rss_kib	peak1_kib	peak2_kib	peak3_kib	peak4_kib	peak5_kib
+arm64-macos	dunder	317292	7387268	2048	2048	2048	2048	2048	2112
+arm64-macos	ratatui	13	443462	2112	2112	2240	2112	2112	2112
+arm64-linux	dunder	317292	7387268	384	384	384	384	384	384
+arm64-linux	ratatui	12	443398	1852	1852	1852	1852	1844	1852
+x86_64-linux	dunder	317292	7387268	5736	5736	5736	5736	5736	5736
+x86_64-linux	ratatui	12	443398	5084	5084	5084	5084	5084	5084

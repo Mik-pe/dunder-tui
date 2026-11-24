@@ -142,3 +142,7 @@ required-features = ["style-oracle"]
 [[example]]
 name = "border_cells"
 required-features = ["style-oracle"]
+
+[[example]]
+name = "cell_edits"
+required-features = ["theme-oracle"]

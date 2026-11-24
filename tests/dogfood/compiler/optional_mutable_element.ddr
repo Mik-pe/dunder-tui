@@ -1,0 +1,16 @@
+struct Row { values: []i32 }
+
+impl Row {
+    fn checked(&mut self, index: i32) -> Option<&mut i32> from self {
+        if index < 0 || index >= self.values.len { return .None }
+        .Some(&mut self.values[index])
+    }
+}
+
+fn change(value: &mut i32) { value = 7 }
+
+fn main() {
+    mut row := Row { values: [3] }
+    match row.checked(0) { .Some(value) => { change(value) }, .None => { assert(false) }, }
+    assert(row.values[0] == 7 && row.checked(1).is_none())
+}

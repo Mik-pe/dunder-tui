@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Skriv till en rå cellbuffert
+
+På macOS ARM64 tog en ASCII-bild med 96 × 24 celler 21 µs i median i Dunder och 31,8 µs i Ratatui. Direkt skriven Unicode tog 213 respektive 36,5 µs. [Tider för alla fyra arbetslaster, allokeringar och minne](cell-writes.md)
+
 ## Mixer med tolv frekvensband
 
 Mixern jämför tolv trängda frekvensband med 1 100 renderade bilder. På Macen tog det 0,50 µs i median att dela upp en ny bredd, mot 5 655 µs i Dunders tidigare version. [Alla bildtider, minne och terminalbyte för mixern](bands.md)

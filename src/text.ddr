@@ -81,23 +81,12 @@ impl StyledGrapheme {
     }
 }
 
-fn visible_start(source: &str, offset: i32) -> i32 {
-    mut at := offset
-    while at < source.len {
-        first := source[at]
-        if first < 32 || first == 127 { at += 1 }
-        else if first == 194 && source[at+1] < 160 { at += 2 }
-        else { break }
-    }
-    at
-}
-
 pub opaque struct SpanGraphemes { span: &Span, index: i32, offset: i32, style: tui.Style }
 
 impl Iterator for SpanGraphemes {
     fn next(&mut self) -> Option<StyledGrapheme> from self {
         if self.index == self.span.count() { return .None }
-        start := visible_start(self.span.content(),self.offset)
+        start := width.next_visible_byte(self.span.content(),self.offset)
         self.offset = start + self.span.glyphs.symbol_bytes_at(self.index)
         self.index += 1
         .Some(StyledGrapheme { source: self.span.glyphs.source_string(), start: start, end: self.offset, style: self.style })
@@ -105,6 +94,13 @@ impl Iterator for SpanGraphemes {
 }
 
 impl Default for Span { fn default() -> Self { Span::raw("") } }
+
+impl tui.BufferText for Span {
+    fn buffer_width(&self) -> i32 { self.width() }
+    fn write_buffer(&self, buffer: &mut tui.Buffer, x: i32, y: i32, limit: i32) -> (i32,i32) {
+        self.glyphs.write_buffer(&mut buffer, x, y, limit, self.style)
+    }
+}
 
 impl Span {
     pub fn raw(move value: string) -> Self { Span::styled(move value, tui.plain()) }
@@ -126,7 +122,7 @@ impl Span {
         }
         mut end := 0
         for index in 0..count {
-            start := visible_start(source,end)
+            start := width.next_visible_byte(source,end)
             end = start + self.glyphs.symbol_bytes_at(index)
             if !visit(&mut state,&source[start..end],&style) { return false }
         }
@@ -154,6 +150,20 @@ struct Token { span: i32, start: i32, end: i32, cells: i32, space: bool }
 
 pub opaque struct Line { spans: []Span, columns: i32, style: tui.Style, alignment: Alignment }
 
+impl tui.BufferText for Line {
+    fn buffer_width(&self) -> i32 { self.width() }
+    fn write_buffer(&self, buffer: &mut tui.Buffer, x: i32, y: i32, limit: i32) -> (i32,i32) {
+        mut col := x
+        for span in &self.spans {
+            left := limit - (col - x)
+            if left <= 0 { break }
+            (end, _) := span.glyphs.write_buffer(&mut buffer, col, y, left, self.style.patch(span.style))
+            col = end
+        }
+        (col, y)
+    }
+}
+
 fn spans_width(spans: &[]Span) -> i32 {
     mut columns := 0
     for span in &spans { columns += span.width() }
@@ -167,7 +177,7 @@ impl Iterator for LineGraphemes {
         while self.index < self.spans.len {
             if self.glyph < self.spans[self.index].count() {
                 if self.glyph == 0 { self.style = self.base.patch(self.spans[self.index].style) }
-                start := visible_start(self.spans[self.index].content(),self.offset)
+                start := width.next_visible_byte(self.spans[self.index].content(),self.offset)
                 self.offset = start + self.spans[self.index].glyphs.symbol_bytes_at(self.glyph)
                 self.glyph += 1
                 return .Some(StyledGrapheme { source: self.spans[self.index].glyphs.source_string(), start: start, end: self.offset, style: self.style })

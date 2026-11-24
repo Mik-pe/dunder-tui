@@ -1,6 +1,7 @@
 capability stdio, unsafe
 
 import .lines
+import .text_lines
 import .width
 import .terminal
 import .input
@@ -165,9 +166,12 @@ impl Color {
     fn decoded(code: i32) -> Self {
         if code < 0 { return .Default }
         if code < 16 {
-            colors: [Color; 16] = [.Black, .Red, .Green, .Yellow, .Blue, .Magenta, .Cyan, .Gray,
-                .DarkGray, .LightRed, .LightGreen, .LightYellow, .LightBlue, .LightMagenta, .LightCyan, .BrightWhite]
-            return colors[code]
+            return match code {
+                0 => .Black, 1 => .Red, 2 => .Green, 3 => .Yellow,
+                4 => .Blue, 5 => .Magenta, 6 => .Cyan, 7 => .Gray,
+                8 => .DarkGray, 9 => .LightRed, 10 => .LightGreen, 11 => .LightYellow,
+                12 => .LightBlue, 13 => .LightMagenta, 14 => .LightCyan, _ => .BrightWhite,
+            }
         }
         if code < 512 { return .Indexed(u8(code - 256)) }
         rgb(u32(code))
@@ -666,7 +670,27 @@ pub struct RawCell {
     symbol: Option<string>, fg: Color, bg: Color, underline_color: Color, modifier: Modifiers, diff_option: CellDiffOption, skip: bool,
 }
 
+struct CellStyle { style: Style, fg: Color, bg: Color, underline: Color }
+
+impl CellStyle {
+    fn new(style: Style) -> Self {
+        Self { style:style, fg:Color::decoded(style.fg), bg:Color::decoded(style.bg), underline:Color::decoded(style.underline) }
+    }
+    fn apply(&self, cell: &mut RawCell) {
+        if self.style.fg != INHERIT { cell.fg = self.fg }
+        if self.style.bg != INHERIT { cell.bg = self.bg }
+        if self.style.underline != INHERIT { cell.underline_color = self.underline }
+        cell.modifier.bits = u16(i32(cell.modifier.bits).bit_or(self.style.added).bit_and(self.style.removed.bit_not()))
+    }
+}
+
 impl RawCell {
+    pub fn new(move symbol: string) -> Self {
+        mut cell := Self::empty()
+        cell.symbol = .Some(move symbol)
+        move cell
+    }
+    pub fn from_char(ch: rune) -> Self { Self::new(ch.str()) }
     pub fn empty() -> Self {
         Self { symbol:.None, fg:.Default, bg:.Default, underline_color:.Default, modifier:Modifiers { bits:0 }, diff_option:.None, skip:false }
     }
@@ -676,6 +700,39 @@ impl RawCell {
     pub fn symbol_text(&self) -> string {
         match &self.symbol { .Some(value) => value.clone(), .None => " ", }
     }
+    pub fn set_symbol(&mut self, move symbol: string) -> &mut Self from self {
+        self.symbol = .Some(move symbol)
+        &mut self
+    }
+    pub fn set_char(&mut self, ch: rune) -> &mut Self from self { self.set_symbol(ch.str()) }
+    pub fn merge_symbol(&mut self, symbol: string, strategy: lines.Merge) -> &mut Self from self {
+        merged := match &self.symbol {
+            .None => symbol.clone(),
+            .Some(old) => lines.merge_symbols(old, symbol, strategy),
+        }
+        self.set_symbol(move merged)
+    }
+    pub fn set_fg(&mut self, color: Color) -> &mut Self from self { self.fg = color; &mut self }
+    pub fn set_bg(&mut self, color: Color) -> &mut Self from self { self.bg = color; &mut self }
+    pub fn set_style(&mut self, style: Style) -> &mut Self from self {
+        CellStyle::new(style).apply(&mut self)
+        &mut self
+    }
+    fn write_symbol(&mut self, view: &str) {
+        match &self.symbol { .Some(old) => { if old.as_str() == view { return } }, .None => {}, }
+        self.symbol = .Some(view.to_string())
+    }
+    fn write_ascii(&mut self, ch: u8) {
+        match &self.symbol { .Some(old) => { if old.len == 1 && old[0] == ch { return } }, .None => {}, }
+        self.symbol = .Some(rune(i32(ch)).str())
+    }
+    pub fn set_diff_option(&mut self, option: CellDiffOption) -> &mut Self from self {
+        assert(option.valid())
+        self.diff_option = option
+        &mut self
+    }
+    pub fn set_skip(&mut self, skip: bool) -> &mut Self from self { self.skip = skip; &mut self }
+    pub fn reset(&mut self) { self = Self::empty() }
     pub fn cell_width(&self) -> i32 {
         match &self.diff_option { .ForcedWidth(w) => w, _ => self.columns(), }
     }
@@ -756,6 +813,29 @@ impl snapshot.Read for RawCell {
 @derive(Eq, Hash)
 pub struct Buffer { area: Rect, content: []RawCell }
 
+pub trait BufferText {
+    fn buffer_width(&self) -> i32
+    fn write_buffer(&self, buffer: &mut Buffer, x: i32, y: i32, limit: i32) -> (i32,i32)
+}
+
+impl BufferText for string {
+    fn buffer_width(&self) -> i32 {
+        mut columns := 0
+        mut rows := text_lines.Cursor::new()
+        while rows.advance(self.as_str()) { columns += GlyphRun::new(self[rows.start..rows.end]).text_width() }
+        columns
+    }
+    fn write_buffer(&self, buffer: &mut Buffer, x: i32, y: i32, limit: i32) -> (i32,i32) {
+        mut col := x
+        mut rows := text_lines.Cursor::new()
+        while col - x < limit && rows.advance(self.as_str()) {
+            (end, _) := buffer.set_stringn(col, y, &self[rows.start..rows.end], limit - (col - x), plain())
+            col = end
+        }
+        (col, y)
+    }
+}
+
 impl json.Encode for Buffer {
     fn encode_json(&self, out: &mut json.Writer) { self.write_snapshot(&mut out,.WithUnderlineColor) }
 }
@@ -833,6 +913,154 @@ fn shift_strings(slots: &mut []string, first: i32, end: i32, delta: i32) {
 }
 
 impl Buffer {
+    pub fn empty(area: Rect) -> Self { Self::filled(area, &RawCell::empty()) }
+    pub fn filled(area: Rect, cell: &RawCell) -> Self {
+        Self::try_filled(area, &cell).unwrap()
+    }
+    fn reserve_content(content: &mut []RawCell, area: Rect) -> Result<i32,string> {
+        n := area.cell_count()
+        if n > 2147483647 { return .Err("Buffer has too many cells for a Dunder array.") }
+        if n > i64(content.cap()) && content.try_reserve(i32(n)) != .Ok { return .Err("Could not allocate the buffer's cells.") }
+        .Ok(i32(n))
+    }
+    pub fn try_filled(area: Rect, cell: &RawCell) -> Result<Self,string> {
+        mut content: []RawCell = []
+        n := Self::reserve_content(&mut content, area)?
+        array.resize(&mut content, n, &cell)
+        .Ok(Self { area:area, content:move content })
+    }
+    pub fn with_lines<L>(lines: &L) -> Self {
+        mut columns := 0
+        for line in lines { columns = cmp.max<i32>(columns, line.buffer_width()) }
+        w := i32(u16(columns))
+        mut buffer := Self::empty(Rect::new(0, 0, w, i32(u16(lines.len))))
+        for y in 0..lines.len { _ := lines[y].write_buffer(&mut buffer, 0, i32(u16(y)), w) }
+        move buffer
+    }
+    fn cell_index(&self, x: i32, y: i32) -> i32 {
+        if !self.area.contains(x, y) { return -1 }
+        i := i64(y - self.area.y) * i64(self.area.w) + i64(x - self.area.x)
+        if i >= i64(self.content.len) { -1 } else { i32(i) }
+    }
+    pub fn cell(&self, x: i32, y: i32) -> Option<&RawCell> from self {
+        i := self.cell_index(x, y)
+        if i < 0 { return .None }
+        .Some(&self.content[i])
+    }
+    pub fn update_cell(&mut self, x: i32, y: i32, edit: &mut FnMut(&mut RawCell)) -> bool {
+        i := self.cell_index(x, y)
+        if i < 0 { return false }
+        edit(&mut self.content[i])
+        true
+    }
+    pub fn get(&self, x: i32, y: i32) -> &RawCell from self { &self.content[self.cell_index(x, y)] }
+    pub fn get_mut(&mut self, x: i32, y: i32) -> &mut RawCell from self {
+        i := self.cell_index(x, y)
+        &mut self.content[i]
+    }
+    pub fn resize(&mut self, area: Rect) {
+        self.try_resize(area).unwrap()
+    }
+    pub fn try_resize(&mut self, area: Rect) -> Result<(),string> {
+        n := Self::reserve_content(&mut self.content, area)?
+        array.resize(&mut self.content, n, &RawCell::empty())
+        self.area = area
+        .Ok
+    }
+    pub fn reset(&mut self) {
+        for i in 0..self.content.len { self.content[i].reset() }
+    }
+    pub fn merge(&mut self, other: &Buffer) -> Result<(),string> {
+        before := self.area
+        next := other.area
+        if before != Rect::new(before.x, before.y, before.w, before.h) || next != Rect::new(next.x, next.y, next.w, next.h) {
+            return .Err("Buffer merge exceeds the terminal coordinate range.")
+        }
+        if before.cell_count() != i64(self.content.len) || next.cell_count() != i64(other.content.len) {
+            return .Err("Buffer area and cell count differ.")
+        }
+        area := before.union(next)
+        if before != area {
+            mut i := self.content.len
+            self.try_resize(area)?
+            while i > 0 {
+                i -= 1
+                x := before.x + i % before.w
+                y := before.y + i / before.w
+                dest := (y-area.y)*area.w + x-area.x
+                if dest != i { self.content.swap(i, dest) }
+            }
+        }
+        if next.w > 0 {
+            for y in 0..next.h {
+                dest := (next.y+y-area.y)*area.w + next.x-area.x
+                for x in 0..next.w { self.content[dest+x] = other.content[y*next.w+x].clone() }
+            }
+        }
+        .Ok
+    }
+    pub fn set_style(&mut self, area: Rect, style: Style) {
+        clip := self.area.intersection(area)
+        if clip.is_empty() || style.empty() { return }
+        patch := CellStyle::new(style)
+        for y in clip.y..clip.bottom() {
+            start := self.cell_index(clip.x, y)
+            for i in start..start+clip.w { patch.apply(&mut self.content[i]) }
+        }
+    }
+    pub fn set_string(&mut self, x: i32, y: i32, value: &str, style: Style) {
+        _ := self.set_stringn(x, y, value, 65535, style)
+    }
+    fn write_ascii(&mut self, x: i32, y: i32, value: &str, count: i32, patch: &CellStyle) -> (i32,i32) {
+        start := self.cell_index(x, y)
+        for offset in 0..count {
+            cell := &mut self.content[start+offset]
+            cell.write_ascii(value[offset])
+            patch.apply(&mut cell)
+        }
+        (x+count, y)
+    }
+    fn write_grapheme(&mut self, i: i32, view: &str, w: i32, patch: &CellStyle) {
+        self.content[i].write_symbol(view)
+        patch.apply(&mut self.content[i])
+        for tail in i+1..i+w {
+            cell := &mut self.content[tail]
+            if cell.skip || cell.diff_option != .None || !cell.empty_tail() { cell.reset() }
+        }
+    }
+    pub fn set_stringn(&mut self, x: i32, y: i32, value: &str, limit: i32, style: Style) -> (i32,i32) {
+        mut col := x
+        mut left := cmp.min<i32>(self.area.right() - x, limit)
+        if left <= 0 { return (x, y) }
+        patch := CellStyle::new(style)
+        count := cmp.min<i32>(left, value.len)
+        mut ascii := count == value.len || value[count] < 128
+        if ascii {
+            for at in 0..count { if value[at] < 32 || value[at] > 126 { ascii = false; break } }
+            if ascii { return self.write_ascii(x, y, value, count, &patch) }
+        }
+        mut offset := 0
+        mut i := self.cell_index(x, y)
+        while offset < value.len && left > 0 {
+            start := offset
+            mut w := 0
+            offset = width.next_cell(value, start, &mut w)
+            if w <= 0 { continue }
+            view := &value[start..offset]
+            if w > left { break }
+            self.write_grapheme(i, view, w, &patch)
+            i += w
+            col += w
+            left -= w
+        }
+        (col, y)
+    }
+    pub fn set_span<S: BufferText>(&mut self, x: i32, y: i32, span: &S, limit: i32) -> (i32,i32) {
+        span.write_buffer(&mut self, x, y, limit)
+    }
+    pub fn set_line<L: BufferText>(&mut self, x: i32, y: i32, line: &L, limit: i32) -> (i32,i32) {
+        line.write_buffer(&mut self, x, y, limit)
+    }
     pub fn to_frame(&self) -> Result<Frame,string> {
         if self.area != Rect::new(self.area.x,self.area.y,self.area.w,self.area.h) {
             return .Err("buffer exceeds the terminal coordinate range")
@@ -2387,6 +2615,35 @@ impl GlyphRun {
 
     pub fn content(&self) -> &str from self { self.source.as_str() }
     pub fn source_string(&self) -> &string from self { &self.source }
+    pub fn write_buffer(&self, buffer: &mut Buffer, x: i32, y: i32, limit: i32, style: Style) -> (i32,i32) {
+        mut left := cmp.min<i32>(buffer.area.right() - x, limit)
+        if left <= 0 { return (x, y) }
+        patch := CellStyle::new(style)
+        match &self.data {
+            .None => buffer.write_ascii(x, y, self.source.as_str(), cmp.min<i32>(left,self.source.len), &patch),
+            .Some(data) => {
+                mut offset := 0
+                mut col := x
+                mut i := buffer.cell_index(x, y)
+                for k in 0..data.tokens.len/2 {
+                    offset = width.next_visible_byte(self.source.as_str(), offset)
+                    cp := data.tokens[k*2]
+                    size := if cp < 0 { data.clusters[-1-cp].len } else { width.encoded(cp) }
+                    view := &self.source[offset..offset+size]
+                    offset += size
+                    w := if data.tokens[k*2+1] >= 65535 { width.cell_columns_view(view) } else { data.tokens[k*2+1] }
+                    if w == 0 { continue }
+                    if w > left { break }
+                    buffer.write_grapheme(i, view, w, &patch)
+                    i += w
+                    col += w
+                    left -= w
+                    if left == 0 { break }
+                }
+                (col, y)
+            },
+        }
+    }
     pub fn has_zero_width(&self) -> bool { self.zero_width }
     pub fn count(&self) -> i32 { match &self.data { .Some(d) => d.tokens.len / 2, .None => self.source.len, } }
     pub fn width(&self) -> i32 { self.columns }

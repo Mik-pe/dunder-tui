@@ -4,13 +4,15 @@ import sys
 
 pub fn cells(frame: &mut tui.Frame, step: i32) {
     a := frame.area()
-    frame.label(a,"ABCDEFG")
+    mut strip := tui.Buffer::with_lines(&["ABCDEFG"])
     if step < 2 {
-        assert(frame.set_diff_option(a.x+1,a.y,.Skip))
-        assert(frame.set_diff_option(a.x+2,a.y,.AlwaysUpdate))
+        _ := strip.get_mut(1,0).set_diff_option(.Skip)
+        _ := strip.get_mut(2,0).set_diff_option(.AlwaysUpdate)
     } else {
-        assert(frame.set_cell_with_width(a.x+3,a.y,"[X]",3,tui.ink(.Yellow)))
+        _ := strip.get_mut(3,0).set_symbol("[X]").set_style(tui.ink(.Yellow)).set_diff_option(.ForcedWidth(3))
     }
+    row := strip.to_frame().unwrap()
+    frame.copy_cells(&row, row.area(), a.x, a.y)
 }
 
 fn render(frame: &mut tui.Frame, step: &i32) {

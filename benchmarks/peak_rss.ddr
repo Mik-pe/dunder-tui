@@ -1,0 +1,18 @@
+capability process, stdio, unsafe
+import std.process
+import sys
+
+@extern("c","getrusage")
+unsafe fn getrusage(who: i32, storage: ptr) -> i32
+
+fn main() -> i32 {
+    if sys.arg_count() < 2 || target_is("windows") { return 2 }
+    mut args: []string = []
+    for i in 2..sys.arg_count() { args.push(sys.arg(i)) }
+    result := process.Command::new(sys.arg(1), move args).exec()
+    if !result.succeeded() { _ := sys.eprint(result.stderr_text()); return 1 }
+    mut usage: [i64;32] = [0;32]
+    unsafe { if getrusage(-1, addr(&mut usage[0])) != 0 { return 1 } }
+    print(if target_is("macos") { usage[4]/1024 } else { usage[4] })
+    0
+}
