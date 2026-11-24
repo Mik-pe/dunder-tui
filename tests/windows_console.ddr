@@ -511,6 +511,21 @@ unsafe fn exercise_app(program: string, input: ptr, mode: string) -> i32 {
         red := wait_for_mascot_eye(child,normal)
         if red < 0 || !push_key(input,32,32) || wait_for_mascot_eye(child,red) != normal { return 143 }
         if !push_key(input,84,116) || !wait_for_row(child,0,"▛▚▗▀▖") { return 144 }
+    } else if mode == "--reader" {
+        if !wait_for_row(child,0,"Nattjournal") || !wait_for_row(child,3,"18.00") { return 205 }
+        device := wide.path("CONOUT$")
+        screen := open_file(addr(&device[0]),0xc0000000,3,ptr(0),3,0,ptr(0))
+        if usize(screen) == usize(0xffffffffffffffff) { return 208 }
+        mut bounds: [i16;11] = [0;11]
+        mut resized := false
+        if info(screen,addr(&mut bounds[0])) != 0 {
+            rect: [i16;4] = [bounds[5],bounds[6],bounds[5]+39,bounds[6]+9]
+            resized = set_window(screen,1,addr(&rect[0])) != 0
+        }
+        _ := close_handle(screen)
+        if !resized || !wait_for_row(child,-1,"Home början") { return 209 }
+        if !push_key(input,40,0) || !wait_for_row(child,2,"18.00") { return 206 }
+        if !push_key(input,36,0) || !wait_for_row(child,1,"Vid vattnet") { return 207 }
     } else if mode == "--rundown" {
         if !wait_for_row(child,-1,"byt pass") || !wait_for_row(child,1,"› · Öppna entrén") { return 151 }
         if !push_key(input,74,106) || !wait_for_row(child,2,"› · Öppna entrén") || !wait_for_row(child,1,"· Ljudprov") { return 152 }
@@ -550,7 +565,7 @@ fn verify() -> i32 {
         mut sentinel: u16 = 35
         mut n: u32 = 0
         if stamp(stdout, addr(&sentinel), 1, 0, addr(&mut n)) == 0 || n != 1 { return 19 }
-        if sys.arg_count() == 2 || (sys.arg_count() == 3 && (sys.arg(2) == "--mascot" || sys.arg(2) == "--rundown")) {
+        if sys.arg_count() == 2 || (sys.arg_count() == 3 && (sys.arg(2) == "--mascot" || sys.arg(2) == "--rundown" || sys.arg(2) == "--reader")) {
             gallery := exercise_app(sys.arg(1),stdin,if sys.arg_count() == 3 { sys.arg(2) } else { "gallery" })
             if gallery != 0 { return gallery }
         } else {

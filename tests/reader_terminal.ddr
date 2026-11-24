@@ -1,0 +1,26 @@
+capability unsafe, stdio, process
+import .terminal_driver as driver
+import ..tools.pty
+import sys
+
+fn exercise(master:i32, slave:i32, screen:&mut driver.Screen) -> bool {
+    unsafe {
+        if !driver.wait_for(master,&mut screen,3,"18.00","\x1b[?1049h") || !screen.contains(0,"Nattjournal") || !screen.contains(1,"Vid vattnet") { return false }
+        if !driver.send(master,"\x1b[B") || !driver.wait_for(master,&mut screen,2,"18.00","") { return false }
+        if !pty.resize(slave,30,9) { return false }
+        screen = driver.Screen::new(30,9)
+        if !driver.send(master,"\x1b[H") || !driver.wait_for(master,&mut screen,3,"18.00","") || !screen.contains(0,"Nattjournal") { return false }
+        if !driver.send(master,"\x1b[F") || !driver.wait_for(master,&mut screen,5,"tänts.","") || !screen.contains(1,"23.00") { return false }
+        return driver.send(master,"q") && driver.wait_for(master,&mut screen,0,"","\x1b[?1049l")
+    }
+    false
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 2 }
+    unsafe { if driver.test(sys.arg(1),40,10,exercise) {
+        print("Reader kept its title and rewrapped on resize, scrolled to both ends and restored the terminal")
+        return 0
+    } }
+    1
+}

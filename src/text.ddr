@@ -1,4 +1,5 @@
 import .tui
+import .block as box
 import .repetition
 import std.text as strings
 import std.bytes as bytes
@@ -425,7 +426,9 @@ impl Text {
     }
 }
 
-pub opaque struct Paragraph { lines: []ParagraphLine, text_style: tui.Style, style: tui.Style, alignment: Alignment, wrap_mode: Wrap, wide: WideWrap, top: i32, left: i32 }
+pub opaque struct Paragraph { lines: []ParagraphLine, text_style: tui.Style, style: tui.Style, alignment: Alignment, wrap_mode: Wrap, wide: WideWrap, top: i32, left: i32, panel: Option<box.Block> }
+
+impl Default for Paragraph { fn default() -> Self { Paragraph::new(Text::default()) } }
 
 impl Paragraph {
     pub fn from<T: IntoText>(move value: T) -> Self { Paragraph::new(value.into_text()) }
@@ -436,14 +439,19 @@ impl Paragraph {
         mut lines: []ParagraphLine = []
         lines.reserve(text.lines.len)
         for line in move text.lines { lines.push(ParagraphLine::new(move line)) }
-        Self { lines: move lines, text_style: text_style, style: tui.plain(), alignment: alignment, wrap_mode: .Clip, wide: .NextLine, top: 0, left: 0 }
+        Self { lines: move lines, text_style: text_style, style: tui.plain(), alignment: alignment, wrap_mode: .Clip, wide: .Overhang, top: 0, left: 0, panel: .None }
     }
 
     pub fn raw(move value: string) -> Self { Paragraph::new(Text::raw(move value)) }
     pub fn styled(move self, style: tui.Style) -> Self { mut p := move self; p.style = style; move p }
+    pub fn block(move self, move panel: box.Block) -> Self { mut p := move self; p.panel = .Some(move panel); move p }
+    pub fn get_style(&self) -> tui.Style { self.style }
     pub fn wrap(move self, mode: Wrap) -> Self { mut p := move self; p.wrap_mode = mode; move p }
     pub fn wide_wrap(move self, mode: WideWrap) -> Self { mut p := move self; p.wide = mode; move p }
     pub fn align(move self, alignment: Alignment) -> Self { mut p := move self; p.alignment = alignment; move p }
+    pub fn left_aligned(move self) -> Self { self.align(.Left) }
+    pub fn centered(move self) -> Self { self.align(.Center) }
+    pub fn right_aligned(move self) -> Self { self.align(.Right) }
     pub fn scroll(move self, top: i32, left: i32) -> Self { mut p := move self; p.set_scroll(top, left); move p }
     pub fn set_scroll(&mut self, top: i32, left: i32) {
         self.top = cmp.max<i32>(0, top)
@@ -637,9 +645,8 @@ fn wrap_line(rows: &mut Rows, index: i32, line: &ParagraphLine, limit: i32, alig
 }
 
 impl Paragraph {
-    fn layout(&self, limit: i32, top: i32, height: i32) -> Rows {
-        mut rows := Rows::new()
-        if limit <= 0 || height <= 0 { return move rows }
+    fn layout(&self, rows: &mut Rows, limit: i32, top: i32, height: i32) {
+        if limit <= 0 || height <= 0 { return }
         mut skip := top
         start := if self.wrap_mode == .Clip { cmp.min<i32>(top, self.lines.len) } else { 0 }
         mut words := Words::new()
@@ -650,11 +657,9 @@ impl Paragraph {
             if self.wrap_mode == .Clip { clip_line(&mut rows, i, &line, limit, alignment, self.left) }
             else { wrap_line(&mut rows, i, &line, limit, alignment, self.wrap_mode == .Trim, self.wide, &mut skip, height, &mut words) }
         }
-        move rows
     }
 
     fn paint(&self, frame: &mut tui.Frame, area: tui.Rect, rows: &Rows, top: i32) {
-        frame.apply_cell_style(area, self.style)
         count := cmp.min<i32>(area.h, rows.lines.len - top)
         for y in 0..count {
             row := y + top
@@ -676,15 +681,42 @@ impl Paragraph {
         }
     }
 
-    pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
-        area := bounds.intersection(frame.area())
+    fn render_block(&self, frame: &mut tui.Frame, area: tui.Rect) -> tui.Rect {
+        frame.apply_cell_style(area,self.style)
+        match &self.panel {
+            .Some(panel) => {
+                inner := panel.render(&mut frame,area)
+                if panel.style != tui.plain() || panel.shadow.is_some() { frame.apply_cell_style(inner,self.style) }
+                inner
+            },
+            .None => area,
+        }
+    }
+
+    pub fn inner(&self, area: tui.Rect) -> tui.Rect {
+        match &self.panel {
+            .Some(panel) => panel.inner(area),
+            .None => area,
+        }
+    }
+
+    fn render_text(&self, frame: &mut tui.Frame, area: tui.Rect) {
         if area.w == 0 || area.h == 0 { return }
-        rows := self.layout(area.w, self.top, area.h)
+        mut rows := Rows::new()
+        self.layout(&mut rows,area.w,self.top,area.h)
         self.paint(&mut frame, area, &rows, 0)
     }
 
+    pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
+        outer := bounds.intersection(frame.area())
+        area := self.render_block(&mut frame,outer)
+        self.render_text(&mut frame,area)
+    }
+
     pub fn prepare(move self, columns: i32) -> PreparedParagraph {
-        rows := self.layout(columns, 0, 2147483647)
+        inner := self.inner(tui.Rect::new(0,0,columns,1)).w
+        mut rows := Rows::new()
+        self.layout(&mut rows,inner,0,2147483647)
         PreparedParagraph { paragraph: move self, columns: columns, rows: move rows }
     }
 }
@@ -693,16 +725,23 @@ pub opaque struct PreparedParagraph { paragraph: Paragraph, columns: i32, rows: 
 
 impl PreparedParagraph {
     pub fn height(&self) -> i32 { self.rows.lines.len }
+    pub fn inner(&self, area: tui.Rect) -> tui.Rect { self.paragraph.inner(area) }
     pub fn resize(&mut self, columns: i32) {
         if columns == self.columns { return }
-        self.rows = self.paragraph.layout(columns, 0, 2147483647)
+        inner := self.inner(tui.Rect::new(0,0,columns,1)).w
+        self.rows.lines.clear()
+        self.rows.offsets.clear()
+        self.rows.starts.clear()
+        self.rows.runs.clear()
+        self.paragraph.layout(&mut self.rows,inner,0,2147483647)
         self.columns = columns
     }
     pub fn set_top(&mut self, top: i32) { self.paragraph.top = cmp.max<i32>(0, top) }
 
     pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
-        area := bounds.intersection(frame.area())
-        if area.w != self.columns { self.paragraph.render(&mut frame, area); return }
+        outer := bounds.intersection(frame.area())
+        area := self.paragraph.render_block(&mut frame,outer)
+        if outer.w != self.columns { self.paragraph.render_text(&mut frame, area); return }
         self.paragraph.paint(&mut frame, area, &self.rows, self.paragraph.top)
     }
 }

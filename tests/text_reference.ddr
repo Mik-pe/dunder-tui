@@ -134,45 +134,27 @@ fn main() -> i32 {
         }
         return 0
     }
-    overhang := sys.arg_count() == 2 && sys.arg(1) == "--overhang"
+    mode := if sys.arg_count() == 2 { sys.arg(1) } else { "" }
+    physical := mode == "--physical" || mode == "--overhang"
     for kind in 0..4 {
         for w in [1, 2, 3, 4, 5, 6, 9, 14] {
             for a in aligns {
                 for wrap in wraps {
                     for top in [0, 1, 3, 12] {
                         for left in [0, 1, 3] {
-                            if overhang {
-                                mut frame := tui.Frame::new(w,3)
-                                mut p := rich.Paragraph::new(sample(kind)).styled(tui.plain().background(.Magenta))
-                                    .wrap(wrap).wide_wrap(.Overhang).scroll(top,left)
-                                if a != .Inherit { p = p.align(a) }
-                                p.render(&mut frame,frame.area())
-                                snapshot_cells(&frame,frame.area(),&mut out,true)
-                                continue
+                            bounds := if physical { tui.Rect::new(0,0,w,3) } else { tui.Rect::new(0,0,w+18,5) }
+                            area := if physical { bounds } else { tui.Rect::new(1,1,w,3) }
+                            mut frame := tui.Frame::at(bounds)
+                            if !physical {
+                                for y in 0..bounds.h { for x in 0..bounds.w {
+                                    if !area.contains(x,y) { assert(frame.set_cell(x,y,"#",tui.ink(.Red))) }
+                                } }
                             }
-                            mut frame := tui.Frame::new(w + 2, 5)
-                            area := tui.Rect { x: 1, y: 1, w: w, h: 3 }
-                            for y in 0..5 {
-                                for x in 0..(w + 2) {
-                                    if y == 0 || y == 4 || x == 0 || x == w + 1 {
-                                        assert(frame.set_cell(x, y, "#", tui.ink(.Red)))
-                                    }
-                                }
-                            }
-                            doc := sample(kind)
-                            mut p := rich.Paragraph::new(move doc).styled(tui.plain().background(.Magenta)).wrap(wrap).scroll(top, left)
+                            mut p := rich.Paragraph::new(sample(kind)).styled(tui.plain().background(.Magenta)).wrap(wrap).scroll(top,left)
+                            if mode == "--overhang" { p = p.wide_wrap(.Overhang) }
                             if a != .Inherit { p = p.align(a) }
-                            p.render(&mut frame, area)
-                            for y in 0..5 {
-                                for x in 0..(w + 2) {
-                                    if y == 0 || y == 4 || x == 0 || x == w + 1 {
-                                        assert(frame.symbol_at(x, y).unwrap() == "#")
-                                        assert(frame.style_at(x, y).unwrap().get_foreground() == .Some(tui.Color.Red))
-                                        assert(frame.style_at(x, y).unwrap().get_background() == .Some(tui.Color.Default))
-                                    }
-                                }
-                            }
-                            snapshot(&frame, area, &mut out)
+                            p.render(&mut frame,area)
+                            snapshot_cells(&frame,bounds,&mut out,true)
                         }
                     }
                 }

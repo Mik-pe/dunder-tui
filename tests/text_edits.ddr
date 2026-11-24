@@ -83,14 +83,14 @@ fn collection_frames() {
         inspect(&collection(step))
         modes: [rich.Wrap;3] = [.Clip,.Preserve,.Trim]
         for mode in modes {
-            mut prepared := rich.Paragraph::new(collection(step)).wrap(mode).wide_wrap(.Overhang).prepare(0)
+            mut prepared := rich.Paragraph::new(collection(step)).wrap(mode).prepare(0)
             for w in [1,4,9,2,12,0] {
                 prepared.resize(w)
                 for top in [0,1,4] {
                     mut live := cells.seeded(w,3)
                     mut cached := cells.seeded(w,3)
                     area := tui.Rect { x:1,y:1,w:w,h:3 }
-                    rich.Paragraph::new(collection(step)).wrap(mode).wide_wrap(.Overhang).scroll(top,0).render(&mut live,area)
+                    rich.Paragraph::new(collection(step)).wrap(mode).scroll(top,0).render(&mut live,area)
                     prepared.set_top(top)
                     prepared.render(&mut cached,area)
                     cells.snapshot(&live)

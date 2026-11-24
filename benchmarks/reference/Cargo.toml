@@ -178,3 +178,7 @@ required-features = ["theme-oracle"]
 [[example]]
 name = "bar_cells"
 required-features = ["theme-oracle"]
+
+[[example]]
+name = "framed_paragraph"
+required-features = ["theme-oracle"]

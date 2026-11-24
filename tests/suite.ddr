@@ -465,7 +465,7 @@ struct SavedPreferences { name: string, styles: []Option<snapshot.WithoutUnderli
 }
 
 @test fn overhanging_paragraphs_keep_the_visible_symbol_and_the_cell_under_it() {
-    p := rich.Paragraph::raw("aaa界").wrap(.Trim).wide_wrap(.Overhang)
+    p := rich.Paragraph::raw("aaa界").wrap(.Trim)
     for w in [4,5] {
         mut f := tui.Frame::new(w,2)
         f.fill(f.area(),`.`,tui.ink(.Red))
@@ -476,6 +476,28 @@ struct SavedPreferences { name: string, styles: []Option<snapshot.WithoutUnderli
         if w == 5 { assert(f.cell_at(4,0).unwrap().symbol == ".") }
         assert(f.cell_at(0,1).unwrap().symbol == ".")
     }
+}
+
+@test fn framed_paragraphs_prepare_at_the_inner_width_and_keep_the_title_while_scrolling() {
+    mut panel := box.Block::bordered().title("N")
+    panel.padding = box.Padding::axes(1,0)
+    style := tui.ink(.Red)
+    p := rich.Paragraph::raw("abc def\nG").styled(style).wrap(.Trim).block(move panel)
+    area := tui.Rect::new(0,0,8,4)
+    assert(p.get_style() == style && p.inner(area) == tui.Rect::new(2,1,4,2))
+    mut cached := p.prepare(area.w)
+    mut frame := tui.Frame::new(8,4)
+    assert(cached.height() == 3)
+    cached.set_top(1)
+    frame.render_widget(&cached,area)
+    assert(frame.line(0) == "┌N─────┐" && frame.line(1) == "│ def  │" && frame.line(2) == "│ G    │")
+    cached.resize(12)
+    assert(cached.height() == 2)
+    frame.clear()
+    frame.render_widget(&cached,area)
+    assert(frame.line(1) == "│ def  │")
+    empty := rich.Paragraph::default()
+    assert(empty.inner(area) == area && empty.prepare(8).height() == 0)
 }
 
 @test fn artwork_defaults_preserve_the_surface_and_change_two_eye_cells() {
@@ -928,11 +950,11 @@ struct SavedPreferences { name: string, styles: []Option<snapshot.WithoutUnderli
     area := tui.Rect { x: 1, y: 1, w: 4, h: 2 }
     mut frame := tui.Frame::new(6, 4)
     frame.label(frame.area(), "------\n|    |\n|    |\n------")
-    p := rich.Paragraph::raw("aaa界").wrap(.Trim)
+    p := rich.Paragraph::raw("aaa界").wrap(.Trim).wide_wrap(.NextLine)
     p.render(&mut frame, area)
     assert(frame.line(0) == "------" && frame.line(1) == "|aaa |")
     assert(frame.line(2) == "|界  |" && frame.line(3) == "------")
-    mut prepared := rich.Paragraph::raw("aaa界").wrap(.Trim).prepare(4)
+    mut prepared := rich.Paragraph::raw("aaa界").wrap(.Trim).wide_wrap(.NextLine).prepare(4)
     assert(prepared.height() == 2)
     for w in [4, 3, 0, 1, 6] {
         for top in [0, 1, 2, 2147483647] {
@@ -940,7 +962,7 @@ struct SavedPreferences { name: string, styles: []Option<snapshot.WithoutUnderli
             mut b := tui.Frame::new(w, 3)
             prepared.set_top(top)
             prepared.render(&mut a, a.area())
-            immediate := rich.Paragraph::raw("aaa界").wrap(.Trim).scroll(top, 0)
+            immediate := rich.Paragraph::raw("aaa界").wrap(.Trim).wide_wrap(.NextLine).scroll(top, 0)
             immediate.render(&mut b, b.area())
             for y in 0..3 { assert(a.line(y) == b.line(y)) }
             prepared.resize(w)

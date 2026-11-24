@@ -1,0 +1,16 @@
+struct Counter { value:i32 }
+enum Page { Empty, Ready(Counter) }
+
+fn tick(pages:&mut []Page, index:i32) {
+    match &mut pages[index] {
+        .Ready(counter) => { counter.value += 1 },
+        .Empty => {},
+    }
+}
+
+fn main() {
+    mut pages: []Page = [.Empty,.Ready(Counter { value:16 })]
+    tick(&mut pages,0)
+    tick(&mut pages,1)
+    match &pages[1] { .Ready(counter) => { assert(counter.value == 17) }, .Empty => { assert(false) }, }
+}

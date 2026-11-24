@@ -19,14 +19,14 @@ fn seeded(a: tui.Rect, flags: bool) -> tui.Frame {
     move f
 }
 
-fn paint(f: &mut tui.Frame, area: tui.Rect, step: i32, wide: rich.WideWrap, mode: rich.Wrap) {
+fn paint(f: &mut tui.Frame, area: tui.Rect, step: i32, mode: rich.Wrap) {
     text := match step {
         0 => rich.Text::raw("ab界\n😶‍🌫️\na 秋"),
         1 => rich.Text::new([rich.Line::new([rich.Span::raw("x "),rich.Span::styled("🦊",tui.ink(.Red).bold())]).align(.Right)]),
         2 => rich.Text::new([]),
         _ => rich.Text::raw("字\n  👩🏽‍💻 z"),
     }
-    mut p := rich.Paragraph::new(move text).wrap(mode).wide_wrap(wide)
+    mut p := rich.Paragraph::new(move text).wrap(mode)
     if step == 2 { p = p.styled(tui.plain().background(.Blue).underline_index(13).without(.Bold)) }
     p.render(&mut f,area)
 }
@@ -40,7 +40,7 @@ fn main() {
                 mut old := seeded(a,flags)
                 for step in 0..4 {
                     mut next := seeded(a,flags)
-                    for phase in 0..step+1 { paint(&mut next,area,phase,.Overhang,mode) }
+                    for phase in 0..step+1 { paint(&mut next,area,phase,mode) }
                     raw_cells.compare(&next,&old)
                     old = move next
                 }

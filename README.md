@@ -517,7 +517,9 @@ artikel := rich.Paragraph::new(rich.Text::new([
 
 Kör `dunder run examples/reader/main.ddr` för att prova en läsare. Piltangenterna skrollar, Home och End hoppar mellan början och slutet. Läsaren använder `tui.run_stateful` så att ritfunktionen kan anpassa skrollpositionen till fönstrets storlek. [Läsarens källkod](examples/reader/main.ddr)
 
-Vid ord­brytning flyttar `.wide_wrap(.NextLine)` ett brett tecken till nästa rad när bara en kolumn återstår. Det är standardvalet. Välj `.wide_wrap(.Overhang)` för Ratatuis radbrytning, där tecknet får börja i styckets sista kolumn. Båda lägena fungerar med `prepare`.
+På `main` får ett brett tecken börja i styckets sista kolumn vid ordbrytning, som i Ratatui. Välj `.wide_wrap(.NextLine)` för att flytta hela tecknet till nästa rad. Det var standard i 0.24.0. Båda lägena fungerar med `prepare`.
+
+Med `.block(box.Block::bordered().title(" Journal "))` kan stycket äga sin ram. Skicka hela panelens bredd till `prepare` och `resize`. `height()` ger antalet textrader efter ombrytning och `inner(area)` ger utrymmet för dem efter kant, titel och utfyllnad. [Läsare med ram och skrollning](examples/reader/main.ddr)
 
 För text som ändras under körning kan du lägga till rader, byta ut ett enskilt spanns innehåll och låta färgen följa med. `width()` mäter det aktuella innehållet i terminalkolumner.
 

@@ -71,21 +71,6 @@ fn snapshot_region(buf: &Buffer, area: Rect, raw: bool) -> String {
     }
     out
 }
-fn overflow(p: &Paragraph, w: u16) -> Option<u16> {
-    let mut probe = Buffer::empty(Rect::new(0, 0, w + 16, 96));
-    for y in 0..96 {
-        for x in w..w + 16 {
-            probe[(x, y)].set_symbol("#");
-        }
-    }
-    p.clone()
-        .scroll((0, 0))
-        .render(Rect::new(0, 0, w, 96), &mut probe);
-    (0..96).find(|&y| {
-        (w..w + 16).any(|x| probe[(x, y)].symbol() != "#")
-            || (0..w).any(|x| x + probe[(x, y)].symbol().cell_width() > w)
-    })
-}
 fn main() {
     let mut input = io::stdin().lock().lines();
     let mode = std::env::args().nth(1);
@@ -256,18 +241,9 @@ fn main() {
         println!("{count} independent rich-text and span frames match");
         return;
     }
+    let physical = matches!(mode.as_deref(), Some("--physical" | "--overhang"));
     let mut cases = 0;
-    let overhang = mode.as_deref() == Some("--overhang");
-    let mut failures = 0;
-    let mut panics = 0;
-    let mut outside = 0;
-    let original_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        let message = info.payload().downcast_ref::<String>();
-        if !message.is_some_and(|s| s.starts_with("index outside of buffer:")) {
-            original_hook(info);
-        }
-    }));
+    let mut projected = 0;
     for kind in 0..4 {
         for w in [1, 2, 3, 4, 5, 6, 9, 14] {
             for a in [
@@ -279,7 +255,20 @@ fn main() {
                 for wrap in [None, Some(true), Some(false)] {
                     for top in [0, 1, 3, 12] {
                         for left in [0, 1, 3] {
-                            let mut buf = Buffer::empty(Rect::new(0, 0, w, 3));
+                            let area = if physical {
+                                Rect::new(0, 0, w, 3)
+                            } else {
+                                Rect::new(1, 1, w, 3)
+                            };
+                            let padded = if physical {
+                                Rect::new(0, 0, w + 16, 3)
+                            } else {
+                                Rect::new(0, 0, w + 18, 5)
+                            };
+                            let mut room = Buffer::empty(padded);
+                            for pos in padded.positions().filter(|p| !area.contains(*p)) {
+                                room[pos].set_symbol("#").set_fg(Color::Red);
+                            }
                             let mut p = Paragraph::new(sample(kind))
                                 .style(Style::new().bg(Color::Magenta))
                                 .scroll((top, left));
@@ -289,59 +278,23 @@ fn main() {
                             if let Some(trim) = wrap {
                                 p = p.wrap(Wrap { trim });
                             }
-                            let actual = input.next().expect("missing Dunder frame").unwrap();
-                            cases += 1;
-                            let first_overflow = if wrap.is_some() {
-                                overflow(&p, w)
-                            } else {
-                                None
-                            };
-                            if let Err(payload) =
-                                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                    (&p).render(buf.area, &mut buf)
-                                }))
+                            (&p).render(area, &mut room);
+                            let expected = if !physical {
+                                snapshot_cells(&room, true)
+                            } else if padded
+                                .positions()
+                                .any(|pos| !area.contains(pos) && room[pos].symbol() != "#")
                             {
-                                if !payload
-                                    .downcast_ref::<String>()
-                                    .is_some_and(|s| s.starts_with("index outside of buffer:"))
-                                {
-                                    std::panic::resume_unwind(payload);
-                                }
-                                assert!(first_overflow.is_some_and(|y| y < top + 3));
-                                panics += 1;
-                                if overhang {
-                                    let area = buf.area;
-                                    let mut room = Buffer::empty(Rect::new(0, 0, w + 16, 3));
-                                    p.render(area, &mut room);
-                                    assert_eq!(
-                                        actual,
-                                        snapshot_region(&room, area, true),
-                                        "clipped {kind} {w} {a:?} {wrap:?} {top} {left}"
-                                    );
-                                }
-                                continue;
-                            }
-                            if overhang {
-                                assert_eq!(
-                                    actual,
-                                    snapshot_cells(&buf, true),
-                                    "cells {kind} {w} {a:?} {wrap:?} {top} {left}"
-                                );
-                                continue;
-                            }
-                            let expected = snapshot(&buf);
-                            if expected != actual {
-                                if first_overflow.is_some_and(|y| y < top + 3) {
-                                    outside += 1;
-                                    continue;
-                                }
-                                failures += 1;
-                                if failures <= 6 {
-                                    eprintln!(
-                                        "kind={kind} w={w} align={a:?} wrap={wrap:?} top={top} left={left}\n  D {actual}\n  R {expected}"
-                                    );
-                                }
-                            }
+                                projected += 1;
+                                snapshot_region(&room, area, true)
+                            } else {
+                                let mut exact = Buffer::empty(area);
+                                p.render(area, &mut exact);
+                                snapshot_cells(&exact, true)
+                            };
+                            let actual = input.next().expect("missing Dunder frame").unwrap();
+                            assert_eq!(actual, expected, "{kind} {w} {a:?} {wrap:?} {top} {left}");
+                            cases += 1;
                         }
                     }
                 }
@@ -349,18 +302,10 @@ fn main() {
         }
     }
     assert!(input.next().is_none());
-    if overhang {
-        assert_eq!((cases, panics), (4608, 12));
-        println!(
-            "{} exact paragraph buffers and {panics} clipped projections after reference panics match",
-            cases - panics
-        );
-        return;
-    }
-    assert_eq!(failures, 0, "frames differ before any reference overflow");
-    assert_eq!((cases, outside, panics), (4608, 432, 12));
+    assert_eq!(cases, 4608);
+    assert_eq!(projected, if physical { 12 } else { 0 });
     println!(
-        "{} identical paragraph frames, {outside} differences after reference overflow, {panics} reference bounds panics",
-        cases - outside - panics
+        "{} complete paragraph buffers and {projected} visible projections match",
+        cases - projected
     );
 }

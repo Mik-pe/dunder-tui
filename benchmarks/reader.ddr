@@ -1,0 +1,66 @@
+capability stdio
+import .frames
+import .paragraph_doc
+import ..src.tui
+import ..src.text as rich
+import ..src.block as box
+import std.json
+import sys
+
+trait Page { fn draw_page(&mut self, frame:&mut tui.Frame, area:tui.Rect, top:i32) }
+impl Page for rich.Paragraph {
+    fn draw_page(&mut self, frame:&mut tui.Frame, area:tui.Rect, top:i32) {
+        self.set_scroll(top,0)
+        frame.render_widget(&self,area)
+    }
+}
+impl Page for rich.PreparedParagraph {
+    fn draw_page(&mut self, frame:&mut tui.Frame, area:tui.Rect, top:i32) {
+        self.resize(area.w)
+        self.set_top(top)
+        frame.render_widget(&self,area)
+    }
+}
+
+fn page(night:bool) -> rich.Paragraph {
+    mut b := box.Block::bordered().border_type(.Rounded).title(" Journal ")
+    b.padding = box.Padding::axes(1,0)
+    b.border_style = tui.ink(.Cyan)
+    paragraph_doc.document().styled(tui.plain().background(if night { .Blue } else { .Black })).block(move b)
+}
+
+fn draw<P:Page>(pages:&mut []P, frame:&mut tui.Frame, mode:string, n:i32) {
+    area := frame.area()
+    top := if mode == "scroll" { n%48 } else { 0 }
+    index := if mode == "repaint" { n%2 } else { 0 }
+    pages[index].draw_page(&mut frame,area,top)
+    frame.label(tui.Rect::new(area.w-2,area.h-1,1,1),if mode == "cell" && n%2 == 1 { "+" } else { "-" })
+}
+
+fn run<P:Page>(move data:[]P,snapshots:bool) {
+    mut pages := move data
+    if snapshots {
+        for w in [80,96] {
+            for mode in ["scroll","cell","repaint"] {
+                for n in 0..(if mode == "scroll" { 48 } else { 2 }) {
+                    mut f := tui.Frame::new(w,24)
+                    draw<P>(&mut pages,&mut f,mode,n)
+                    print(json.to_string(&f).unwrap())
+                }
+            }
+        }
+        return
+    }
+    frames.run(&mut pages,&["idle","cell","scroll","resize","repaint"],draw<P>)
+}
+
+fn main() {
+    mut prepared := false
+    mut snapshots := false
+    for i in 1..sys.arg_count() {
+        if sys.arg(i) == "--prepared" { prepared = true }
+        if sys.arg(i) == "--snapshots" { snapshots = true }
+    }
+    if prepared { run<rich.PreparedParagraph>([page(false).prepare(96),page(true).prepare(96)],snapshots) }
+    else { run<rich.Paragraph>([page(false),page(true)],snapshots) }
+}

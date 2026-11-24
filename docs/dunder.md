@@ -1,5 +1,9 @@
 # Vad TUI-arbetet visar om Dunder
 
+## Låna en enumvariants innehåll muterbart
+
+När en vy ligger i en enum i en array behöver läsaren kunna uppdatera den på plats. I 0.12.1 ger `match &mut pages[index]` E3006. En vanlig lånad matchning ger E4002 vid skrivning till postfältet i varianten. Låt armen få ett exklusivt lån som upphör när armen lämnas. Läsarprovet kan i dag använda två konkreta sidtyper med samma trait. [Minimiprov](../tests/dogfood/compiler/match_mutable_payload.ddr) · [Läsarprovet](../benchmarks/reader.ddr)
+
 ## Skriv osignerade heltal direkt i en bytebuffert
 
 `std.bytes.append_decimal` tar `i64`. I 0.12.1 gav 7 000 formateringar av `u64` med `value.str()` och `append_utf8` 7 007 allokeringsanrop inklusive uppstart. Med samma förallokerade buffert och `std.json.write_u64` blev det sju. Båda vägarna gav exakt samma tecken, även för 2⁶³ och 2⁶⁴−1. Gör den osignerade skrivaren tillgänglig i `std.bytes` och återanvänd den i JSON. Kör provet med `--runtime-profile` och argumentet `string` respektive `buffer`. [Minimiprov](../benchmarks/language/unsigned_text.ddr)
