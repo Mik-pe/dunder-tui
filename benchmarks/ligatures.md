@@ -42,7 +42,7 @@ Dunders profil räknade 82 996 allokeringsanrop och 1 839 634 begärda byte. 265
 
 Följ [bygg- och mätkommandona för loggvyn](emoji.md#upprepa-mätningen) med `TUI_BENCH_SCENE=ligatures` före verifiering och tidtagning. Mätningen ovan använder Dunder 0.11.2 och Rust 1.99.1 i releaseprofil.
 
-Kör `gh workflow run native.yml` i det publika repot för att upprepa x64-serierna med den publicerade kompilatorn. Arbetsflödet skriver verktygsversioner, bildtider, bytesummor och minnesvärden till körloggen. Med `-f profile=true` räknar Callgrind dessutom exekverade instruktioner på Linux för den oförändrade vyn. [Bygg- och mätkommandon](../.github/workflows/native.yml)
+För en lokal instruktionsprofil på Linux x64, bygg med `dunder build -g --locked --offline benchmarks/terminal.ddr -o build/ligaturer` och kör `TUI_BENCH_SCENE=ligatures valgrind --tool=callgrind build/ligaturer --idle`.
 
 ## Vanlig textritning i 0.23.1
 

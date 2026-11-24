@@ -39,7 +39,7 @@ På de tre Unixvärdarna gjorde Dunder 1 079 färska allokeringar och återanvä
 
 ## Kör provet
 
-Använd Dunder 0.11.2 och checka ut `v0.23.0`. Referensprogrammets låsta Rustpaket kan hämtas en gång med `cargo fetch --locked --manifest-path benchmarks/reference/Cargo.toml`. På Windows kör arbetsflödet `native.yml` samma prov med valet `scene=collections`. [Arbetsflöde och körning](https://github.com/Mik-pe/dunder-tui/actions/runs/45330011065)
+Använd Dunder 0.11.2 och checka ut `v0.23.0`. Referensprogrammets låsta Rustpaket kan hämtas en gång med `cargo fetch --locked --manifest-path benchmarks/reference/Cargo.toml`. På Windows kan samma program mätas lokalt med `TUI_BENCH_SCENE=collections` och `benchmarks/console.ddr` som konsoldrivrutin. [Tidigare mätning](https://github.com/Mik-pe/dunder-tui/actions/runs/45330011065)
 
 ```sh
 mkdir -p build

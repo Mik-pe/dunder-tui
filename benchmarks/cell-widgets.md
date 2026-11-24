@@ -21,8 +21,4 @@ Sammanlagt tog varje terminal emot 1 382 478 byte från Dunder och 1 624 225 fr�
 
 Med samma program och kompilator på Linux x64 tog en oförändrad bild i pseudoterminalen 231 / 246 µs före ändringen och 183 / 201 µs efter. För full omritning var tiderna 398 / 413 respektive 364 / 377 µs. Biblioteket avgränsar strängjämförelser till kolumner där en sträng har lagrats och kontrollerar överlapp bara på rader där breda tecken har skrivits. Vid en separat Callgrind-körning av 220 oförändrade bilder stod `Frame::same_row` för 1,63 % av instruktionerna och `Frame::fill_cells` för 19,81 %. [Före, efter och instruktionsprofil](https://github.com/Mik-pe/dunder-tui/actions/runs/45308458992/job/138157952246)
 
-Kör följande i repot för att upprepa jämförelsen på nativ x64. För lokal körning används samma kommandon som för ligaturprovet med `TUI_BENCH_SCENE=ligatures`. [Lokala mätkommandon](ligatures.md#upprepa-mätningen)
-
-```sh
-gh workflow run native.yml -r v0.19.0 -f before=ece8a69716041e436fe8a277f64581b7f35d8e68 -f profile=true
-```
+Bygg samma ligaturprov lokalt med biblioteket från `ece8a697` respektive `v0.19.0`. Kör båda på samma x64-maskin med `TUI_BENCH_SCENE=ligatures`. [Lokala mätkommandon](ligatures.md#upprepa-mätningen)

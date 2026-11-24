@@ -387,7 +387,7 @@ Vid upprepning kunde Ratatuis lösare stanna i `kasuari::Solver::optimize`. Där
 
 Varje scen ritas vid 0 och 1,75 sekunder på en canvas med 72 × 40 pixlar. Galleritestet läser de 1 440 cellerna i den andra bilden via `Frame`, kontrollerar halvblockets tecken och båda RGB-färgerna och jämför celldiffens koordinater i ritordning med de pixlar som ändrades. [Galleritest](../examples/motion/tests.ddr)
 
-Terminalprovet startar den nedladdade `motion`-appen, läser scennamnen från skärmen, pausar, bläddrar genom alla tio scener och återupptar animationen. Vid avslut kontrolleras terminalens återställning. 0.20.2-paketen klarade provet i pseudoterminal på macOS ARM64 och Linux ARM64/x64 samt i Win32-konsol på Windows x64. Kryssa i `release_gallery` i arbetsflödet för att köra om det mot en publicerad version på båda x64-värdarna. [Unixprov](../tests/motion_terminal.ddr) · [Win32-prov](../tests/windows_console.ddr) · [Körning på x64](https://github.com/Mik-pe/dunder-tui/actions/runs/45318968188)
+Terminalprovet startar den nedladdade `motion`-appen, läser scennamnen från skärmen, pausar, bläddrar genom alla tio scener och återupptar animationen. Vid avslut kontrolleras terminalens återställning. 0.20.2-paketen klarade provet i pseudoterminal på macOS ARM64 och Linux ARM64/x64 samt i Win32-konsol på Windows x64. För att prova en utgåva lokalt, ange sökvägen till den uppackade `motion`-binären som första argument till terminalprovet på respektive plattform. [Unixprov](../tests/motion_terminal.ddr) · [Win32-prov](../tests/windows_console.ddr) · [Körning på x64](https://github.com/Mik-pe/dunder-tui/actions/runs/45318968188)
 
 ```sh
 (cd examples/motion && dunder test --locked --offline)

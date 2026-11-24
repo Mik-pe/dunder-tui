@@ -39,7 +39,7 @@ Dunder 0.11.2 på Windows avslutade mätprogrammet utan att skriva allokeringsra
 
 ## Kör provet
 
-Installera Dunder 0.11.2. Hämta referensens låsta Rustpaket en gång med `cargo fetch --locked --manifest-path benchmarks/reference/Cargo.toml`. Följande kommandon bygger båda programmen offline på macOS eller Linux. För Windows finns samma arbetslast i arbetsflödet `native.yml` med valet `scene=artwork`. [Nativ körning av taggen](https://github.com/Mik-pe/dunder-tui/actions/runs/45327111173)
+Installera Dunder 0.11.2. Hämta referensens låsta Rustpaket en gång med `cargo fetch --locked --manifest-path benchmarks/reference/Cargo.toml`. Följande kommandon bygger båda programmen offline på macOS eller Linux. På Windows kan `benchmarks/console.ddr` byggas som drivrutin och köras med sökvägen till mätprogrammets exe-fil som argument. [Nativ körning av taggen](https://github.com/Mik-pe/dunder-tui/actions/runs/45327111173)
 
 ```sh
 mkdir -p build
