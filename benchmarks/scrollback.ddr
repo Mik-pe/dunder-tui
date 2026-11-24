@@ -1,0 +1,74 @@
+capability stdio
+import sys
+import std.array
+import std.json
+import std.time
+import ..src.testing
+import ..src.text as rich
+import ..src.tui
+
+fn snapshot() -> string {
+    rows: []rich.Line = [rich.Line::raw("A茶🌊123"),rich.Line::raw("B       ")]
+    mut backend := testing.TestBackend::with_lines(&rows)
+    backend.append_lines(129)
+    json.to_string(&backend).unwrap()
+}
+
+fn run(which: i32, saved: string) -> i32 {
+    if which == 3 {
+        restored := json.from_str<testing.TestBackend>(saved).unwrap()
+        assert(restored.scrollback().row(0).symbol_at(0,0).unwrap() == "A" && restored.scrollback().row(0).symbol_at(1,0).unwrap() == "茶")
+        return restored.scrollback().len()
+    }
+    mut backend := if which == 0 { testing.TestBackend::new(8,2) }
+        else { testing.TestBackend::with_lines(&[rich.Line::raw("A茶🌊123"),rich.Line::raw("B       ")]) }
+    if which == 0 {
+        backend.append_lines(65535)
+        backend.append_lines(2)
+    } else {
+        if which == 1 {
+            backend.append_lines(65535)
+            backend.append_lines(2)
+            assert(backend.scrollback().row(0).symbol_at(0,0).unwrap() == "B")
+        } else {
+            mut strip := tui.Frame::new(8,1)
+            strip.text(strip.area(),"A茶🌊123",tui.plain())
+            for _ in 0..256 {
+                backend.overwrite_region(&strip).unwrap()
+                backend.scroll_up(0,2,1)
+            }
+            assert(backend.scrollback().row(255).symbol_at(1,0).unwrap() == "茶")
+        }
+    }
+    backend.scrollback().len()
+}
+
+fn main() -> i32 {
+    names := ["blank-limit","mixed-limit","painted","restore"]
+    if sys.arg_count() == 3 && sys.arg(1) == "--resources" {
+        for which in 0..4 {
+            if sys.arg(2) == names[which] {
+                saved := if which == 3 { snapshot() } else { "" }
+                print(f"{run(which,saved)}")
+                return 0
+            }
+        }
+        return 2
+    }
+    saved := snapshot()
+    for which in 0..4 {
+        mut times: []i64 = []
+        mut check := 0
+        batch := if which < 2 { 4 } else { 1 }
+        for i in 0..23 {
+            mut result := 0
+            start := time.monotonic_ns()
+            for _ in 0..batch { result += run(which,saved) }
+            elapsed := (time.monotonic_ns()-start)/i64(batch)
+            if i >= 3 { times.push(elapsed); check += result }
+        }
+        array.sort<i64>(&mut times)
+        _ := sys.eprint(f"{names[which]} {times[9]} {times[18]} {check}")
+    }
+    0
+}

@@ -715,6 +715,10 @@ impl Frame {
         for i in 0..self.glyphs.len { content.push(self.raw_cell(i)) }
         Buffer { area:self.bounds, content:move content }
     }
+
+    pub fn encode_json_cells(&self, out: &mut json.Writer) {
+        for i in 0..self.glyphs.len { json.encode(&mut out,&self.raw_cell(i)) }
+    }
 }
 
 impl json.Encode for Frame {
@@ -723,7 +727,7 @@ impl json.Encode for Frame {
         json.field_value(&mut out,"area",&self.bounds)
         out.key("content")
         out.array()
-        for i in 0..self.glyphs.len { json.encode(&mut out,&self.raw_cell(i)) }
+        self.encode_json_cells(&mut out)
         out.end()
         out.end()
     }
@@ -872,6 +876,15 @@ impl Frame {
     }
 
     pub fn area(&self) -> Rect { self.bounds }
+
+    pub fn row_is_blank(&self, y: i32) -> bool {
+        if y < self.bounds.y || y >= self.bounds.bottom() { return false }
+        start := (y-self.bounds.y)*self.bounds.w
+        for i in start..start+self.bounds.w {
+            if self.glyphs[i] != 0 || self.styles[i] != 0 || self.stored_option(i) != 0 { return false }
+        }
+        true
+    }
 
     fn index(&self, x: i32, y: i32) -> i32 { (y-self.bounds.y)*self.bounds.w + (x-self.bounds.x) }
 
@@ -1426,6 +1439,16 @@ impl Frame {
         }
     }
 
+    pub fn clear_cells(&mut self, bounds: Rect) {
+        area := bounds.intersection(self.bounds)
+        if area.is_empty() { return }
+        for y in area.y..area.bottom() {
+            self.split_wide_cell(area.x,y)
+            self.split_wide_cell(area.right(),y)
+        }
+        self.clear_area(area)
+    }
+
     pub fn stroke(&mut self, bounds: Rect, symbol: rune, style: Style, strategy: lines.Merge) {
         if strategy == .Replace || !lines.is_border(i32(symbol)) {
             self.paint_rune(bounds,symbol,style)
@@ -1604,6 +1627,14 @@ impl Frame {
     }
 
     pub fn copy_region(&mut self, source: &Frame, region: Rect, x: i32, y: i32) {
+        self.copy_region_at(&source,region,x,y,false)
+    }
+
+    pub fn copy_cells(&mut self, source: &Frame, region: Rect, x: i32, y: i32) {
+        self.copy_region_at(&source,region,x,y,true)
+    }
+
+    fn copy_region_at(&mut self, source: &Frame, region: Rect, x: i32, y: i32, raw: bool) {
         from := region.intersection(source.bounds)
         if from.is_empty() { return }
         left := cmp.max<i64>(i64(from.x),i64(region.x)-i64(x)+i64(self.bounds.x))
@@ -1613,10 +1644,19 @@ impl Frame {
         if right <= left || bottom <= top { return }
         for row in i32(top)..i32(bottom) {
             dy := i32(i64(y)+i64(row)-i64(region.y))
+            if raw {
+                self.split_wide_cell(i32(i64(x)+left-i64(region.x)),dy)
+                self.split_wide_cell(i32(i64(x)+right-i64(region.x)),dy)
+            }
             mut col := i32(left)
             while col < i32(right) {
                 dx := i32(i64(x)+i64(col)-i64(region.x))
-                col += self.copy_glyph(&source,source.index(col,row),dx,dy,i32(right)-col)
+                i := source.index(col,row)
+                room := i32(right)-col
+                if raw && (source.glyphs[i] < 0 || (source.glyphs[i] >= WIDE && source.advance(i) > room)) {
+                    _ := self.set_raw_cell(dx,dy,&source.raw_cell(i))
+                    col += 1
+                } else { col += self.copy_glyph(&source,i,dx,dy,room) }
             }
         }
     }

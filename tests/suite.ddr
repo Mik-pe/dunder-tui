@@ -11,6 +11,7 @@ import ..src.lines as borders
 import ..src.text as rich
 import .grapheme_cases as cases
 import .scroll_errors
+import .saved_backend
 import std.parse as parse
 import std.json
 import std.text as words
@@ -23,6 +24,37 @@ import ..src.input
 import ..src.width
 import ..src.material
 import ..src.tailwind
+
+@test fn restored_backend_keeps_the_next_scrolled_line_and_cursor() {
+    mut device := saved_backend.open()
+    assert(device.scrollback().row(0).line(0) == "LOGG" && device.buffer().line(0) == "KAJ ")
+    assert(device.cursor_visible() && device.cursor_position() == (2,1))
+    saved_backend.advance(&mut device)
+    assert(!device.cursor_visible() && device.cursor_position() == (3,2))
+    assert(device.scrollback().row(1).line(0) == "KAJ " && device.buffer().line(0) == "SYD ")
+}
+
+@test fn scrollback_at_capacity_reflows_wide_symbols_and_discards_evicted_rows() {
+    rows: []rich.Line = [rich.Line::raw("123"),rich.Line::raw("茶Z")]
+    mut device := testing.TestBackend::with_lines(&rows)
+    device.append_lines(65535)
+    device.append_lines(2)
+    assert(device.scrollback().len() == 65535 && device.scrollback().row(0).line(0) == "茶Z")
+    device.resize(1,2)
+    assert(device.scrollback().row(0).symbol_at(0,0).unwrap() == "茶")
+    assert(device.scrollback().row(2).line(0) == "Z")
+    device.append_lines(65535)
+    assert(device.scrollback().row(0).line(0) == " " && device.scrollback().row(65534).line(0) == " ")
+}
+
+@test fn clearing_the_tail_of_a_glyph_preserves_the_cell_before_the_cursor() {
+    mut device := testing.TestBackend::with_lines(&[rich.Line::raw("A茶B")])
+    device.set_cursor_position(2,0)
+    device.clear_region(.UntilNewLine)
+    assert(device.buffer().symbol_at(1,0).unwrap() == "茶")
+    assert(device.buffer().raw_cell_at(2,0).unwrap().symbol.is_none())
+    assert(device.buffer().raw_cell_at(3,0).unwrap().symbol.is_none())
+}
 
 @test fn inserted_rows_are_flushed_in_order_and_the_viewport_recovers_after_each_backend_error() {
     scroll_errors.regions()

@@ -19,6 +19,15 @@ layout-cache = ["ratatui/layout-cache"]
 terminal-oracle = ["dep:ratatui-crossterm", "ratatui-crossterm/scrolling-regions"]
 style-oracle = ["ratatui/underline-color", "ratatui/palette"]
 theme-oracle = ["ratatui/serde", "ratatui/underline-color", "dep:serde_json"]
+backend-oracle = ["theme-oracle", "ratatui/scrolling-regions"]
+
+[[example]]
+name = "backend_json"
+required-features = ["backend-oracle"]
+
+[[example]]
+name = "scrollback"
+required-features = ["backend-oracle"]
 
 [[example]]
 name = "themes"

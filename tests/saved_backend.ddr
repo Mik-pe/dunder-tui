@@ -1,0 +1,32 @@
+import std.json
+import ..src.testing
+import ..src.text as rich
+import ..src.tui
+
+pub fn open() -> testing.TestBackend {
+    rows: []rich.Line = [rich.Line::raw("LOGG").styled(tui.ink(.Cyan)),rich.Line::raw("KAJ "),rich.Line::raw("SYD ")]
+    mut backend := testing.TestBackend::with_lines(&rows)
+    backend.append_lines(3)
+    backend.set_cursor_position(2,1)
+    backend.show_cursor()
+    saved := json.to_string(&backend).unwrap()
+    json.from_str<testing.TestBackend>(saved).unwrap()
+}
+
+pub fn advance(backend: &mut testing.TestBackend) {
+    backend.append_lines(2)
+    backend.hide_cursor()
+}
+
+pub fn paint(frame: &mut tui.Frame, backend: &mut testing.TestBackend) {
+    area := frame.area()
+    history := backend.scrollback()
+    row := history.row(history.len()-1)
+    frame.copy_cells(&row,row.area(),area.x,area.y)
+    screen := backend.buffer()
+    frame.copy_cells(&screen,screen.area(),area.x,area.y+1)
+    if backend.cursor_visible() {
+        (x,y) := backend.cursor_position()
+        frame.set_cursor_position(area.x+x,area.y+1+y)
+    }
+}

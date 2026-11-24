@@ -1,0 +1,101 @@
+capability filesystem, stdio
+
+import sys
+import std.json
+import std.text
+import ..src.testing
+import ..src.text as rich
+import ..src.tui
+
+fn paint(frame: &mut tui.Frame, index: &mut i32) {
+    frame.text(frame.area(),if index == 0 { "A茶" } else { "B!" },tui.ink(.Cyan))
+    if index == 0 { frame.set_cursor_position(0,0) }
+}
+
+fn trace(move restored: testing.TestBackend, seed: i32) -> Result<string,json.JsonError> {
+    mut backend := move restored
+    mut result := json.to_string(&backend)?
+    area := backend.buffer().area()
+    if area.w > 0 && area.h > 0 {
+        backend.set_cursor_position(seed%area.w,(seed/2)%area.h)
+        if seed%2 == 0 { backend.hide_cursor() } else { backend.show_cursor() }
+        kinds: []testing.ClearType = [.AfterCursor,.BeforeCursor,.CurrentLine,.UntilNewLine,.All]
+        backend.clear_region(kinds[seed%5])
+        result += "\t" + json.to_string(&backend)?
+    }
+    if area.w > 0 {
+        backend.append_lines(seed+1)
+        backend.scroll_down(0,area.h-1,1)
+        backend.scroll_up(0,area.h,2)
+        result += "\t" + json.to_string(&backend)?
+    }
+    backend.resize(1+seed%4,1+seed%3)
+    result += "\t" + json.to_string(&backend)?
+    backend.append_lines(3)
+    result += "\t" + json.to_string(&backend)?
+    mut terminal := tui.Terminal<testing.TestBackend>::new(move backend)
+    for i in 0..2 {
+        mut index := i
+        terminal.draw(&mut index,paint).unwrap()
+        result += "\t" + json.to_string(&terminal.backend())?
+    }
+    .Ok(move result)
+}
+
+fn history_samples(device: &testing.TestBackend) -> string {
+    history := device.scrollback()
+    height := history.len()
+    mut rows: []tui.Buffer = []
+    for i in 0..36 {
+        y := if i < 4 { i } else { height-36+i }
+        rows.push(history.row(y).to_buffer())
+    }
+    f"{height}\t" + json.to_string(&rows).unwrap()
+}
+
+fn rollover(seed: i32) -> string {
+    mut device := testing.TestBackend::with_lines(&[rich.Line::raw("A茶"),rich.Line::raw("BC "),rich.Line::raw("🦀x")])
+    device.append_lines(65534)
+    strip := testing.TestBackend::with_lines(&[rich.Line::raw("🌊Z")])
+    device.overwrite_region(&strip.buffer()).unwrap()
+    device.scroll_up(0,3,3+seed)
+    a := history_samples(&device)
+    device.resize(1+seed%4,3)
+    b := history_samples(&device)
+    device.append_lines(65535)
+    a + "\t" + b + "\t" + history_samples(&device)
+}
+
+fn check(kind: u8, value: string) -> Result<string,json.JsonError> {
+    if kind == b'C' { return .Ok(rollover(json.from_str<i32>(value)?)) }
+    if kind == b'L' {
+        words := json.from_str<[]string>(value)?
+        mut lines: []rich.Line = []
+        for i in 0..words.len {
+            if i%2 == 0 { lines.push(rich.Line::raw(words[i].clone())) }
+            else {
+                spans: []rich.Span = [rich.Span::styled(words[i].clone(),tui.ink(.Green)),rich.Span::raw("!")]
+                lines.push(rich.Line::new(move spans).styled(tui.plain().background(.Blue).bold()).align(.Right))
+            }
+        }
+        return trace(testing.TestBackend::with_lines(&lines),3)
+    }
+    raw := json.from_str<testing.SavedBackend>(value)?
+    saved := json.to_string(&raw)?
+    match json.from_str<testing.TestBackend>(value) {
+        .Ok(restored) => {
+            assert(json.to_string(&restored)? == saved)
+            trace(move restored,i32(kind)-i32(b'0'))
+        },
+        .Err(_) => .Ok(saved + "\tinvalid area"),
+    }
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 2 }
+    for line in text.split(sys.read(sys.arg(1)).unwrap(),"\n") {
+        if line.len == 0 { continue }
+        match check(line[0],line[2..line.len]) { .Ok(s) => { print(s) }, .Err(_) => { print("error") }, }
+    }
+    0
+}
