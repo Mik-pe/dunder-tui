@@ -1,0 +1,4 @@
+fn main() {
+    values: []i64 = [1,2,1,2]
+    assert((&values[0..2]) == (&values[2..4]))
+}
