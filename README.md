@@ -241,6 +241,17 @@ frame.label(panes[1], "Mina böcker")
 
 `vertical` delar på höjden. Använd `Percentage(40)`, `Ratio(1,3)`, `Min(8)` eller `Max(24)` för andra storleksregler. `flex(.Center)` centrerar en grupp och `margin(2,1)` lämnar två kolumner och en rad runt den. Negativt mellanrum låter paneler överlappa. För tät omritning ger `columns.arrange(area).regions()` en lånad vy med både paneler och mellanrum. [Bokhyllans responsiva vy](examples/bokhylla/main.ddr) · [Jämförelse med Ratatui](docs/parity.md#layout-i-070)
 
+På `main` kan du spara en layout och läsa den igen med `std.json`. Den sparade layouten innehåller riktning, storleksregler, marginaler, flexläge och mellanrum. Om fönstret ändrar storlek beräknas panelerna utifrån den nya ytan.
+
+```dunder
+mut kolumner := layout.Layout::horizontal([.Length(18), .Fill(1)]).spacing(1)
+sparat := json.to_string(&kolumner).unwrap()
+mut inlast := json.from_str<layout.Layout>(sparat).unwrap()
+paneler := inlast.split(frame.area())
+```
+
+`json.from_str<tui.Rect>("[3,7,40,12]")` läser x, y, bredd och höjd. För position, storlek och förskjutning finns `Position`, `Size` och `Offset` i `tui.geometry`. [Dataformat och terminalprov](docs/parity.md#sparade-layouter-och-geometri)
+
 ## Mätare, diagram och paneler
 
 Med `import tui.widgets as ui` kan du rita en mätare i valfri del av en bild.

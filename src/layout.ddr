@@ -1,17 +1,64 @@
 import .tui
+import .json_format
+import std.json
 import .layout_solver as lp
 import std.cmp as cmp
 
+@derive(Encode)
 pub enum Direction { Horizontal, Vertical }
+@derive(Encode)
 pub enum Flex { Start, Center, End, SpaceBetween, SpaceAround, SpaceEvenly, Legacy }
+@derive(Encode, Decode)
 pub enum Constraint { Length(u16), Percentage(u16), Ratio(u32, u32), Min(u16), Max(u16), Fill(u16) }
+
+@derive(Encode, Decode, Eq)
+pub enum Spacing { Space(u16), Overlap(u16) }
+
+impl Spacing {
+    fn cells(&self) -> i32 {
+        value := match self { .Space(n) => i32(n), .Overlap(n) => -i32(n), }
+        (value + 32768).bit_and(65535) - 32768
+    }
+}
+
+@derive(Encode)
+pub struct Margin { horizontal: u16, vertical: u16 }
+
+impl json.Decode for Margin {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self, json.JsonError> {
+        (horizontal, vertical) := json_format.pair<u16>(&doc, node, &["horizontal", "vertical"])?
+        .Ok(Self { horizontal:horizontal, vertical:vertical })
+    }
+}
+
+impl json.Decode for Direction {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self, json.JsonError> {
+        name := json_format.unit_name(&doc, node)?
+        match name {
+            "Horizontal" => .Ok(.Horizontal), "Vertical" => .Ok(.Vertical),
+            _ => .Err(json.JsonError::new("unknown layout direction", doc.node_offset(node))),
+        }
+    }
+}
+
+impl json.Decode for Flex {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self, json.JsonError> {
+        name := json_format.unit_name(&doc, node)?
+        match name {
+            "Start" => .Ok(.Start), "Center" => .Ok(.Center), "End" => .Ok(.End),
+            "SpaceBetween" => .Ok(.SpaceBetween), "SpaceAround" => .Ok(.SpaceAround),
+            "SpaceEvenly" => .Ok(.SpaceEvenly), "Legacy" => .Ok(.Legacy),
+            _ => .Err(json.JsonError::new("unknown layout flex", doc.node_offset(node))),
+        }
+    }
+}
 
 pub struct Split { areas: []tui.Rect, spacers: []tui.Rect }
 impl Split { pub fn new() -> Self { Self { areas: [], spacers: [] } } }
 
 struct Entry { extent: i32, edges: []i32, age: u64 }
 pub opaque struct Layout {
-    rules: []Constraint, axis: Direction, flex_mode: Flex, gap: i32, horizontal_margin: i32, vertical_margin: i32,
+    rules: []Constraint, axis: Direction, flex_mode: Flex, spacing_value: Spacing, margins: Margin,
     view_bounds: tui.Rect, projected: Split, view_valid: bool,
     entries: []Entry, capacity: i32, tick: u64, recent: i32,
 }
@@ -19,7 +66,7 @@ pub opaque struct Layout {
 impl Layout {
     pub fn new(axis: Direction, move rules: []Constraint) -> Self {
         Self {
-            rules: move rules, axis: axis, flex_mode: .Start, gap: 0, horizontal_margin: 0, vertical_margin: 0,
+            rules: move rules, axis: axis, flex_mode: .Start, spacing_value: .Space(0), margins: Margin { horizontal:0, vertical:0 },
             view_bounds: tui.Rect { x: 0, y: 0, w: 0, h: 0 }, projected: Split::new(), view_valid: false,
             entries: [], capacity: 500, tick: 0, recent: -1
         }
@@ -35,15 +82,19 @@ impl Layout {
         move l
     }
     pub fn spacing(move self, cells: i32) -> Self {
-        mut l := move self
         gap := cmp.clamp<i32>(cells, -32768, 32767)
-        if l.gap != gap { l.gap = gap; l.invalidate() }
+        spacing: Spacing = if gap < 0 { .Overlap(u16(-gap)) } else { .Space(u16(gap)) }
+        self.with_spacing(spacing)
+    }
+    pub fn with_spacing(move self, spacing: Spacing) -> Self {
+        mut l := move self
+        if l.spacing_value != spacing { l.spacing_value = spacing; l.invalidate() }
         move l
     }
     pub fn margin(move self, horizontal: i32, vertical: i32) -> Self {
         mut l := move self
         l.view_valid = false
-        l.horizontal_margin = cmp.max<i32>(0, horizontal); l.vertical_margin = cmp.max<i32>(0, vertical)
+        l.margins = Margin { horizontal:u16(cmp.clamp<i32>(horizontal,0,65535)), vertical:u16(cmp.clamp<i32>(vertical,0,65535)) }
         move l
     }
     pub fn cache_capacity(move self, count: i32) -> Self {
@@ -57,6 +108,34 @@ impl Layout {
 const EDGE: f64 = 1001000999.0
 const SPACER: f64 = 100100100.0
 const BOUND: f64 = 100000000.0
+
+impl json.Encode for Layout {
+    fn encode_json(&self, out: &mut json.Writer) {
+        out.object()
+        json.field_value(&mut out, "direction", &self.axis)
+        json.field_value(&mut out, "constraints", &self.rules)
+        json.field_value(&mut out, "margin", &self.margins)
+        json.field_value(&mut out, "flex", &self.flex_mode)
+        json.field_value(&mut out, "spacing", &self.spacing_value)
+        out.end()
+    }
+}
+
+impl json.Decode for Layout {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self, json.JsonError> {
+        f := json_format.fields(&doc, node, &["direction", "constraints", "margin", "flex", "spacing"], 5, 5)?
+        direction := Direction::decode_json(&doc, f[0])?
+        rules := json.decode<[]Constraint>(&doc, f[1])?
+        margin := Margin::decode_json(&doc, f[2])?
+        flex := Flex::decode_json(&doc, f[3])?
+        spacing := Spacing::decode_json(&doc, f[4])?
+        mut layout := Layout::new(direction, move rules)
+        layout.margins = margin
+        layout.flex_mode = flex
+        layout.spacing_value = spacing
+        .Ok(move layout)
+    }
+}
 
 struct Axis { last: i32, extent: f64 }
 
@@ -114,15 +193,16 @@ impl Layout {
         length := f64(extent)
         fixed_gaps := self.flex_mode == .Start || self.flex_mode == .End ||
         self.flex_mode == .Center || self.flex_mode == .Legacy
-        if fixed_gaps && i64(self.gap) * i64(n - 1) >= i64(extent) && n > 1 {
+        spacing := self.spacing_value.cells()
+        if fixed_gaps && i64(spacing) * i64(n - 1) >= i64(extent) && n > 1 {
             mut x := 0
             edges.push(0)
-            for _ in 0..n { edges.push(x); edges.push(x); x += cmp.min<i32>(extent - x, self.gap) }
+            for _ in 0..n { edges.push(x); edges.push(x); x += cmp.min<i32>(extent - x, spacing) }
             edges.push(extent)
             return true
         }
-        if self.gap < 0 && !fixed_gaps { return false }
-        mut gap := f64(self.gap)
+        if spacing < 0 && !fixed_gaps { return false }
+        mut gap := f64(spacing)
         mut lead := 0.0
         if self.flex_mode == .SpaceEvenly || self.flex_mode == .SpaceAround {
             lead = gap
@@ -251,7 +331,7 @@ impl Layout {
     fn spaces(&self, model: &mut lp.Model, axis: Axis) {
         n := self.rules.len
         last := 2 * n
-        gap := f64(self.gap)
+        gap := f64(self.spacing_value.cells())
         flex := self.flex_mode
         if flex == .Start || flex == .End || flex == .Center || flex == .Legacy {
             for i in 1..n { axis.size(&mut model, 2 * i, .Equal, gap, SPACER) }
@@ -363,6 +443,11 @@ impl Layout {
         self.recent
     }
 
+    fn extent(&self, area: &tui.Rect) -> i32 {
+        if self.axis == .Horizontal { cmp.min<i32>(area.w, 65535-area.x) }
+        else { cmp.min<i32>(area.h, 65535-area.y) }
+    }
+
     fn project(axis: Direction, area: &tui.Rect, edges: &[]i32, i: i32, part: &mut tui.Rect) {
         offset := edges[i]
         length := cmp.max<i32>(0, edges[i + 1] - offset)
@@ -374,8 +459,8 @@ impl Layout {
     }
 
     pub fn split_into(&mut self, bounds: tui.Rect, out: &mut Split) {
-        area := bounds.inner(self.horizontal_margin, self.vertical_margin)
-        idx := self.lookup(if self.axis == .Horizontal { area.w } else { area.h })
+        area := bounds.inner(i32(self.margins.horizontal), i32(self.margins.vertical))
+        idx := self.lookup(self.extent(&area))
         Layout::place(self.axis, &area, &self.entries[idx].edges, &mut out)
     }
 
@@ -392,8 +477,8 @@ impl Layout {
 
     pub fn arrange(&mut self, bounds: tui.Rect) -> &mut Self from self {
         if !self.view_valid || self.view_bounds != bounds || self.capacity == 0 {
-            area := bounds.inner(self.horizontal_margin, self.vertical_margin)
-            idx := self.lookup(if self.axis == .Horizontal { area.w } else { area.h })
+            area := bounds.inner(i32(self.margins.horizontal), i32(self.margins.vertical))
+            idx := self.lookup(self.extent(&area))
             Layout::place(self.axis, &area, &self.entries[idx].edges, &mut self.projected)
             self.view_bounds = bounds
             self.view_valid = true
@@ -410,8 +495,8 @@ impl Layout {
     }
 
     pub fn split(&mut self, bounds: tui.Rect) -> []tui.Rect {
-        area := bounds.inner(self.horizontal_margin, self.vertical_margin)
-        idx := self.lookup(if self.axis == .Horizontal { area.w } else { area.h })
+        area := bounds.inner(i32(self.margins.horizontal), i32(self.margins.vertical))
+        idx := self.lookup(self.extent(&area))
         edges := &self.entries[idx].edges
         mut parts: []tui.Rect = []
         fit(&mut parts, self.rules.len)
@@ -421,8 +506,8 @@ impl Layout {
 
     pub fn part(&mut self, bounds: tui.Rect, index: i32) -> Option<tui.Rect> {
         if index < 0 || index >= self.rules.len { return .None }
-        area := bounds.inner(self.horizontal_margin, self.vertical_margin)
-        idx := self.lookup(if self.axis == .Horizontal { area.w } else { area.h })
+        area := bounds.inner(i32(self.margins.horizontal), i32(self.margins.vertical))
+        idx := self.lookup(self.extent(&area))
         mut part := area
         Layout::project(self.axis, &area, &self.entries[idx].edges, 2 * index + 1, &mut part)
         .Some(part)

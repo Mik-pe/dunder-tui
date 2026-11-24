@@ -1,0 +1,14 @@
+import std.json
+import ..src.layout
+import ..src.tui
+
+pub fn panels() -> []layout.Layout {
+    json.from_str<[]layout.Layout>("[[\"Horizontal\",[{\"Length\":3},{\"Fill\":1}],[0,1],\"Start\",{\"Space\":2}],"
+        + "[\"Vertical\",[{\"Length\":2},{\"Fill\":1}],[0,0],\"Start\",{\"Overlap\":1}]]").unwrap()
+}
+
+pub fn paint(frame: &mut tui.Frame, layout: &mut layout.Layout) {
+    parts := layout.split(frame.area())
+    frame.fill(parts[0], rune(65), tui.ink(.Cyan))
+    frame.fill(parts[1], rune(66), tui.ink(.Magenta))
+}

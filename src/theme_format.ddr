@@ -71,29 +71,3 @@ pub fn write_flags(out: &mut json.Writer, field: string, mask: i32) {
     out.key(field)
     out.string(bytes.decode(&value).unwrap())
 }
-
-pub fn style_fields(doc: &json.Doc, node: i32) -> Result<[i32; 5], json.JsonError> {
-    mut fields: [i32; 5] = [-1, -1, -1, -1, -1]
-    count := doc.count(node)
-    if doc.kind(node) == .Array && count >= 3 && count <= 5 {
-        for i in 0..count { fields[i] = doc.at(node, i) }
-        return .Ok(fields)
-    }
-    if doc.kind(node) != .Object {
-        return .Err(json.JsonError::new("expected a style object or a sequence of 3 to 5 fields", doc.node_offset(node)))
-    }
-    for i in 0..count {
-        key := doc.key_at(node, i).unwrap()
-        field := match key {
-            "fg" => 0, "bg" => 1, "underline_color" => 2,
-            "add_modifier" => 3, "sub_modifier" => 4, _ => -1,
-        }
-        if field < 0 { continue }
-        child := doc.val_at(node, i)
-        if fields[field] >= 0 {
-            return .Err(json.JsonError::new("duplicate style field " + key, doc.node_offset(child)))
-        }
-        fields[field] = child
-    }
-    .Ok(fields)
-}

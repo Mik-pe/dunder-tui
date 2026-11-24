@@ -9,7 +9,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | Buffer och Cell | Förskjutet origo, koordinater och linjära index, råa celler och stilar, celldiff och fyra diffregler. Kopiering, storleksändring och sammanslagning inom hela koordinatintervallet. | Minnesgränsen för sammanhängande Dunder-arrayer och avvikelsen i Ratatuis sammanslagning vid stora index beskrivs nedan. |
 | Stil och färg | Nio attribut, påslag och borttagning, ärvda stilar, återställning, 16 namngivna färger, 256 index, RGB och separat understrykningsfärg. Färger kan läsas från strängar och byggas från HSL eller HSLuv. Tailwind och Material ger 500 namngivna RGB-värden. | JSON för färger och stilar jämförs nedan. Fler konverteringar mellan backendens stilrepresentationer återstår. |
 | Text | Span, Line, Text, Paragraph, byte och omordning av rad- och spannsamlingar, inkrementell redigering, sammanslagning av dokument och läsning av stiliserade grafem, stiländringar, läsning av textens delar, utskrift, maskering per skalär, justering, skrollning, ord- och radbrytning och förberedd layout. Grafemgränser enligt UAX #29. Cellprov för Unicode 18:s emojitest, presentationsvarianter och skriftspecifika ligaturer inom och över grafemgränser. | Fler jämförelser av sammansatta dokument i listor och tabeller. Se de tolv gränsfallen vid fysisk högerkant nedan. |
-| Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering och cache. 21 124 jämförda layouter, 2 460 rektangelprov och 1 100 jämförda bilder. Omfattar upprepade regelbyten och upp till nio paneler i gränsprovet för minsta storlek. | Överbestämda system med fler paneler och kombinationer av layoutmarginaler vid koordinatgränsen. |
+| Layout | Rektangeloperationer, marginaler per axel, sex storleksregler, sju flexlägen, överlappning, centrering och cache. 21 124 jämförda layouter, 2 460 rektangelprov och 1 100 jämförda bilder. Omfattar upprepade regelbyten och upp till nio paneler i gränsprovet för minsta storlek. | Överbestämda system med fler paneler. För stora marginaler och råa rektanglar vid koordinatgränsen, se JSON-provet nedan. |
 | Block, listor och tabeller | Block med 18 kantsymboluppsättningar, egna strängar för hörn och sidor, individuella kanter, justerade titlar, utfyllnad och skuggor. För skuggor jämförs 85 050 råa celler och celldiffarnas ordning med referensen. Flerradiga, stiliserade listposter med beständigt tillstånd, skrollmarginal, markör och valbar ritriktning. Tabeller med sidhuvud, sidfot, kolumnspann, flerradiga celler och tillstånd för rad och kolumn. | Fler prov för extrema marginaler och avstånd. |
 | Övriga widgets | Fristående Clear och Fill med cellvisa symboler, stil och klippning, Tabs, Gauge, LineGauge, Scrollbar, Sparkline, grupperade BarChart, månadskalender med händelser och egna datumstilar, Paragraph, Chart och canvas med koordinatgränser, lager, nio markörer, former, kartor och etiketter. Ratatuis båda logotyper och maskot med två ögonfärger. | Se beteendeproven per widget nedan. |
 | Egna widgets och tester | Frame ritar egna och inbyggda widgets med `render_widget` och `render_stateful_widget`. Tillstånd kan uppdateras vid ritning med `run_stateful`. Egna backends kan anslutas till Terminal. TestBackend har skrollhistorik, markör, fem rensningslägen och regionskrollning. | Bredare testning av specialiserade terminalbackends. |
@@ -26,7 +26,7 @@ Funktionsparitet styr ordningen. Loggboken använder en inbäddad vy där använ
 | `layout-cache` | `Layout.cache_capacity` styr antal sparade uppdelningar. Layoutproven återanvänder tidigare storlekar efter regelbyten. |
 | `scrolling-regions` | Backendens regionskrollning och reservvägen med radmatning jämförs genom skrollhistorik och terminalutdata. |
 | `macros` | Konstruktorer för spann, rader, text och layout finns. Jämförelse per dokumenterad makroform återstår. |
-| `serde` | Färg och stil läses och skrivs med `std.json`. Rektanglar och övriga serialiserbara typer återstår. |
+| `serde` | Färger, stilar, layout med alla dess fem fält, rektanglar, positioner, storlekar och förskjutningar läses och skrivs med `std.json`. Bland annat text, celler, widgettillstånd och justering återstår. |
 | `crossterm`, `crossterm_0_28`, `crossterm_0_29`, `termina`, `termion`, `termwiz` | Dunder använder POSIX och Win32 direkt. Den låsta Crossterm-referensen och de faktiska terminalproven täcker bland annat ritning, markör och återställning. Skillnader mellan referensens övriga backendval är öppna. |
 | `std`, `portable-atomic`, `default` | Dunder bygger offline med sitt standardbibliotek. `portable-atomic` gäller referensens mål utan atomära typer. `default` väljer kalender, Crossterm, layoutcache, makron och understrykningsfärg. |
 
@@ -69,6 +69,27 @@ ref=build/rust/release/examples/themes
 build/themes build/theme-input >build/actual
 diff -u build/expected build/actual
 dunder run --locked --offline tests/theme_terminal.ddr
+```
+
+### Sparade layouter och geometri
+
+Provet jämför 1 035 JSON-indata med Ratatui 0.30.2. Var och en av de 797 giltiga layouterna delas på fem ytor. Samtliga 3 985 indelningar jämförs panel för panel, inklusive mellanrummen. På ytan 22 × 5 jämförs också varje ritat tecken, sammanlagt 87 670 celler. I 144 rektangelfall jämförs bland annat marginaler, kantkoordinater, rader, kolumner, förflyttning av en position och area. Felaktig aritet, dubbla nycklar, okända fält och tal utanför typens intervall ingår. [Dunderprov](../tests/layout_json.ddr) · [Indata och Ratatui-referens](../benchmarks/reference/examples/layout_json.rs)
+
+En rektangel med x = 65 523 och bredd 35 behåller båda värdena när den sparas igen. Vid horisontell indelning slutar panelerna vid 65 535. Vid vertikal indelning behåller de bredd 35. `with_spacing(.Space(n))` och `with_spacing(.Overlap(n))` bevarar hela det namngivna 16-bitarsvärdet, även skillnaden mellan noll mellanrum och noll överlappning. Ratatui 0.30.2 tolkar värdet som ett tecknat 16-bitarstal i lösaren. Därför ger exempelvis `Space(65535)` en cells överlappning. Vanliga `.spacing(1)` ger ett mellanrum på en cell.
+
+Alla indata gav samma resultat på macOS ARM64, Linux ARM64, översatt Linux x86-64 och Win64 under Wine. I pseudoterminal växlar en tangent från två kolumner med mellanrum till överlappande rader. Win32-provet läser cellerna direkt ur konsolbufferten efter båda ritningarna. Nativ Windows x64 återstår för den här revisionen. [Pseudoterminal](../tests/layout_json_terminal.ddr) · [Win32-konsol](../tests/windows_console.ddr)
+
+```sh
+mkdir -p build
+dunder build --locked --offline tests/layout_json.ddr -o build/layout-json
+cargo build --locked --offline --release --manifest-path benchmarks/reference/Cargo.toml \
+  --features theme-oracle --example layout_json --target-dir build/rust
+ref=build/rust/release/examples/layout_json
+"$ref" --cases >build/layout-input
+"$ref" <build/layout-input >build/expected
+build/layout-json build/layout-input >build/actual
+diff -u build/expected build/actual
+dunder run --locked --offline tests/layout_json_terminal.ddr
 ```
 
 ## Loggrader i en inbäddad vy

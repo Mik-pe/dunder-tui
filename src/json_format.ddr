@@ -1,0 +1,44 @@
+import std.json
+
+pub fn fields(doc: &json.Doc, node: i32, names: &[]string, required: i32, sequence_min: i32) -> Result<[]i32, json.JsonError> {
+    mut values: []i32 = []
+    for _ in names { values.push(-1) }
+    count := doc.count(node)
+    if doc.kind(node) == .Array {
+        if count < sequence_min || count > names.len {
+            return .Err(json.JsonError::new("wrong number of positional fields", doc.node_offset(node)))
+        }
+        for i in 0..count { values[i] = doc.at(node, i) }
+        return .Ok(move values)
+    }
+    if doc.kind(node) != .Object { return .Err(json.JsonError::new("expected an object or array", doc.node_offset(node))) }
+    for i in 0..count {
+        key := doc.key_at(node, i).unwrap()
+        for j in 0..names.len {
+            if key != names[j] { continue }
+            value := doc.val_at(node, i)
+            if values[j] >= 0 { return .Err(json.JsonError::new("duplicate field " + key, doc.node_offset(value))) }
+            values[j] = value
+            break
+        }
+    }
+    for i in 0..required {
+        if values[i] < 0 { return .Err(json.JsonError::new("missing field " + names[i], doc.node_offset(node))) }
+    }
+    .Ok(move values)
+}
+
+pub fn unit_name(doc: &json.Doc, node: i32) -> Result<string, json.JsonError> {
+    if doc.kind(node) == .String { return .Ok(doc.as_str(node).unwrap()) }
+    if doc.kind(node) == .Object && doc.count(node) == 1 && doc.kind(doc.val_at(node, 0)) == .Null {
+        return .Ok(doc.key_at(node, 0).unwrap())
+    }
+    .Err(json.JsonError::new("expected an enum name", doc.node_offset(node)))
+}
+
+pub fn pair<T: json.Decode + Storable>(doc: &json.Doc, node: i32, names: &[]string) -> Result<(T,T), json.JsonError> {
+    f := fields(&doc, node, &names, 2, 2)?
+    a := json.decode<T>(&doc, f[0])?
+    b := json.decode<T>(&doc, f[1])?
+    .Ok((move a, move b))
+}

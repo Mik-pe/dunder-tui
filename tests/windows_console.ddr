@@ -4,6 +4,7 @@ import .buffer_app
 import .cell_widgets
 import .shadow_cells
 import .border_cells
+import .saved_layout
 import .meter_cells
 import ..src.tui
 import ..src.calendar as cal
@@ -289,6 +290,11 @@ unsafe fn shadow_and_meter_screen(out: ptr, x: i32, y: i32) -> i32 {
     phase = 1
     if term.draw(&mut phase,border_cells.joined).is_err() { return 173 }
     if unit_at(out,x+3,y+2) != 0x256d || unit_at(out,x+9,y+5) != 0x256f { return 174 }
+    mut layouts := saved_layout.panels()
+    if term.draw(&mut layouts[0], saved_layout.paint).is_err() { return 175 }
+    if unit_at(out,x+4,y+3) != 65 || unit_at(out,x+5,y+3) != 32 || unit_at(out,x+7,y+3) != 66 { return 176 }
+    if term.draw(&mut layouts[1], saved_layout.paint).is_err() { return 177 }
+    if unit_at(out,x+2,y+2) != 65 || unit_at(out,x+2,y+3) != 66 || unit_at(out,x+13,y+3) != 66 { return 178 }
     0
 }
 

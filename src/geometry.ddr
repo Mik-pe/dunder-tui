@@ -1,0 +1,44 @@
+import std.cmp
+import std.json
+import .json_format
+
+@derive(Encode, Eq)
+pub struct Offset { x: i32, y: i32 }
+
+impl json.Decode for Offset {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self, json.JsonError> {
+        (x, y) := json_format.pair<i32>(&doc, node, &["x", "y"])?
+        .Ok(Self { x:x, y:y })
+    }
+}
+
+@derive(Encode, Eq)
+pub struct Position { x: u16, y: u16 }
+
+impl Position {
+    pub fn offset(self, delta: Offset) -> Self {
+        Self { x:u16(cmp.clamp<i64>(i64(self.x)+i64(delta.x),0,65535)),
+            y:u16(cmp.clamp<i64>(i64(self.y)+i64(delta.y),0,65535)) }
+    }
+}
+
+impl json.Decode for Position {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self, json.JsonError> {
+        (x, y) := json_format.pair<u16>(&doc, node, &["x", "y"])?
+        .Ok(Self { x:x, y:y })
+    }
+}
+
+@derive(Encode, Eq)
+pub struct Size { width: u16, height: u16 }
+
+impl Size {
+    pub fn area(self) -> u32 { u32(self.width) * u32(self.height) }
+}
+
+impl json.Decode for Size {
+    fn decode_json(doc: &json.Doc, node: i32) -> Result<Self, json.JsonError> {
+        (width, height) := json_format.pair<u16>(&doc, node, &["width", "height"])?
+        .Ok(Self { width:width, height:height })
+    }
+}

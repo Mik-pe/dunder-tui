@@ -1,0 +1,75 @@
+capability filesystem, stdio
+
+import sys
+import std.json
+import std.text
+import ..src.geometry
+import ..src.layout
+import ..src.tui
+
+fn render(value: string) -> Result<string, json.JsonError> {
+    mut spec := json.from_str<layout.Layout>(value)?
+    encoded := json.to_string(&spec)?
+    mut result := encoded.clone()
+    mut frame := tui.Frame::new(22, 5)
+    bounds := [frame.area(), tui.Rect::new(3,7,31,27), tui.Rect { x:65523, y:65530, w:35, h:24 },
+        tui.Rect::new(0,0,65535,65535), tui.Rect { x:65530, y:3, w:65535, h:65535 }]
+    for i in 0..bounds.len {
+        areas := spec.split_with_spacers(bounds[i])
+        result = result + "\t" + json.to_string(&areas.areas)? + "\t" + json.to_string(&areas.spacers)?
+        if i == 0 {
+            for j in 0..areas.areas.len { frame.fill(areas.areas[j], rune(65+j), tui.plain()) }
+        }
+    }
+    for y in 0..5 { result = result + "\t" + frame.line(y) }
+    assert(json.to_string(&spec)? == encoded)
+    .Ok(result)
+}
+
+fn rect_geometry(value: string) -> Result<string, json.JsonError> {
+    rect := json.from_str<tui.Rect>(value)?
+    p := rect.as_position()
+    size := rect.as_size()
+    shifted := p.offset(geometry.Offset { x:2147483647, y:-2147483648 })
+    other := tui.Rect::new(65529,2,6,45)
+    point: Option<geometry.Position> = match rect.position_at(2) {
+        .Some(v) => .Some(geometry.Position { x:u16(v.0), y:u16(v.1) }), .None => .None,
+    }
+    fields := [json.to_string(&rect)?, json.to_string(&tui.Rect::from_position_size(p,size))?, json.to_string(&size.area())?,
+        json.to_string(&p)?, json.to_string(&shifted)?, rect.right().str(), rect.bottom().str(),
+        json.to_string(&rect.inner(2,3))?, json.to_string(&rect.outer(2,3))?, json.to_string(&rect.union(other))?,
+        json.to_string(&rect.intersection(other))?, json.to_string(&rect.row_at(2))?, json.to_string(&rect.column_at(2))?,
+        json.to_string(&point)?]
+    mut result := fields[0].clone()
+    for i in 1..fields.len { result = result + "\t" + fields[i] }
+    .Ok(result)
+}
+
+fn canonical<T: json.Decode + json.Encode + Storable>(value: string) -> Result<string, json.JsonError> {
+    parsed := json.from_str<T>(value)?
+    json.to_string(&parsed)
+}
+
+fn check(line: string) -> Result<string, json.JsonError> {
+    value := line[2..line.len]
+    match line[0] {
+        b'P' => canonical<geometry.Position>(value), b'Z' => canonical<geometry.Size>(value),
+        b'O' => canonical<geometry.Offset>(value), b'G' => rect_geometry(value),
+        b'D' => canonical<layout.Direction>(value), b'F' => canonical<layout.Flex>(value),
+        b'C' => canonical<layout.Constraint>(value), b'S' => canonical<layout.Spacing>(value),
+        b'M' => canonical<layout.Margin>(value), b'R' => canonical<tui.Rect>(value),
+        _ => render(value),
+    }
+}
+
+fn main() -> i32 {
+    if sys.arg_count() != 2 { return 2 }
+    for line in text.split(sys.read(sys.arg(1)).unwrap(), "\n") {
+        if line.len == 0 { continue }
+        match check(line) {
+            .Ok(result) => { print(result) },
+            .Err(_) => { print("error") },
+        }
+    }
+    0
+}

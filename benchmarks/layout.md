@@ -57,3 +57,9 @@ cargo run --locked --release --manifest-path benchmarks/reference/Cargo.toml --f
 ```
 
 För RSS, kör varje tidsmätt binär med `/usr/bin/time -l` på macOS eller `/usr/bin/time -v` på Linux. Den låsta Rustreferensen kan byggas med `--offline` efter den första hämtningen.
+
+## Sparade layouter med Dunder 0.12.0
+
+På macOS ARM64 tog full omritning av panelvyn till en pseudoterminal 44 / 53 µs med Dunder och 65 / 72 µs med Ratatui (p50 / p95). På Linux ARM64 blev tiderna 34 / 38 respektive 57 / 60 µs. På översatt Linux x86-64 blev de 335 / 355 respektive 85 / 93 µs. Tiderna omfattar ritning med förberedda layouter. Tabellen innehåller medianen och spridningen från sju körningar av vart och ett av de fem ändringsfallen. [Bildtid och terminalbyte](results/layout-json-dunder-0.12.0-local.tsv)
+
+Under 1 100 bilder skrev Dunder 2 151 287 terminalbyte och Ratatui 2 764 913 på alla tre målen. Mac-profilerna visade 501 allokeringsanrop och 355 244 begärda byte för Dunder och 11 157 anrop och 2 182 465 byte för Ratatui. Medianen för högsta RSS över fem körningar var 1 776 respektive 2 720 KiB.

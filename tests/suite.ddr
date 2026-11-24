@@ -1545,3 +1545,33 @@ impl tui.Backend for BufferedOutput {
     copy.apply_cell_style(area, remove)
     assert(copy.diff_positions(&visible).unwrap().len == 0)
 }
+
+@test fn serialized_layout_keeps_spacing_and_excludes_cached_regions() {
+    mut original := layout.Layout::horizontal([.Length(4),.Fill(1)]).margin(1,0).with_spacing(.Space(65535))
+    area := tui.Rect::new(3,7,18,4)
+    encoded := json.to_string(&original).unwrap()
+    assert(words.find(encoded, "\"spacing\":{\"Space\":65535}").is_some())
+    mut loaded := json.from_str<layout.Layout>(encoded).unwrap()
+    expected := original.split(area)
+    actual := loaded.split(area)
+    assert(actual.len == 2 && expected[0] == actual[0] && expected[1] == actual[1])
+    assert(actual[1].x == actual[0].right()-1 && json.to_string(&loaded).unwrap() == encoded)
+    twice := loaded.with_spacing(.Overlap(0))
+    assert(words.find(json.to_string(&twice).unwrap(), "\"Overlap\":0").is_some())
+}
+
+@test fn rectangle_json_preserves_raw_fields_and_rejects_unrepresentable_values() {
+    input := "[65534,65533,7,8]"
+    rect := json.from_str<tui.Rect>(input).unwrap()
+    assert(rect.w == 7 && rect.h == 8 && rect.right() == 65535 && rect.bottom() == 65535)
+    assert(rect.inner(0,0) == rect && rect.row_at(0).unwrap().w == 1)
+    assert(json.to_string(&rect).unwrap() == "{\"x\":65534,\"y\":65533,\"width\":7,\"height\":8}")
+    bad := tui.Rect { x:-3, y:0, w:7, h:8 }
+    values: []tui.Rect = [rect, bad]
+    assert(json.to_string(&values).is_err())
+    mut invalid := json.Writer::new()
+    invalid.end()
+    message := invalid.finish().unwrap_err().message
+    bad.encode_json(&mut invalid)
+    assert(invalid.finish_bytes().unwrap_err().message == message)
+}
