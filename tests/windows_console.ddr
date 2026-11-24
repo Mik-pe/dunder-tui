@@ -315,7 +315,7 @@ unsafe fn embedded(out: ptr) -> i32 {
     0
 }
 
-unsafe fn wait_for_gallery_row(child: ptr, bottom: bool, expected: string) -> bool {
+unsafe fn wait_for_row(child: ptr, offset: i32, expected: string) -> bool {
     device := wide.path("CONOUT$")
     for _ in 0..250 {
         if wait_process(child,20) != 258 { return false }
@@ -326,7 +326,7 @@ unsafe fn wait_for_gallery_row(child: ptr, bottom: bool, expected: string) -> bo
         mut read := u32(0)
         mut found := false
         if info(screen,addr(&mut bounds[0])) != 0 {
-            row := if bottom { bounds[8] } else { bounds[6] }
+            row := if offset < 0 { i32(bounds[8]) } else { i32(bounds[6])+offset }
             at := u32(bounds[5]).bit_or(u32(row).shl(16))
             count := i32(bounds[7])-i32(bounds[5])+1
             if read_text(screen,addr(&mut units[0]),u32(if count < 128 { count } else { 128 }),at,addr(&mut read)) != 0 {
@@ -365,7 +365,7 @@ unsafe fn wait_for_mascot_eye(child: ptr, previous: i32) -> i32 {
     -1
 }
 
-unsafe fn exercise_app(program: string, input: ptr, mascot: bool) -> i32 {
+unsafe fn exercise_app(program: string, input: ptr, mode: string) -> i32 {
     path := wide.path(program)
     mut command := wide.path("\"" + program + "\"")
     mut startup: [u64;13] = [0;13]
@@ -378,22 +378,28 @@ unsafe fn exercise_app(program: string, input: ptr, mascot: bool) -> i32 {
         if wait_process(child,0) == 258 { _ := stop_process(child,124); _ := wait_process(child,5000) }
         _ := close_handle(child)
     }
-    if mascot {
-        if !wait_for_gallery_row(child,true,"mellanslag") || !wait_for_gallery_row(child,false,"█▀▀▄ ▄▀▀▄") { return 141 }
+    if mode == "--mascot" {
+        if !wait_for_row(child,-1,"mellanslag") || !wait_for_row(child,0,"█▀▀▄ ▄▀▀▄") { return 141 }
         normal := wait_for_mascot_eye(child,-1)
         if normal < 0 || !push_key(input,32,32) { return 142 }
         red := wait_for_mascot_eye(child,normal)
         if red < 0 || !push_key(input,32,32) || wait_for_mascot_eye(child,red) != normal { return 143 }
-        if !push_key(input,84,116) || !wait_for_gallery_row(child,false,"▛▚▗▀▖") { return 144 }
+        if !push_key(input,84,116) || !wait_for_row(child,0,"▛▚▗▀▖") { return 144 }
+    } else if mode == "--rundown" {
+        if !wait_for_row(child,-1,"byt pass") || !wait_for_row(child,1,"› · Öppna entrén") { return 151 }
+        if !push_key(input,74,106) || !wait_for_row(child,2,"› · Öppna entrén") || !wait_for_row(child,1,"· Ljudprov") { return 152 }
+        if !push_key(input,32,32) || !wait_for_row(child,2,"› ✓ Öppna entrén") { return 153 }
+        if !push_key(input,9,9) || !wait_for_row(child,0,"Kvällspass") || !wait_for_row(child,1,"Tänd scenljuset") { return 154 }
+        if !push_key(input,9,9) || !wait_for_row(child,0,"Dagpass") || !wait_for_row(child,2,"✓ Öppna entrén") { return 155 }
     } else {
         titles := ["Polarnatt","Prisma","Koidammen","Händelsehorisont","Harmonograf","Efterglöd","Medusa","Tesserakt","Glödbädd","Drivande atlas"]
-        if !wait_for_gallery_row(child,false,titles[0]) { return 121 }
-        if !push_key(input,32,32) || !wait_for_gallery_row(child,true,"spela") { return 122 }
+        if !wait_for_row(child,0,titles[0]) { return 121 }
+        if !push_key(input,32,32) || !wait_for_row(child,-1,"spela") { return 122 }
         for i in 1..titles.len {
-            if !push_key(input,39,0) || !wait_for_gallery_row(child,false,titles[i]) { return 130+i }
+            if !push_key(input,39,0) || !wait_for_row(child,0,titles[i]) { return 130+i }
         }
-        if !push_key(input,39,0) || !wait_for_gallery_row(child,false,titles[0]) { return 123 }
-        if !push_key(input,32,32) || !wait_for_gallery_row(child,true,"pausa") { return 124 }
+        if !push_key(input,39,0) || !wait_for_row(child,0,titles[0]) { return 123 }
+        if !push_key(input,32,32) || !wait_for_row(child,-1,"pausa") { return 124 }
     }
     if !push_key(input,81,113) || wait_process(child,5000) != 0 { return 125 }
     mut code := u32(0)
@@ -418,8 +424,8 @@ fn verify() -> i32 {
         mut sentinel: u16 = 35
         mut n: u32 = 0
         if stamp(stdout, addr(&sentinel), 1, 0, addr(&mut n)) == 0 || n != 1 { return 19 }
-        if sys.arg_count() == 2 || (sys.arg_count() == 3 && sys.arg(2) == "--mascot") {
-            gallery := exercise_app(sys.arg(1),stdin,sys.arg_count() == 3)
+        if sys.arg_count() == 2 || (sys.arg_count() == 3 && (sys.arg(2) == "--mascot" || sys.arg(2) == "--rundown")) {
+            gallery := exercise_app(sys.arg(1),stdin,if sys.arg_count() == 3 { sys.arg(2) } else { "gallery" })
             if gallery != 0 { return gallery }
         } else {
             mut probe := Probe { step: 0, failure: 0, width: 0, input: stdin, started: false }

@@ -1,13 +1,12 @@
+#[path = "../src/raw_cells.rs"]
+mod raw_cells;
 use ratatui::{
     buffer::{Buffer, CellDiffOption},
     layout::Rect,
     style::{Color, Style},
     widgets::{Fill, MascotEyeColor, RatatuiLogo, RatatuiMascot, Widget},
 };
-use std::{
-    fmt::Write,
-    io::{self, BufRead},
-};
+use std::io::{self, BufRead};
 
 fn seeded(a: Rect) -> Buffer {
     let mut buf = Buffer::empty(a);
@@ -95,47 +94,13 @@ fn main() {
                         .render(area, &mut buf),
                     _ => RatatuiMascot::default().render(area, &mut buf),
                 }
-                for y in a.top()..a.bottom() {
-                    let line = input.next().expect("missing Dunder row");
-                    let mut row = line.split_terminator('|');
-                    for x in a.left()..a.right() {
-                        let c = &buf[(x, y)];
-                        let flag = match c.diff_option {
-                            CellDiffOption::None => 0,
-                            CellDiffOption::Skip => -1,
-                            CellDiffOption::AlwaysUpdate => -2,
-                            CellDiffOption::ForcedWidth(n) => i32::from(n.get()),
-                        };
-                        let expected = format!(
-                            "{}:{}/{}/{}/{}/{}",
-                            c.symbol(),
-                            c.fg,
-                            c.bg,
-                            c.underline_color,
-                            c.modifier.bits(),
-                            flag
-                        );
-                        assert_eq!(
-                            row.next(),
-                            Some(expected.as_str()),
-                            "buffer {a:?} area {area:?} step {step} cell ({x},{y})"
-                        );
-                        cells += 1;
-                    }
-                    assert!(row.next().is_none());
-                }
-                let mut coords = String::new();
-                for (x, y, _) in previous.diff_iter(&buf) {
-                    write!(coords, "{x},{y} ").unwrap();
-                    if x + 1 == a.right() && y + 1 == a.bottom() {
-                        break;
-                    }
-                }
-                assert_eq!(
-                    input.next().as_deref(),
-                    Some(coords.as_str()),
-                    "diff {a:?} {area:?} step {step}"
+                raw_cells::compare(
+                    &mut input,
+                    &previous,
+                    &buf,
+                    &format!("{area:?} step {step}"),
                 );
+                cells += usize::from(a.width) * usize::from(a.height);
                 frames += 1;
             }
         }

@@ -23,6 +23,10 @@ name = "artwork"
 required-features = ["style-oracle"]
 
 [[example]]
+name = "paragraph_cells"
+required-features = ["style-oracle"]
+
+[[example]]
 name = "styles"
 required-features = ["style-oracle"]
 

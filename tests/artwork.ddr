@@ -1,7 +1,7 @@
 capability stdio
 import ..src.tui
 import ..src.artwork as art
-import std.bytes as bytes
+import .raw_cells
 
 fn seeded(a: tui.Rect) -> tui.Frame {
     mut frame := tui.Frame::at(a)
@@ -44,31 +44,6 @@ fn paint(frame: &mut tui.Frame, area: tui.Rect, step: i32) {
     }
 }
 
-fn compare(frame: &tui.Frame, prior: &tui.Frame) {
-    a := frame.area()
-    for y in a.y..a.bottom() {
-        mut row: []u8 = []
-        for x in a.x..a.right() {
-            cell := frame.cell_at(x,y).unwrap()
-            s := cell.style
-            fg := s.get_foreground().unwrap().str()
-            bg := s.get_background().unwrap().str()
-            ul := s.get_underline_color().unwrap().str()
-            attr := (if s.has(.Bold) { 1 } else { 0 }) + (if s.has(.Italic) { 4 } else { 0 }) +
-                (if s.has(.Dim) { 2 } else { 0 }) + (if s.has(.Underlined) { 8 } else { 0 }) +
-                (if s.has(.SlowBlink) { 16 } else { 0 }) + (if s.has(.RapidBlink) { 32 } else { 0 }) +
-                (if s.has(.Reversed) { 64 } else { 0 }) + (if s.has(.Hidden) { 128 } else { 0 }) +
-                (if s.has(.CrossedOut) { 256 } else { 0 })
-            opt := match cell.diff_option { .None => 0, .Skip => -1, .AlwaysUpdate => -2, .ForcedWidth(w) => w, }
-            bytes.append_utf8(&mut row, f"{cell.symbol}:{fg}/{bg}/{ul}/{attr}/{opt}|")
-        }
-        print(bytes.decode(&row).unwrap())
-    }
-    mut diff: []u8 = []
-    for (x,y) in frame.diff_positions(&prior).unwrap() { bytes.append_utf8(&mut diff,f"{x},{y} ") }
-    print(bytes.decode(&diff).unwrap())
-}
-
 fn main() {
     for a in [tui.Rect{x:0,y:0,w:34,h:18},tui.Rect{x:6,y:4,w:34,h:18},tui.Rect{x:3,y:2,w:8,h:3},tui.Rect{x:1,y:2,w:0,h:1}] {
         for n in 0..14 {
@@ -77,7 +52,7 @@ fn main() {
             for step in 0..5 {
                 mut next := seeded(a)
                 for phase in 0..step+1 { paint(&mut next,area,phase) }
-                compare(&next,&prior)
+                raw_cells.compare(&next,&prior)
                 prior = move next
             }
         }

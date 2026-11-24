@@ -1,0 +1,50 @@
+capability stdio
+import ..src.tui
+import ..src.text as rich
+import .raw_cells
+import std.cmp as cmp
+
+fn seeded(a: tui.Rect, flags: bool) -> tui.Frame {
+    mut f := tui.Frame::at(a)
+    for y in a.y..a.bottom() {
+        style := tui.ink(.Cyan).background(.Indexed(81)).underline_rgb(0x7351ce).bold().underlined()
+        f.fill(tui.Rect{x:a.x,y:y,w:a.w,h:1},`.`,style)
+        _ := f.set_cell(a.x+1,y,"界",tui.ink(.Red))
+        _ := f.set_cell(a.x+4,y,"❤️",tui.plain().italic())
+        if flags {
+            _ := f.set_diff_option(a.x+2,y,.Skip)
+            _ := f.set_diff_option(a.x+4,y,.AlwaysUpdate)
+        }
+    }
+    move f
+}
+
+fn paint(f: &mut tui.Frame, area: tui.Rect, step: i32, wide: rich.WideWrap, mode: rich.Wrap) {
+    text := match step {
+        0 => rich.Text::raw("ab界\n😶‍🌫️\na 秋"),
+        1 => rich.Text::new([rich.Line::new([rich.Span::raw("x "),rich.Span::styled("🦊",tui.ink(.Red).bold())]).align(.Right)]),
+        2 => rich.Text::new([]),
+        _ => rich.Text::raw("字\n  👩🏽‍💻 z"),
+    }
+    mut p := rich.Paragraph::new(move text).wrap(mode).wide_wrap(wide)
+    if step == 2 { p = p.styled(tui.plain().background(.Blue).underline_index(13).without(.Bold)) }
+    p.render(&mut f,area)
+}
+
+fn main() {
+    modes: [rich.Wrap;3] = [.Clip,.Trim,.Preserve]
+    for a in [tui.Rect{x:0,y:0,w:8,h:4},tui.Rect{x:5,y:3,w:8,h:4},tui.Rect{x:2,y:1,w:3,h:3}] {
+        for left in 0..3 { for w in [0,1,2,3,5,8] {
+            area := tui.Rect{x:a.x+left,y:a.y,w:cmp.min<i32>(w,a.w-left),h:a.h}
+            for flags in [false,true] { for mode in modes {
+                mut old := seeded(a,flags)
+                for step in 0..4 {
+                    mut next := seeded(a,flags)
+                    for phase in 0..step+1 { paint(&mut next,area,phase,.Overhang,mode) }
+                    raw_cells.compare(&next,&old)
+                    old = move next
+                }
+            } }
+        } }
+    }
+}

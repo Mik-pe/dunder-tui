@@ -4,9 +4,9 @@ Bygg interaktiva terminalappar i Dunder för macOS, Linux och Windows. Skriv en 
 
 ## Prova
 
-Vill du se animationerna direkt? Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i en terminal. Samma paket innehåller kustkartan `kustlinjer`, signalvisualiseraren `signal`, boklistan `bokhylla` samt tidtabellen `avganger`, loggboken `loggbok`, kalendern `almanacka` och affischen `maskot`. [Ladda ner för macOS, Linux eller Windows](https://github.com/Mik-pe/dunder-tui/releases/latest)
+Packa upp paketet för din plattform och kör `./motion` eller `.\motion.exe` i en terminal för att öppna animationsgalleriet. Paketet innehåller även `kustlinjer`, `signal`, `bokhylla`, `avganger`, `loggbok`, `almanacka`, `maskot` och `korlista`. [Ladda ner för macOS, Linux eller Windows](https://github.com/Mik-pe/dunder-tui/releases/latest)
 
-På Linux använder den färdigbyggda almanackan systemets glibc (`libc.so.6`) för lokal tid. Övriga sju Linuxappar i paketet har inga dynamiska biblioteksberoenden.
+På Linux använder den färdigbyggda almanackan systemets glibc (`libc.so.6`) för lokal tid. Övriga åtta Linuxappar i paketet har inga dynamiska biblioteksberoenden.
 
 Bygg från källkod med Dunder 0.11.2. Riktextmodulen använder lånade iteratorresultat som 0.11.0 och 0.11.1 avvisar. På Windows fungerar de färdigbyggda apparna direkt. Dunder 0.11.2 ger ett fel när kompilatorn öppnar ett paketmanifest på Windows, även för ett paket utan beroenden. [Installera Dunder](https://github.com/Mik-pe/dunder#installera-och-kör) · [Windowsprovet](https://github.com/Mik-pe/dunder-tui/actions/runs/45302071651/job/138136790534)
 
@@ -90,7 +90,7 @@ Skapa ett projekt med `dunder init min-app`. Lägg till beroendet i projektets `
 
 ```toml
 [dependencies]
-tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.22.0", capabilities = ["stdio", "unsafe"] }
+tui = { git = "https://github.com/Mik-pe/dunder-tui.git", tag = "v0.23.0", capabilities = ["stdio", "unsafe"] }
 ```
 
 Spara följande i `src/main.ddr` och kör `dunder run` i projektet. Biblioteket använder de beviljade kapabiliteterna för att läsa tangentbordet och styra terminalen.
@@ -354,6 +354,8 @@ artikel := rich.Paragraph::new(rich.Text::new([
 
 Kör `dunder run examples/reader/main.ddr` för att prova en läsare. Piltangenterna skrollar, Home och End hoppar mellan början och slutet. Läsaren använder `tui.run_stateful` så att ritfunktionen kan anpassa skrollpositionen till fönstrets storlek. [Läsarens källkod](examples/reader/main.ddr)
 
+Vid ord­brytning flyttar `.wide_wrap(.NextLine)` ett brett tecken till nästa rad när bara en kolumn återstår. Det är standardvalet. Välj `.wide_wrap(.Overhang)` för Ratatuis radbrytning, där tecknet får börja i styckets sista kolumn. Båda lägena fungerar med `prepare`.
+
 För text som ändras under körning kan du lägga till rader, byta ut ett enskilt spanns innehåll och låta färgen följa med. `width()` mäter det aktuella innehållet i terminalkolumner.
 
 ```dunder
@@ -365,6 +367,8 @@ journal.append(rich.Text::raw("Kaj 5\nKaj 6"))
 ```
 
 `lines()` och `spans()` lånar innehållet för läsning. `span.content()` ger den ursprungliga UTF-8-texten. `journal.to_string()` skriver en rad per `Line`. Radslut inne i ett spann utelämnas vid utskrift.
+
+Kör `dunder run --example korlista` för att redigera ett scenprogram. Välj rad med piltangenterna, flytta den med `k` eller `j`, bocka av med mellanslag och växla mellan dag- och kvällspasset med Tab. Exemplet använder `lines_mut().swap(a, b)` för att flytta en rad med alla dess stilar. `replace_lines(move nästa)` byter ut hela programmet och lämnar tillbaka de gamla raderna. På en enskild rad gör `spans_mut()` och `replace_spans` motsvarande sak. [Körlistans källkod](examples/korlista/main.ddr)
 
 `append(move nästa)` flyttar över raderna med deras egna stilar. Det mottagande dokumentets stil och justering gäller för hela texten. Med `styled_graphemes` kan du läsa precis den symbol och stil som varje spann bidrar med.
 
@@ -408,4 +412,4 @@ Korsbygg exempelvis en Windowsapp med `dunder build examples/counter/main.ddr --
 
 Text delas vid grafemgränserna i Unicode 17.0. För enskilda teckens cellbredd används Unicode 18.0 med Ratatuis terminalanpassningar. Emoji, kombinerande tecken och flaggor hålls ihop vid radbrytning och klippning. Terminalens typsnitt och Unicode-stöd påverkar hur de visas. [Unicode 17](https://www.unicode.org/Public/17.0.0/ucd/) · [Unicode 18](https://www.unicode.org/Public/18.0.0/ucd/) · [Licens för tabellerna](src/UNICODE-LICENSE.txt)
 
-Biblioteket och exemplen kan byggas med Dunder 0.10.0. Pseudoterminalproven och proven för det nya standardbiblioteket använder Dunder 0.11.2 eller senare. [Reproducerade språk- och standardbiblioteksfynd](docs/dunder.md)
+Biblioteket, exemplen och terminalproven byggs med Dunder 0.11.2. [Reproducerade språk- och standardbiblioteksfynd](docs/dunder.md)

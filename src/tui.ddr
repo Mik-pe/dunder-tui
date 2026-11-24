@@ -361,7 +361,11 @@ const EMPTY_SYMBOL: i32 = 0x110002
 const WIDE: i32 = 0x200000
 const WRITTEN_SPACE: i32 = 0x1fffff
 
+@derive(Eq, Hash)
 pub enum CellDiffOption { None, Skip, AlwaysUpdate, ForcedWidth(i32) }
+impl Default for CellDiffOption {
+    fn default() -> Self { .None }
+}
 
 pub struct Cell { symbol: string, style: Style, diff_option: CellDiffOption }
 
@@ -627,6 +631,22 @@ impl Frame {
         self.style_range(area,&overlay,true)
     }
 
+    pub fn apply_cell_style(&mut self, area: Rect, overlay: Style) {
+        if overlay.empty() { return }
+        clipped := area.intersection(self.bounds)
+        if clipped.is_empty() { return }
+        if self.row_flags.len > 0 {
+            for y in clipped.y..clipped.bottom() {
+                if self.row_flags[y-self.bounds.y].bit_and(2) == 0 { continue }
+                self.split_wide_cell(clipped.x,y)
+                for x in clipped.x..clipped.right() {
+                    if self.glyphs[self.index(x,y)] >= WIDE { self.split_wide_cell(x+1,y) }
+                }
+            }
+        }
+        self.style_range(clipped,&overlay,true)
+    }
+
     pub fn style_glyphs(&mut self, area: Rect, overlay: Style) {
         self.style_range(area,&overlay,false)
     }
@@ -678,6 +698,17 @@ impl Frame {
         for j in first..end {
             if j != i { self.glyphs[j] = 0; self.styles[j] = 0 }
         }
+    }
+
+    fn cell_storage_width(&self, index: i32, available: i32, columns: i32) -> i32 {
+        if columns > available { return 1 }
+        for j in 1..columns {
+            other := index+j
+            glyph := self.glyphs[other]
+            blank := (glyph == 0 || glyph == WRITTEN_SPACE) && self.styles[other] == 0
+            if (!blank && self.head(other) != index) || self.option_code(other) != 0 { return 1 }
+        }
+        columns
     }
 
     fn put(&mut self, x: i32, y: i32, symbol: i32, span: i32, style: i64) {
@@ -1564,14 +1595,23 @@ impl GlyphRun {
     }
 
     pub fn write(&self, frame: &mut Frame, bounds: Rect, first: i32, end: i32, style: Style) -> i32 {
+        self.write_run(&mut frame,bounds,first,end,style,false)
+    }
+
+    pub fn render_cells(&self, frame: &mut Frame, bounds: Rect, first: i32, end: i32, style: Style) {
+        _ := self.write_run(&mut frame,bounds,first,end,style,true)
+    }
+
+    fn write_run(&self, frame: &mut Frame, bounds: Rect, first: i32, end: i32, style: Style, individual: bool) -> i32 {
         if bounds.w <= 0 || bounds.h <= 0 || bounds.y < frame.bounds.y || bounds.y >= frame.bounds.y+frame.bounds.h { return 0 }
         start := clamp(first, self.count())
         finish := clamp(end, self.count())
         if start >= finish { return 0 }
         brush := frame.encode(style)
         match &self.data {
-            .Some(data) => data.write(&mut frame, bounds, start, finish, brush, style),
+            .Some(data) => data.write(&mut frame, bounds, start, finish, brush, style, individual),
             .None => {
+                if individual { frame.split_wide_cell(bounds.x,bounds.y) }
                 frame.ascii_slice(i64(bounds.x), i64(bounds.y), bounds.w, self.source, start, finish, brush, &style)
                 cmp.max<i32>(0, i32(cmp.min<i64>(i64(finish - start), cmp.min<i64>(i64(bounds.w), i64(frame.bounds.x+frame.bounds.w) - i64(bounds.x)))))
             },
@@ -1580,7 +1620,7 @@ impl GlyphRun {
 }
 
 impl GlyphData {
-    fn write(&self, frame: &mut Frame, bounds: Rect, start: i32, finish: i32, brush: i64, style: Style) -> i32 {
+    fn write(&self, frame: &mut Frame, bounds: Rect, start: i32, finish: i32, brush: i64, style: Style, individual: bool) -> i32 {
         mut x := i64(bounds.x)
         right := cmp.min<i64>(i64(frame.bounds.x+frame.bounds.w), x + i64(bounds.w))
         left := frame.bounds.x
@@ -1592,16 +1632,19 @@ impl GlyphData {
             cp := self.tokens[i * 2]
             cells := self.tokens[i * 2 + 1]
             if cells == 0 { continue }
-            if x + i64(cells) > right { break }
+            if x >= right || (!individual && x + i64(cells) > right) { break }
             if x >= i64(left) {
                 index := base + (i32(x) - left)
+                if individual && frame.glyphs[index] < 0 { frame.split_wide_cell(i32(x),bounds.y) }
+                storage := if individual && cells > 1 { frame.cell_storage_width(index,frame.bounds.right()-i32(x),cells) } else { cells }
+                if storage != cells { frame.overlaps = true }
                 old := frame.styles[index]
                 if old != last {
                     last = old
                     combined = if old == 0 || old == brush { brush } else { frame.composite(old, &style) }
                 }
-                if cp >= 0 { frame.put_at(index, cp, cells, combined) }
-                else { frame.put_cluster_at(index, row, self.clusters[-1 - cp].clone(), cells, combined) }
+                if cp >= 0 { frame.put_at(index, cp, storage, combined) }
+                else { frame.put_cluster_at(index, row, self.clusters[-1 - cp].clone(), storage, combined) }
             }
             x += i64(cells)
         }

@@ -1,0 +1,39 @@
+import .terminal
+import ..src.tui
+import ..src.text as rich
+
+struct Program { cues:rich.Text, other:[]rich.Line }
+
+fn set(evening: bool) -> []rich.Line {
+    mut rows: []rich.Line = []
+    for i in 0..23 {
+        label := if evening { "  Scenljus" } else { "  Ljudprov" }
+        rows.push(rich.Line::new([rich.Span::styled(f"{i+1}",tui.ink(.Cyan).bold()),
+            rich.Span::raw(move label),rich.Span::styled("  ✓",tui.ink(.Green))]))
+    }
+    move rows
+}
+
+impl Program {
+    pub fn draw(&mut self, frame: &mut tui.Frame, mode: string, step: i32) {
+        if mode == "scroll" && step > 0 {
+            rows := self.cues.lines_mut()
+            first := rows.remove(0)
+            rows.push(move first)
+        }
+        if mode == "repaint" && step > 0 {
+            next := replace(&mut self.other,[])
+            old := self.cues.replace_lines(move next)
+            self.other = move old
+        }
+        night := mode == "repaint" && step%2 == 1
+        style := if night { tui.ink(.Yellow).background(.Blue) } else { tui.ink(.Cyan) }
+        frame.fill(frame.area(),` `,style)
+        self.cues.render(&mut frame,frame.area())
+        frame.label(tui.Rect{x:0,y:23,w:1,h:1},if mode == "cell" && step%2 == 1 { "+" } else { "-" })
+    }
+}
+
+fn main() {
+    terminal.benchmark(Program { cues:rich.Text::new(set(false)).align(.Center), other:set(true) })
+}

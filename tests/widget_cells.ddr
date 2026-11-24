@@ -1,4 +1,5 @@
 import ..src.tui
+import ..src.width
 import std.bytes as bytes
 
 fn write_color(out: &mut []u8, color: tui.Color) {
@@ -12,9 +13,12 @@ fn write_color(out: &mut []u8, color: tui.Color) {
 pub fn snapshot(frame: &tui.Frame) {
     mut out: []u8 = []
     for y in 0..frame.area().h {
+        mut covered := 0
         for x in 0..frame.area().w {
+            if covered > 0 { out.push(b'~'); covered -= 1; continue }
             ch := frame.symbol_at(x,y).unwrap()
             if ch == "" { out.push(b'~'); continue }
+            if ch.len > 1 { covered = width.cell_columns(ch)-1 }
             s := frame.style_at(x,y).unwrap()
             write_color(&mut out,s.get_foreground().unwrap())
             write_color(&mut out,s.get_background().unwrap())

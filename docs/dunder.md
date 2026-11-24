@@ -128,6 +128,10 @@ dunder run --locked --offline tests/pty_handles.ddr
 - Den minsta positiva skillnaden i 100 000 anrop till `std.time.monotonic_ns()` var 1 000 ns på den provade Macen. Layoutprovet mäter därför grupper om 64 delningar. Det räcker inte för att dra en slutsats om kompilatorns klockkostnad på andra system.
 - Anropet till `next_run` låg kvar efter ett namnbyte i TUI-koden. Det kunde rättas på anropsstället. De dokumenterade fallen där Ratatui ritar utanför en ruta gäller referenswidgetarnas beteende. [Beteendeproven](parity.md)
 
+## Ändra element i en lånad array
+
+I körlistan följer stil och status med när en programpunkt flyttas. Ett fristående prov i Dunder 0.11.2 visar vad som händer när flera poster ska ändras på plats. För `for cue in &mut cues` föreslår kompilatorn ett delat lån (E4003). Då misslyckas tilldelningen till `cue.played` (E4002). En indexloop ändrar båda posterna och profileringen registrerar noll array- och postkloner. Dunders nästa steg innehåller både en konkret diagnosförbättring och ett prov för direkt iteration med ett muterbart lån per varv. [Reproduktion](../tests/dogfood/compiler/mutable_elements.ddr) · [Indexloopen](../tests/dogfood/compiler/indexed_mutable_elements.ddr) · [Dunders nästa steg](https://github.com/Mik-pe/dunder/blob/ec524f5/docs/next-steps.md#visa-hur-en-loop-kan-ändra-elementen-i-en-lånad-array)
+
 ## Jämförelse av lånade arrayintervall
 
 Två lånade intervall av heltal går att jämföra med `==` när de först binds till lokala namn. Skriver man båda intervallen direkt som operander föreslår Dunder 0.11.2 att lägga till ett `&` trots att det redan finns. Den namngivna varianten kördes med noll arraykloner och noll kopierade byte. [Båda fallen och föreslagen uppföljning](https://github.com/Mik-pe/dunder/blob/a08b0e3/docs/next-steps.md#jämför-två-lånade-arrayintervall-direkt)

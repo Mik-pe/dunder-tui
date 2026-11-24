@@ -3,6 +3,8 @@
 mod allocation;
 #[path = "../src/chart_scene.rs"]
 mod chart_scene;
+#[path = "../src/collection_scene.rs"]
+mod collection_scene;
 use ratatui::{
     Terminal,
     backend::{Backend, ClearType, CrosstermBackend, WindowSize},
@@ -195,14 +197,18 @@ fn main() {
     #[cfg(windows)]
     let mut written = 0;
     let scene = std::env::var("TUI_BENCH_SCENE").unwrap_or_default();
-    let data =
-        (!matches!(scene.as_str(), "emoji" | "ligatures" | "artwork")).then(chart_scene::Data::new);
+    let data = (!matches!(
+        scene.as_str(),
+        "emoji" | "ligatures" | "artwork" | "collections"
+    ))
+    .then(chart_scene::Data::new);
     let mut chart = data.as_ref().map(chart_scene::Scene::new);
     let scripts = (scene == "ligatures").then(|| {
         ["لَا  لا", "א‍ל  א‍ל", "ᨕᨗ‍ᨐ  ᨕᨗ‍ᨐ", "ꓹꓼ  ꓺꓽ", "𐰲‍𐰃  𐰲‍𐰃", "ល្ង  ង", "ⵏ‍ⴾ  ⵏ‍ⴾ"].map(|sample| {
             Line::from(vec!["Prov    ".into(), sample.red().bold(), "    ✓".into()]).centered()
         })
     });
+    let mut program = (scene == "collections").then(collection_scene::Program::new);
     let shared = std::env::var("TUI_BENCH_DIFF_OPTIONS").as_deref() == Ok("1");
     let mut draw = |buf: &mut ratatui::buffer::Buffer, mode: &str, n| {
         if let Some(scene) = &mut chart {
@@ -228,6 +234,8 @@ fn main() {
                 },
                 Style::new(),
             );
+        } else if let Some(p) = &mut program {
+            p.draw(buf, mode, n as usize);
         } else if scene == "artwork" {
             poster(buf, mode, n as usize);
         } else {

@@ -3,6 +3,7 @@ import ..src.text as rich
 import ..src.tui
 import .widget_cells as cells
 import std.bytes as bytes
+import std.array as array
 
 fn hex(value: &str) -> string { bytes.hex_u8(value.as_bytes()) }
 
@@ -26,7 +27,82 @@ fn inspect(doc: &rich.Text) {
     }
 }
 
+fn collection(step: i32) -> rich.Text {
+    mut doc := rich.Text::new([
+        rich.Line::raw("längsta gamla raden").align(.Right),
+        rich.Line::new([rich.Span::styled("秋 ",tui.ink(.Cyan)),rich.Span::raw("a\u{301}"),rich.Span::raw("")]).align(.Center),
+        rich.Line::raw("👩🏽‍💻")
+    ]).styled(tui.ink(.Yellow).italic()).align(.Left)
+    if step >= 1 { array.reverse(&mut doc.lines_mut()) }
+    if step >= 2 {
+        removed := doc.lines_mut().remove(2)
+        assert(removed.to_string() == "längsta gamla raden")
+        doc.lines_mut().push(rich.Line::new([]))
+    }
+    if step >= 3 {
+        spans := doc.line_mut(1).spans_mut()
+        spans.swap(0,2)
+        for i in 0..spans.len { spans[i].patch_style(tui.plain().bold()) }
+        spans[0].set_content("ny ")
+    }
+    if step >= 4 {
+        old := doc.line_mut(1).replace_spans([rich.Span::raw(""),rich.Span::styled("🦊",tui.ink(.Red))])
+        doc.lines_mut()[0] = rich.Line::new(move old).styled(tui.plain().background(.Magenta))
+        doc.lines_mut()[0].set_alignment(.Right)
+        doc.set_alignment(.Center)
+    }
+    if step >= 5 {
+        old := doc.replace_lines([rich.Line::raw("mellan")])
+        for line in move old { doc.lines_mut().push(move line) }
+        doc.lines_mut().swap(0,3)
+    }
+    if step >= 6 {
+        row := doc.lines_mut().remove(1)
+        mut spans := row.into_spans()
+        _ := spans.remove(0)
+        array.reverse(&mut spans)
+        _ := doc.line_mut(1).replace_spans(move spans)
+    }
+    if step >= 7 {
+        _ := doc.line_mut(1).replace_spans([])
+        doc.line_mut(1).spans_mut().push(rich.Span::raw("🇸🇪"))
+        doc.line_mut(1).spans_mut().clear()
+    }
+    if step >= 8 {
+        spare := rich.Text::raw("rad\n\nslut")
+        _ := doc.replace_lines(spare.into_lines())
+        doc.lines_mut().swap(0,2)
+    }
+    if step >= 9 { _ := doc.replace_lines([]) }
+    if step >= 10 { doc.push_span(rich.Span::raw("nytt")); doc.line_mut(0).set_alignment(.Inherit) }
+    move doc
+}
+
+fn collection_frames() {
+    for step in 0..11 {
+        inspect(&collection(step))
+        modes: [rich.Wrap;3] = [.Clip,.Preserve,.Trim]
+        for mode in modes {
+            mut prepared := rich.Paragraph::new(collection(step)).wrap(mode).wide_wrap(.Overhang).prepare(0)
+            for w in [1,4,9,2,12,0] {
+                prepared.resize(w)
+                for top in [0,1,4] {
+                    mut live := cells.seeded(w,3)
+                    mut cached := cells.seeded(w,3)
+                    area := tui.Rect { x:1,y:1,w:w,h:3 }
+                    rich.Paragraph::new(collection(step)).wrap(mode).wide_wrap(.Overhang).scroll(top,0).render(&mut live,area)
+                    prepared.set_top(top)
+                    prepared.render(&mut cached,area)
+                    cells.snapshot(&live)
+                    cells.snapshot(&cached)
+                }
+            }
+        }
+    }
+}
+
 fn main() {
+    collection_frames()
     mut doc := rich.Text::new([]).align(.Right)
     inspect(&doc)
     doc.push_span(rich.Span::styled("秋", tui.ink(.Red)))

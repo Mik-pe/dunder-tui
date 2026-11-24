@@ -42,10 +42,13 @@ fn snapshot(buf: &Buffer) -> String {
     snapshot_cells(buf, false)
 }
 fn snapshot_cells(buf: &Buffer, raw: bool) -> String {
+    snapshot_region(buf, buf.area, raw)
+}
+fn snapshot_region(buf: &Buffer, area: Rect, raw: bool) -> String {
     let mut out = String::new();
-    for y in buf.area.rows() {
+    for y in area.rows() {
         let mut covered = 0;
-        for x in 0..buf.area.width {
+        for x in area.left()..area.right() {
             if !raw && covered > 0 {
                 out.push('~');
                 covered -= 1;
@@ -254,6 +257,7 @@ fn main() {
         return;
     }
     let mut cases = 0;
+    let overhang = mode.as_deref() == Some("--overhang");
     let mut failures = 0;
     let mut panics = 0;
     let mut outside = 0;
@@ -294,7 +298,7 @@ fn main() {
                             };
                             if let Err(payload) =
                                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                    p.render(buf.area, &mut buf)
+                                    (&p).render(buf.area, &mut buf)
                                 }))
                             {
                                 if !payload
@@ -305,6 +309,24 @@ fn main() {
                                 }
                                 assert!(first_overflow.is_some_and(|y| y < top + 3));
                                 panics += 1;
+                                if overhang {
+                                    let area = buf.area;
+                                    let mut room = Buffer::empty(Rect::new(0, 0, w + 16, 3));
+                                    p.render(area, &mut room);
+                                    assert_eq!(
+                                        actual,
+                                        snapshot_region(&room, area, true),
+                                        "clipped {kind} {w} {a:?} {wrap:?} {top} {left}"
+                                    );
+                                }
+                                continue;
+                            }
+                            if overhang {
+                                assert_eq!(
+                                    actual,
+                                    snapshot_cells(&buf, true),
+                                    "cells {kind} {w} {a:?} {wrap:?} {top} {left}"
+                                );
                                 continue;
                             }
                             let expected = snapshot(&buf);
@@ -327,6 +349,14 @@ fn main() {
         }
     }
     assert!(input.next().is_none());
+    if overhang {
+        assert_eq!((cases, panics), (4608, 12));
+        println!(
+            "{} exact paragraph buffers and {panics} clipped projections after reference panics match",
+            cases - panics
+        );
+        return;
+    }
     assert_eq!(failures, 0, "frames differ before any reference overflow");
     assert_eq!((cases, outside, panics), (4608, 432, 12));
     println!(

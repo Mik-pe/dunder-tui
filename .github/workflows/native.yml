@@ -6,7 +6,7 @@ on:
         type: choice
         default: ligatures
         description: Terminal workload to compare
-        options: [ligatures, artwork]
+        options: [ligatures, artwork, collections]
       profile:
         type: boolean
         default: false
@@ -18,7 +18,7 @@ on:
       release_gallery:
         type: boolean
         default: false
-        description: Exercise the published motion and maskot executables for the version in dunder.toml
+        description: Exercise the published motion, maskot and korlista executables for the version in dunder.toml
 
 permissions: {}
 
@@ -44,7 +44,7 @@ jobs:
         shell: bash
     env:
       TUI_BENCH_SCENE: ${{ inputs.scene }}
-      BENCHMARK: ${{ inputs.scene == 'artwork' && 'benchmarks/artwork.ddr' || 'benchmarks/terminal.ddr' }}
+      BENCHMARK: ${{ inputs.scene == 'collections' && 'benchmarks/collections.ddr' || inputs.scene == 'artwork' && 'benchmarks/artwork.ddr' || 'benchmarks/terminal.ddr' }}
     steps:
       - name: Fetch the selected public revision
         run: |
@@ -127,17 +127,22 @@ jobs:
           )
           app="$PWD/build/release/$folder/motion$EXT"
           mascot="$PWD/build/release/$folder/maskot$EXT"
+          rundown="$PWD/build/release/$folder/korlista$EXT"
           if [[ "$RUNNER_OS" == Windows ]]; then
+            rundown=$(cygpath -aw "$rundown")
             app=$(cygpath -aw "$app")
             mascot=$(cygpath -aw "$mascot")
             cd "$SOURCE_ROOT"
             build/console.exe "$app"
             build/console.exe "$mascot" --mascot
+            build/console.exe "$rundown" --rundown
           else
             build/dunder build --locked --offline tests/motion_terminal.ddr -o build/motion-test
             build/motion-test "$app"
             build/dunder build --locked --offline tests/artwork_terminal.ddr -o build/artwork-test
             build/artwork-test "$mascot"
+            build/dunder build --locked --offline tests/rundown_terminal.ddr -o build/rundown-test
+            build/rundown-test "$rundown"
           fi
           echo "All ten published gallery scenes and terminal restoration passed on $RUNNER_OS $RUNNER_ARCH"
       - name: Check native child process startup
@@ -199,6 +204,8 @@ jobs:
           build/dunder$EXT build --locked --offline tools/ligatures.ddr -o "build/cases$EXT"
           build/cases$EXT | tr -d '\r' >build/cases.txt
           build/dunder$EXT build --locked --offline tests/text_reference.ddr -o "build/text$EXT"
+          build/text$EXT --overhang | "$ref/text$EXT" --overhang
+          build/text$EXT | "$ref/text$EXT"
           build/text$EXT --ligatures build/cases.txt | "$ref/text$EXT" --ligatures build/cases.txt
           build/dunder$EXT build --locked --offline "$BENCHMARK" -o "build/benchmark$EXT"
           build/benchmark$EXT --verify | "$ref/terminal_bench$EXT" --verify
@@ -206,10 +213,12 @@ jobs:
         run: |
           cd "$SOURCE_ROOT"
           manifest=benchmarks/reference/Cargo.toml
-          cargo build --release --locked --offline --manifest-path "$manifest" --features style-oracle --example artwork --example styled_graphemes --example grapheme_bench --target-dir build/rust
+          cargo build --release --locked --offline --manifest-path "$manifest" --features style-oracle --example artwork --example paragraph_cells --example styled_graphemes --example grapheme_bench --target-dir build/rust
           ref=build/rust/release/examples
           build/dunder$EXT build --locked --offline tests/artwork.ddr -o "build/artwork$EXT"
           build/artwork$EXT | "$ref/artwork$EXT"
+          build/dunder$EXT build --locked --offline tests/paragraph_cells.ddr -o "build/paragraph-cells$EXT"
+          build/paragraph-cells$EXT | "$ref/paragraph_cells$EXT"
           build/dunder$EXT build --locked --offline tests/styled_graphemes.ddr -o "build/styled$EXT"
           build/styled$EXT tests/data/emoji-18.txt tests/data/emoji-variation-18.txt | "$ref/styled_graphemes$EXT"
           build/dunder$EXT build --locked --offline benchmarks/graphemes.ddr -o "build/traverse$EXT"

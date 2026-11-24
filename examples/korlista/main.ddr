@@ -1,0 +1,70 @@
+capability stdio
+import tui
+import tui.text as rich
+import std.cmp as cmp
+import sys
+
+struct Program { cues: rich.Text, other: []rich.Line, evening: bool, selected: i32 }
+
+fn cue(move name: string) -> rich.Line {
+    rich.Line::new([rich.Span::styled("· ",tui.plain().foreground_index(111)),rich.Span::raw(move name)])
+}
+
+fn draw(frame: &mut tui.Frame, program: &Program) {
+    mut area := frame.area()
+    title := area.take_rows(1)
+    frame.text(title,if program.evening { "Körlista / Kvällspass" } else { "Körlista / Dagpass" },tui.plain().bold().foreground_index(221))
+    (body,footer) := area.rows(cmp.max<i32>(0,area.h-1))
+    first := cmp.max<i32>(0,program.selected-body.h+1)
+    for i in first..cmp.min<i32>(program.cues.height(),first+body.h) {
+        line := &program.cues.lines()[i]
+        row := tui.Rect{x:body.x,y:body.y+i-first,w:body.w,h:1}
+        if i == program.selected {
+            frame.apply_style(row,tui.plain().background_index(24))
+            frame.text(row,"› ",tui.plain().foreground_index(159))
+        }
+        line.render(&mut frame,row.cols(2).1)
+    }
+    frame.label(footer,"↑ ↓ välj   k j flytta   mellanslag klar   Tab byt pass   q avsluta")
+}
+
+fn shift(program: &mut Program, offset: i32) {
+    next := cmp.clamp<i32>(program.selected+offset,0,program.cues.height()-1)
+    program.cues.lines_mut().swap(program.selected,next)
+    program.selected = next
+}
+
+fn update(program: &mut Program, key: tui.Key) -> bool {
+    match key {
+        .Up => { program.selected = cmp.max<i32>(0,program.selected-1) },
+        .Down => { program.selected = cmp.min<i32>(program.cues.height()-1,program.selected+1) },
+        .Char(c) if c == `k` => { shift(&mut program,-1) },
+        .Char(c) if c == `j` => { shift(&mut program,1) },
+        .Char(c) if c == ` ` => {
+            mark := program.cues.line_mut(program.selected).span_mut(0)
+            if mark.content() == "· " { mark.set_content("✓ "); mark.set_style(tui.plain().foreground_index(121)) }
+            else { mark.set_content("· "); mark.set_style(tui.plain().foreground_index(111)) }
+        },
+        .Tab => {
+            next := replace(&mut program.other,[])
+            prior := program.cues.replace_lines(move next)
+            program.other = move prior
+            program.evening = !program.evening
+            program.selected = 0
+        },
+        .Char(c) if c == `q` => { return false },
+        .Escape => { return false },
+        _ => {},
+    }
+    true
+}
+
+fn main() -> i32 {
+    mut program := Program {
+        cues:rich.Text::new([cue("Öppna entrén"),cue("Ljudprov"),cue("Introduktion"),cue("Frågestund")]),
+        other:[cue("Tänd scenljuset"),cue("Ridå upp"),cue("Extranummer")], evening:false, selected:0,
+    }
+    match tui.run(&mut program,draw,update) {
+        .Ok => 0, .Err(error) => { _ := sys.eprint(error); 1 },
+    }
+}

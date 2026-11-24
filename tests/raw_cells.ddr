@@ -1,0 +1,27 @@
+import ..src.tui
+import std.bytes as bytes
+
+pub fn compare(frame: &tui.Frame, prior: &tui.Frame) {
+    a := frame.area()
+    for y in a.y..a.bottom() {
+        mut row: []u8 = []
+        for x in a.x..a.right() {
+            cell := frame.cell_at(x,y).unwrap()
+            s := cell.style
+            fg := s.get_foreground().unwrap().str()
+            bg := s.get_background().unwrap().str()
+            ul := s.get_underline_color().unwrap().str()
+            attr := (if s.has(.Bold) { 1 } else { 0 }) + (if s.has(.Italic) { 4 } else { 0 }) +
+                (if s.has(.Dim) { 2 } else { 0 }) + (if s.has(.Underlined) { 8 } else { 0 }) +
+                (if s.has(.SlowBlink) { 16 } else { 0 }) + (if s.has(.RapidBlink) { 32 } else { 0 }) +
+                (if s.has(.Reversed) { 64 } else { 0 }) + (if s.has(.Hidden) { 128 } else { 0 }) +
+                (if s.has(.CrossedOut) { 256 } else { 0 })
+            opt := match cell.diff_option { .None => 0, .Skip => -1, .AlwaysUpdate => -2, .ForcedWidth(w) => w, }
+            bytes.append_utf8(&mut row, f"{cell.symbol}:{fg}/{bg}/{ul}/{attr}/{opt}|")
+        }
+        print(bytes.decode(&row).unwrap())
+    }
+    mut diff: []u8 = []
+    for (x,y) in frame.diff_positions(&prior).unwrap() { bytes.append_utf8(&mut diff,f"{x},{y} ") }
+    print(bytes.decode(&diff).unwrap())
+}

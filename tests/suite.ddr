@@ -22,6 +22,35 @@ import ..src.width
 import ..src.material
 import ..src.tailwind
 
+@test fn moving_text_collections_updates_width_and_preserves_the_outer_style() {
+    mut doc := rich.Text::raw("longest\nx").styled(tui.ink(.Cyan)).align(.Right)
+    rows := doc.lines_mut()
+    rows.swap(0,1)
+    removed := rows.remove(1)
+    assert(doc.width() == 1 && doc.height() == 1)
+    old := doc.line_mut(0).replace_spans(removed.into_spans())
+    assert(old.len == 1 && old[0].content() == "x" && doc.width() == 7)
+    doc.lines_mut()[0].spans_mut().clear()
+    assert(doc.width() == 0 && doc.height() == 1)
+    before := doc.replace_lines(rich.Text::raw("秋\na").into_lines())
+    assert(before.len == 1 && before[0].spans().len == 0)
+    assert(doc.width() == 2 && doc.height() == 2 && doc.get_alignment() == .Right && doc.get_style() == tui.ink(.Cyan))
+}
+
+@test fn overhanging_paragraphs_keep_the_visible_symbol_and_the_cell_under_it() {
+    p := rich.Paragraph::raw("aaa界").wrap(.Trim).wide_wrap(.Overhang)
+    for w in [4,5] {
+        mut f := tui.Frame::new(w,2)
+        f.fill(f.area(),`.`,tui.ink(.Red))
+        _ := f.set_diff_option(w-1,0,.AlwaysUpdate)
+        p.render(&mut f,tui.Rect{x:0,y:0,w:4,h:2})
+        assert(f.cell_at(3,0).unwrap().symbol == "界")
+        assert(f.diff_option_at(w-1,0).unwrap() == .AlwaysUpdate)
+        if w == 5 { assert(f.cell_at(4,0).unwrap().symbol == ".") }
+        assert(f.cell_at(0,1).unwrap().symbol == ".")
+    }
+}
+
 @test fn artwork_defaults_preserve_the_surface_and_change_two_eye_cells() {
     area := tui.Rect { x:3, y:2, w:32, h:16 }
     mut frame := tui.Frame::at(area)

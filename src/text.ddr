@@ -7,6 +7,7 @@ import std.hash as hashing
 
 pub enum Alignment { Inherit, Left, Center, Right }
 pub enum Wrap { Clip, Preserve, Trim }
+pub enum WideWrap { NextLine, Overhang }
 
 pub fn masked(value: string, mask: rune) -> string {
     symbol := mask.str()
@@ -119,6 +120,12 @@ struct Token { span: i32, start: i32, end: i32, cells: i32, space: bool }
 
 pub opaque struct Line { spans: []Span, columns: i32, style: tui.Style, alignment: Alignment }
 
+fn spans_width(spans: &[]Span) -> i32 {
+    mut columns := 0
+    for span in &spans { columns += span.width() }
+    columns
+}
+
 pub opaque struct LineGraphemes { spans: &[]Span, index: i32, glyph: i32, offset: i32, base: tui.Style, style: tui.Style }
 
 impl Iterator for LineGraphemes {
@@ -150,19 +157,26 @@ impl Line {
         Line::new(move spans)
     }
     pub fn new(move spans: []Span) -> Self {
-        mut columns := 0
-        for span in &spans { columns += span.width() }
+        columns := spans_width(&spans)
         Self { spans: move spans, columns: columns, style: tui.plain(), alignment: .Inherit }
     }
     pub fn styled(move self, style: tui.Style) -> Self { mut line := move self; line.style = style; move line }
     pub fn align(move self, alignment: Alignment) -> Self { mut line := move self; line.alignment = alignment; move line }
     pub fn width(&self) -> i32 {
         if self.columns >= 0 { return self.columns }
-        mut columns := 0
-        for span in &self.spans { columns += span.width() }
-        columns
+        spans_width(&self.spans)
     }
     pub fn spans(&self) -> &[]Span from self { &self.spans }
+    pub fn spans_mut(&mut self) -> &mut []Span from self {
+        self.columns = -1
+        &mut self.spans
+    }
+    pub fn into_spans(move self) -> []Span { move self.spans }
+    pub fn replace_spans(&mut self, move spans: []Span) -> []Span {
+        self.columns = spans_width(&spans)
+        replace(&mut self.spans, move spans)
+    }
+    pub fn set_alignment(&mut self, alignment: Alignment) { self.alignment = alignment }
     pub fn styled_graphemes(&self, base: tui.Style) -> LineGraphemes from self {
         LineGraphemes { spans: &self.spans, index: 0, glyph: 0, offset: 0, base: base.patch(self.style), style: tui.plain() }
     }
@@ -246,10 +260,15 @@ impl ParagraphLine {
 
 pub opaque struct Text { lines: []Line, columns: i32, style: tui.Style, alignment: Alignment }
 
+fn lines_width(lines: &[]Line) -> i32 {
+    mut columns := 0
+    for line in &lines { columns = cmp.max<i32>(columns, line.width()) }
+    columns
+}
+
 impl Text {
     pub fn new(move lines: []Line) -> Self {
-        mut columns := 0
-        for line in &lines { columns = cmp.max<i32>(columns, line.width()) }
+        columns := lines_width(&lines)
         Self { lines: move lines, columns: columns, style: tui.plain(), alignment: .Inherit }
     }
 
@@ -269,12 +288,20 @@ impl Text {
     pub fn align(move self, alignment: Alignment) -> Self { mut doc := move self; doc.alignment = alignment; move doc }
     pub fn width(&self) -> i32 {
         if self.columns >= 0 { return self.columns }
-        mut columns := 0
-        for line in &self.lines { columns = cmp.max<i32>(columns, line.width()) }
-        columns
+        lines_width(&self.lines)
     }
     pub fn height(&self) -> i32 { self.lines.len }
     pub fn lines(&self) -> &[]Line from self { &self.lines }
+    pub fn lines_mut(&mut self) -> &mut []Line from self {
+        self.columns = -1
+        &mut self.lines
+    }
+    pub fn into_lines(move self) -> []Line { move self.lines }
+    pub fn replace_lines(&mut self, move lines: []Line) -> []Line {
+        self.columns = lines_width(&lines)
+        replace(&mut self.lines, move lines)
+    }
+    pub fn set_alignment(&mut self, alignment: Alignment) { self.alignment = alignment }
     pub fn line_mut(&mut self, index: i32) -> &mut Line from self {
         self.columns = -1
         &mut self.lines[index]
@@ -315,7 +342,7 @@ impl Text {
     }
 }
 
-pub opaque struct Paragraph { lines: []ParagraphLine, text_style: tui.Style, style: tui.Style, alignment: Alignment, wrap_mode: Wrap, top: i32, left: i32 }
+pub opaque struct Paragraph { lines: []ParagraphLine, text_style: tui.Style, style: tui.Style, alignment: Alignment, wrap_mode: Wrap, wide: WideWrap, top: i32, left: i32 }
 
 impl Paragraph {
     pub fn new(move text: Text) -> Self {
@@ -324,12 +351,13 @@ impl Paragraph {
         mut lines: []ParagraphLine = []
         lines.reserve(text.lines.len)
         for line in move text.lines { lines.push(ParagraphLine::new(move line)) }
-        Self { lines: move lines, text_style: text_style, style: tui.plain(), alignment: alignment, wrap_mode: .Clip, top: 0, left: 0 }
+        Self { lines: move lines, text_style: text_style, style: tui.plain(), alignment: alignment, wrap_mode: .Clip, wide: .NextLine, top: 0, left: 0 }
     }
 
     pub fn raw(move value: string) -> Self { Paragraph::new(Text::raw(move value)) }
     pub fn styled(move self, style: tui.Style) -> Self { mut p := move self; p.style = style; move p }
     pub fn wrap(move self, mode: Wrap) -> Self { mut p := move self; p.wrap_mode = mode; move p }
+    pub fn wide_wrap(move self, mode: WideWrap) -> Self { mut p := move self; p.wide = mode; move p }
     pub fn align(move self, alignment: Alignment) -> Self { mut p := move self; p.alignment = alignment; move p }
     pub fn scroll(move self, top: i32, left: i32) -> Self { mut p := move self; p.set_scroll(top, left); move p }
     pub fn set_scroll(&mut self, top: i32, left: i32) {
@@ -379,7 +407,7 @@ impl Rows {
 
     fn indent(&mut self, alignment: Alignment, columns: i32, limit: i32) {
         self.offsets[self.offsets.len - 1] = match alignment {
-            .Center => limit / 2 - columns / 2, .Right => limit - columns, _ => 0,
+            .Center => cmp.max<i32>(0, limit / 2 - columns / 2), .Right => cmp.max<i32>(0, limit - columns), _ => 0,
         }
     }
 }
@@ -459,7 +487,7 @@ impl Words {
     }
 }
 
-fn wrap_line(rows: &mut Rows, index: i32, line: &ParagraphLine, limit: i32, alignment: Alignment, trim: bool,
+fn wrap_line(rows: &mut Rows, index: i32, line: &ParagraphLine, limit: i32, alignment: Alignment, trim: bool, wide: WideWrap,
     skip: &mut i32, height: i32, words: &mut Words) {
     mut last_word := false
     mut emitted := false
@@ -487,8 +515,10 @@ fn wrap_line(rows: &mut Rows, index: i32, line: &ParagraphLine, limit: i32, alig
         if cells > limit { continue }
         split := if trim { cmp.max<i32>(words.word_width, words.spaces_width) } else { words.word_width + words.spaces_width }
         if (last_word && space) || (words.ready.empty() && split + cells > limit) { words.commit(trim) }
-        if words.columns >= limit || (cells > 0 && words.columns + words.word_width + words.spaces_width + cells > limit) {
-            mut room := limit - words.columns
+        used := words.columns + words.word_width + words.spaces_width
+        needed := if wide == .Overhang { 1 } else { cells }
+        if words.columns >= limit || (cells > 0 && used + needed > limit) {
+            mut room := cmp.max<i32>(0, limit - words.columns)
             words.emit(&mut rows, index, &line, limit, alignment, skip == 0)
             emitted = true
             if skip > 0 { skip -= 1 }
@@ -527,13 +557,13 @@ impl Paragraph {
             line := &self.lines[i]
             alignment := aligned(line.content.alignment, self.alignment)
             if self.wrap_mode == .Clip { clip_line(&mut rows, i, &line, limit, alignment, self.left) }
-            else { wrap_line(&mut rows, i, &line, limit, alignment, self.wrap_mode == .Trim, &mut skip, height, &mut words) }
+            else { wrap_line(&mut rows, i, &line, limit, alignment, self.wrap_mode == .Trim, self.wide, &mut skip, height, &mut words) }
         }
         move rows
     }
 
     fn paint(&self, frame: &mut tui.Frame, area: tui.Rect, rows: &Rows, top: i32) {
-        frame.apply_style(area, self.style)
+        frame.apply_cell_style(area, self.style)
         count := cmp.min<i32>(area.h, rows.lines.len - top)
         for y in 0..count {
             row := y + top
@@ -548,7 +578,7 @@ impl Paragraph {
                 finish := rows.runs[at + 2]
                 cells := rows.runs[at + 3]
                 target := tui.Rect { x: area.x + x, y: area.y + y, w: cells, h: 1 }
-                span.glyphs.render(&mut frame, target, start, finish, base.patch(span.style))
+                span.glyphs.render_cells(&mut frame, target, start, finish, base.patch(span.style))
                 at += 4
                 x += cells
             }
