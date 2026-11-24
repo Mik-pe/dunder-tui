@@ -8,7 +8,7 @@ Vill du se animationerna direkt? Packa upp paketet för din plattform och kör `
 
 På Linux använder den färdigbyggda almanackan systemets glibc (`libc.so.6`) för lokal tid. Övriga sex Linuxappar i paketet har inga dynamiska biblioteksberoenden.
 
-På macOS och Linux kan du starta exemplen med deras namn från Dunder 0.11.1. På Windows fungerar de färdigbyggda apparna direkt. Dunder 0.11.2 ger ett fel när kompilatorn öppnar ett paketmanifest på Windows, även för ett paket utan beroenden. [Installera Dunder](https://github.com/Mik-pe/dunder#installera-och-kör) · [Windowsprovet](https://github.com/Mik-pe/dunder-tui/actions/runs/45302071651/job/138136790534)
+Bygg från källkod med Dunder 0.11.2. Riktextmodulen använder lånade iteratorresultat som 0.11.0 och 0.11.1 avvisar. På Windows fungerar de färdigbyggda apparna direkt. Dunder 0.11.2 ger ett fel när kompilatorn öppnar ett paketmanifest på Windows, även för ett paket utan beroenden. [Installera Dunder](https://github.com/Mik-pe/dunder#installera-och-kör) · [Windowsprovet](https://github.com/Mik-pe/dunder-tui/actions/runs/45302071651/job/138136790534)
 
 ```sh
 git clone https://github.com/Mik-pe/dunder-tui.git
@@ -18,7 +18,7 @@ dunder run --example counter
 
 Tryck ↑ eller ↓ för att ändra talet och `q` för att avsluta. Kör `dunder run --example bokhylla` för att bläddra bland flerradiga bokposter med piltangenterna. Gör fönstret smalare så får boklistan hela bredden.
 
-Lista alla exempel med `dunder --list-examples`. På Dunder 0.10.0 och 0.11.0 kan du ange filen direkt, exempelvis `dunder run examples/motion/main.ddr`.
+Lista alla exempel med `dunder --list-examples`. Du kan också ange filen direkt, exempelvis `dunder run examples/motion/main.ddr`.
 
 ## Animationer
 
