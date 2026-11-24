@@ -5,6 +5,7 @@ permissions: {}
 
 jobs:
   terminal:
+    name: ${{ matrix.runner }} x64
     strategy:
       fail-fast: false
       matrix:
@@ -52,16 +53,38 @@ jobs:
           fi
           uname -sm
           rustc --version
-      - name: Build offline and exercise the OS terminal
+      - name: Test the released compiler with the package manifest
+        run: |
+          if build/dunder$EXT test --locked --offline >build/package-test.log 2>&1; then
+            cat build/package-test.log
+            echo 'SOURCE_ROOT=.' >> "$GITHUB_ENV"
+          else
+            cat build/package-test.log
+            [[ "$RUNNER_OS" == Windows ]] && grep -Fxq 'Git dependencies require a native compiler host' <(tr -d '\r' <build/package-test.log) || exit 1
+            echo '::warning::Dunder 0.11.2 cannot resolve a dependency-free manifest on Windows. Exercising the same revision with its standalone compiler entry point.'
+            src=$(cygpath -m "$RUNNER_TEMP")/standalone
+            mkdir -p "$src/build"
+            git archive HEAD src tests benchmarks examples tools | tar -xf - -C "$src"
+            cp build/dunder.exe "$src/build/"
+            echo "SOURCE_ROOT=$src" >> "$GITHUB_ENV"
+            cd "$src"
+            build/dunder.exe build-tests --locked --offline tests/suite.ddr -o build/suite.exe
+            build/suite.exe --list | tr -d '\r' >build/tests.txt
+            test -s build/tests.txt
+            while read -r id name; do build/suite.exe "$id" || { echo "Failed $name"; exit 1; }; done <build/tests.txt
+            echo "Passed $(wc -l <build/tests.txt) standalone library tests"
+          fi
+      - name: Exercise the OS terminal
         env:
           PROBE: ${{ matrix.probe }}
         run: |
-          build/dunder$EXT test --locked --offline
+          cd "$SOURCE_ROOT"
           build/dunder$EXT build --locked --offline "tests/$PROBE.ddr" -o "build/console$EXT"
           build/console$EXT
           echo "$PROBE passed on $RUNNER_OS $RUNNER_ARCH"
       - name: Compare cursor lifetime, text cells and completed frames
         run: |
+          cd "$SOURCE_ROOT"
           manifest=benchmarks/reference/Cargo.toml
           cargo fetch --locked --manifest-path "$manifest"
           cargo build --release --locked --offline --manifest-path "$manifest" --features layout-cache --example cursor_lifetime --example text --example terminal_bench --target-dir build/rust
@@ -72,13 +95,14 @@ jobs:
           diff --strip-trailing-cr build/reference-trace build/dunder-trace
           diff --strip-trailing-cr build/reference-errors build/dunder-errors
           build/dunder$EXT build --locked --offline tools/ligatures.ddr -o "build/cases$EXT"
-          build/cases$EXT >build/cases.txt
+          build/cases$EXT | tr -d '\r' >build/cases.txt
           build/dunder$EXT build --locked --offline tests/text_reference.ddr -o "build/text$EXT"
           build/text$EXT --ligatures build/cases.txt | "$ref/text$EXT" --ligatures build/cases.txt
           build/dunder$EXT build --locked --offline benchmarks/terminal.ddr -o "build/benchmark$EXT"
           build/benchmark$EXT --verify | "$ref/terminal_bench$EXT" --verify
       - name: Measure the terminal workload
         run: |
+          cd "$SOURCE_ROOT"
           ref=build/rust/release/examples/terminal_bench$EXT
           build/dunder$EXT build --locked --offline benchmarks/measure.ddr -o "build/measure$EXT"
           driver=()
