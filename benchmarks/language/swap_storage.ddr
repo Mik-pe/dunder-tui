@@ -16,16 +16,20 @@ fn verify(first: &Program, second: &Program) {
     assert(first.positions == [7] && second.positions == [1, 11])
 }
 
-fn independent(swapping: bool) -> i32 {
+fn independent(swapping: bool, local: bool) -> i32 {
     mut active := day()
     mut waiting := evening()
     mut sum := 0
     for i in 0..4095 {
-        if swapping { exchange(&mut active, &mut waiting) }
-        if swapping || i%2 == 1 { sum += active.positions[0] }
+        if local {
+            previous := move active
+            active = move waiting
+            waiting = move previous
+        } else if swapping { exchange(&mut active, &mut waiting) }
+        if swapping || local || i%2 == 1 { sum += active.positions[0] }
         else { sum += waiting.positions[0] }
     }
-    if swapping { verify(&active, &waiting) } else { verify(&waiting, &active) }
+    if swapping || local { verify(&active, &waiting) } else { verify(&waiting, &active) }
     sum
 }
 
@@ -43,8 +47,9 @@ fn slots() -> i32 {
 fn main() -> i32 {
     if sys.arg_count() != 2 { return 2 }
     sum := match sys.arg(1) {
-        "keep" => independent(false),
-        "swap" => independent(true),
+        "keep" => independent(false, false),
+        "swap" => independent(true, false),
+        "move" => independent(false, true),
         "slots" => slots(),
         _ => { return 2 },
     }

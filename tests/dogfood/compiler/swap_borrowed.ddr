@@ -1,0 +1,11 @@
+fn exchange(active: &mut []string, waiting: &mut []string) {
+    previous := move active
+    active = move waiting
+    waiting = move previous
+}
+
+fn main() {
+    mut active: []string = ["Intro", "Ridå"]
+    mut waiting: []string = ["Paus"]
+    exchange(&mut active, &mut waiting)
+}
