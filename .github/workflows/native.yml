@@ -208,6 +208,7 @@ jobs:
           build/dunder$EXT build --locked --offline tests/cell_widgets.ddr -o "build/cell-widgets$EXT"
           build/cell-widgets$EXT | "$ref/cell_widgets$EXT"
           "build/dunder$EXT" build --locked --offline tests/layout_reference.ddr -o "build/layout$EXT"
+          cargo test --release --locked --offline --manifest-path benchmarks/reference/Cargo.toml --example layout --target-dir build/rust
           "build/layout$EXT" --minimums | "$ref/layout$EXT" --minimums
           build/dunder$EXT build --locked --offline tests/text_edits.ddr -o "build/text-edits$EXT"
           build/text-edits$EXT >build/edited-cells

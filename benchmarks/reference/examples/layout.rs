@@ -169,8 +169,9 @@ fn compare(line: &str) -> u8 {
         .collect::<Vec<_>>();
     assert!(numbers.next().is_none());
     if actual == expected {
-        b'='
-    } else if layout_optimum::same_optimum(
+        return b'=';
+    }
+    let verdict = mismatch(
         &rules,
         flex,
         gap,
@@ -178,14 +179,120 @@ fn compare(line: &str) -> u8 {
         direction,
         &expected,
         &actual,
-    ) {
-        b'~'
-    } else {
+    );
+    if verdict != b'~' {
         eprintln!(
-            "{direction:?} {area:?} {flex:?} {gap} {mx} {my} {rules:?}\nD {actual:?}\nR {expected:?}"
+            "{} {direction:?} {area:?} {flex:?} {gap} {mx} {my} {rules:?}\nD {actual:?}\nR {expected:?}",
+            char::from(verdict)
         );
-        b'!'
     }
+    verdict
+}
+
+fn mismatch(
+    rules: &[Constraint],
+    flex: Flex,
+    gap: i32,
+    inner: Rect,
+    direction: Direction,
+    reference: &[Rect],
+    actual: &[Rect],
+) -> u8 {
+    let panels = &reference[..rules.len()];
+    match layout_optimum::optimal_projections(rules, flex, gap, inner, direction, reference, actual)
+    {
+        (true, true) => b'~',
+        (false, true)
+            if flex == Flex::SpaceAround
+                && gap == 0
+                && panels.iter().enumerate().any(|(i, a)| {
+                    panels[i + 1..]
+                        .iter()
+                        .any(|b| !a.intersection(*b).is_empty())
+                }) =>
+        {
+            b'R'
+        }
+        _ => b'!',
+    }
+}
+
+#[test]
+fn overlapping_space_around_reference_requires_an_optimal_dunder_layout() {
+    use Constraint::{Fill, Length, Max, Min, Percentage, Ratio};
+    let rules = [
+        Length(3),
+        Min(32769),
+        Fill(2),
+        Max(7),
+        Percentage(40),
+        Min(1),
+        Ratio(1, 5),
+        Fill(1),
+        Min(32769),
+    ];
+    let cells = |pairs: &[(u16, u16)]| {
+        pairs
+            .iter()
+            .map(|&(x, w)| Rect::new(x, 0, w, 4))
+            .collect::<Vec<_>>()
+    };
+    let actual = cells(&[
+        (0, 3),
+        (3, 4367),
+        (4370, 8735),
+        (13105, 7),
+        (13112, 26214),
+        (39326, 4367),
+        (43693, 13107),
+        (56800, 4368),
+        (61168, 4367),
+        (0, 0),
+        (3, 0),
+        (4370, 0),
+        (13105, 0),
+        (13112, 0),
+        (39326, 0),
+        (43693, 0),
+        (56800, 0),
+        (61168, 0),
+        (65535, 0),
+    ]);
+    let observed = cells(&[
+        (0, 3),
+        (0, 0),
+        (0, 0),
+        (0, 0),
+        (0, 65535),
+        (65535, 0),
+        (0, 27206),
+        (0, 28109),
+        (0, 65535),
+        (0, 0),
+        (3, 0),
+        (0, 0),
+        (0, 0),
+        (0, 0),
+        (65535, 0),
+        (0, 0),
+        (27206, 0),
+        (28109, 0),
+        (65535, 0),
+    ]);
+    let classify = |r: &[Rect], d: &[Rect]| {
+        mismatch(
+            &rules,
+            Flex::SpaceAround,
+            0,
+            Rect::new(0, 0, 65535, 4),
+            Direction::Horizontal,
+            r,
+            d,
+        )
+    };
+    assert_eq!(classify(&observed, &actual), b'R');
+    assert_eq!(classify(&actual, &observed), b'!');
+    assert_eq!(classify(&observed, &observed), b'!');
 }
 
 fn minimums(lines: &[String]) -> Vec<u8> {
@@ -282,8 +389,11 @@ fn main() {
     };
     let matches = results.iter().filter(|&&v| v == b'=').count();
     let ties = results.iter().filter(|&&v| v == b'~').count();
+    let invalid_reference = results.iter().filter(|&&v| v == b'R').count();
     let differs = results.iter().filter(|&&v| v == b'!').count();
-    assert_eq!(matches + ties + differs, expected);
-    println!("{matches} identical, {ties} verified alternate optima, {differs} unresolved");
+    assert_eq!(matches + ties + invalid_reference + differs, expected);
+    println!(
+        "{matches} identical, {ties} verified alternate optima, {invalid_reference} overlapping nonoptimal reference layouts, {differs} unresolved"
+    );
     assert_eq!(differs, 0);
 }

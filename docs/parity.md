@@ -110,6 +110,8 @@ Provet jämför alla paneler och mellanrum, även tomma ytor och överlappande g
 
 När flera placeringar uppfyller motstridiga regler lika väl kan även två Ratatui-processer välja olika rektanglar. För varje avvikelse räknar jämförelseprogrammet ut det lägsta möjliga viktade felet med exakta rationella tal. Det löser sedan samma problem två gånger med båda programmens avrundade cellgränser som extra villkor. Båda måste nå samma minimum och alla mellanrum måste kunna återskapas från kanterna. [Ratatuis beskrivning av motstridiga villkor](https://docs.rs/ratatui/0.30.2/ratatui/layout/struct.Layout.html) · [Kontroll med exakt aritmetik](../benchmarks/reference/src/layout_optimum.rs)
 
+På Linux x64 returnerade Ratatui en gång flera överlappande paneler för nio regler i `SpaceAround` med noll mellanrum och bredd 65 535. Två paneler upptog hela ytan. Det sparade fallet kontrollerar att Dunders uppdelning når det exakta optimumet och att referensens uppdelning faller utanför. Protokollet räknar sådana överlappande referensutfall separat. Om Dunders uppdelning missar optimum underkänns provet. [Ursprunglig körning med båda uppdelningarna](https://github.com/Mik-pe/dunder-tui/actions/runs/45334545608/job/138243420132) · [Regressionsprov med de sparade rektanglarna](../benchmarks/reference/examples/layout.rs)
+
 I Dunder har rektanglar signerade 32-bitarskoordinater. Till och med 0.20.1 tog `Min(65535)` samtliga 100 kolumner bredvid `Length(7)`. Från 0.20.2 delar biblioteken upp samma yta i 93 och 7 kolumner.
 
 ```sh

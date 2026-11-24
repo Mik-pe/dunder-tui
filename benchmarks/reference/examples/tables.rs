@@ -180,15 +180,18 @@ fn rectify(
             .chain(gaps.iter())
             .copied()
             .collect::<Vec<_>>();
-        assert!(layout_optimum::same_optimum(
-            &rules,
-            Flex::Start,
-            0,
-            inner,
-            Direction::Vertical,
-            &expected,
-            &pieces
-        ));
+        assert_eq!(
+            layout_optimum::optimal_projections(
+                &rules,
+                Flex::Start,
+                0,
+                inner,
+                Direction::Vertical,
+                &expected,
+                &pieces
+            ),
+            (true, true)
+        );
     }
     let mut replay = view.clone();
     if k % 3 != 0 {

@@ -256,7 +256,7 @@ impl Row {
     }
 }
 
-pub fn same_optimum(
+pub fn optimal_projections(
     rules: &[Constraint],
     flex: Flex,
     gap: i32,
@@ -264,7 +264,7 @@ pub fn same_optimum(
     axis: Direction,
     reference: &[Rect],
     actual: &[Rect],
-) -> bool {
+) -> (bool, bool) {
     let bounds = |r: Rect| match axis {
         Direction::Horizontal => (r.x, r.right()),
         Direction::Vertical => (r.y, r.bottom()),
@@ -273,7 +273,7 @@ pub fn same_optimum(
     let n = rules.len();
     let problem = Problem::new(i64::from(end - origin), rules, flex, gap);
     let best = problem.score(None).expect("bounded layout");
-    for (source, rects) in [("reference", reference), ("dunder", actual)] {
+    let optimal = |rects: &[Rect]| {
         let mut bins = vec![0];
         for &r in &rects[..n] {
             let (a, b) = bounds(r);
@@ -294,10 +294,7 @@ pub fn same_optimum(
                 return false;
             }
         }
-        if problem.score(Some(&bins)).as_ref() != Some(&best) {
-            eprintln!("{source} outside exact optimum {best}");
-            return false;
-        }
-    }
-    true
+        problem.score(Some(&bins)).as_ref() == Some(&best)
+    };
+    (optimal(reference), optimal(actual))
 }
