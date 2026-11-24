@@ -9,6 +9,7 @@ import .json_format
 import .selection
 import .repetition
 
+@derive(Eq, Hash)
 pub struct Cell { content: rich.Text, style: tui.Style, column_span: u16 }
 
 impl Default for Cell {
@@ -28,6 +29,7 @@ impl Cell {
     }
 }
 
+@derive(Eq, Hash)
 pub struct Row { cells: []Cell, style: tui.Style, height: u16, top_margin: u16, bottom_margin: u16 }
 
 impl Default for Row {

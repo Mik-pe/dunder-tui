@@ -1,0 +1,9 @@
+capability stdio
+
+fn digest(value: &str) -> u64 { value.hash() }
+
+fn main() {
+    source := "xö東🦊!"
+    view := &source[1..10]
+    print(digest(view))
+}

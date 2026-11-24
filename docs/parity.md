@@ -747,6 +747,12 @@ Provet jämför 1 512 buffertar och ordningen på deras ändrade celler med Rata
 
 Ratatui 0.30.2 kan gå utanför bufferten när en bakgrundsfärgad bred symbol i sista cellen ersätts med en smal och diffiteratorn avancerar igen. Kör Rustprovet med `--last-cell` för ett exempel med en enda cell. Dunder lämnar den sista ändringen och avslutar itereringen. Celljämförelsen kontrollerar referensen till och med sista giltiga positionen. [Regressionsprov](../tests/suite.ddr) · [Bildtider och terminalbyte](../benchmarks/cell-widgets.md)
 
+## Jämför, formatera och maskera text
+
+För 1 655 nycklar gav Dunder och Ratatui samma gruppering och samma uppslag i en hashtabell. Provet omfattar `Span`, `Line`, `Text`, `Masked`, listposter, tabellceller och tabellrader. Två visuellt lika rader kan skilja sig åt genom spannindelning, stil, justering eller ursprungliga radslut. En ändring som återställs ger samma nyckel som före redigeringen. [Dunderprov](../tests/text_values.ddr) · [Fristående Ratatui-prov](../benchmarks/reference/examples/text_values.rs)
+
+Formateringsprovet jämför visning av egna typer, råa strängar och maskering per Unicode-skalär. Bland de åtta masktecknen finns radmatning, NUL, ett kombinerande tecken och en emoji. Alla 20 160 råa celler i 192 bilder av stycken, listor och tabeller stämde på macOS ARM64, Linux ARM64, översatt Linux x86-64 och Win64 under Wine. Unixprovet byter mask och etikett med en tangenttryckning. Win32-provet läser tillbaka tecknen ur konsolbufferten. [Pseudoterminal](../tests/text_values_terminal.ddr) · [Win32-konsol](../tests/windows_console.ddr) · [Tid och minne](../benchmarks/text-labels.md)
+
 ## Redigerbar text i 0.20.0
 
 Provet bygger först en tom text, lägger till spann och rader, kortar den bredaste raden och ändrar stilar på alla tre nivåer. Sedan jämförs konstruktion av spann, rader och dokument från åtta indata, bland annat tom text, blandade radslut, en arabisk ligatur och en flaggemoji. Sammanlagt matchar 360 cellbilder och 112 rader med bredder, antal element, källtext och formaterad text Ratatui 0.30.2. Varje bild omfattar också kanten utanför ritytan. [Dunderprov](../tests/text_edits.ddr) · [Ratatui-prov](../benchmarks/reference/examples/text_edits.rs)

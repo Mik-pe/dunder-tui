@@ -537,6 +537,8 @@ journal.append(rich.Text::raw("Kaj 5\nKaj 6"))
 
 `lines()` och `spans()` lånar innehållet för läsning. `span.content()` ger den ursprungliga UTF-8-texten. `journal.to_string()` skriver en rad per `Line`. Radslut inne i ett spann utelämnas vid utskrift.
 
+`Span`, `Line` och `Text` kan formateras med `Display` och användas som nycklar i en `Map`. `from_display(&värde)` skapar ofärgad text från ett värdes utskrift. `rad.into_string()` sammanfogar spannens ursprungliga innehåll, inklusive radslut. Med ``rich.Masked::new("a🦊", `●`)`` får ett stycke, en listpost eller en tabellcell texten `●●`. `source()` ger åtkomst till originalet.
+
 Kör `dunder run --example korlista` för att redigera ett scenprogram. Välj rad med piltangenterna, flytta den med `k` eller `j`, bocka av med mellanslag och växla mellan dag- och kvällspasset med Tab. Exemplet använder `lines_mut().swap(a, b)` för att flytta en rad med alla dess stilar. `replace_lines(move nästa)` byter ut hela programmet och lämnar tillbaka de gamla raderna. På en enskild rad gör `spans_mut()` och `replace_spans` motsvarande sak. [Körlistans källkod](examples/korlista/main.ddr)
 
 `append(move nästa)` flyttar över raderna med deras egna stilar. Det mottagande dokumentets stil och justering gäller för hela texten. Med `styled_graphemes` kan du läsa precis den symbol och stil som varje spann bidrar med.

@@ -190,3 +190,7 @@ required-features = ["theme-oracle"]
 [[example]]
 name = "frame_diff"
 required-features = ["theme-oracle"]
+
+[[example]]
+name = "text_values"
+required-features = ["theme-oracle"]

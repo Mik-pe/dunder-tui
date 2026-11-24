@@ -6,6 +6,7 @@ import std.json
 import .json_format
 import .selection
 
+@derive(Eq, Hash)
 pub struct Item { content: rich.Text, style: tui.Style }
 
 impl Item {

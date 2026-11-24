@@ -1,0 +1,21 @@
+capability stdio
+import std.map
+import ..src.text as rich
+import .text_labels
+
+struct Labels { docs: []rich.Text, keys: map.Map<rich.Text,i32> }
+
+fn lookup(labels: &Labels) -> i32 {
+    mut sum := 0
+    for key in &labels.docs { sum += labels.keys.at(key) }
+    sum
+}
+
+fn main() {
+    mut labels := Labels { docs:[], keys:map.Map<rich.Text,i32>::new() }
+    for i in 0..128 {
+        labels.docs.push(text_labels.label(i,false))
+        labels.keys.put(text_labels.label(i,false),i)
+    }
+    text_labels.measure("lookup",&labels,lookup)
+}

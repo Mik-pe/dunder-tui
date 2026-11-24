@@ -1,0 +1,170 @@
+capability stdio
+import ..src.text as rich
+import ..src.tui
+import ..src.list
+import ..src.table
+import .styled_grid
+import std.bytes
+import std.json
+import std.map
+
+struct Gate { id: i32 }
+impl Display for Gate { fn str(&self) -> string { f"Gate {self.id}\r\n東" } }
+
+fn hex(s: &str) -> string { bytes.hex_u8(s.as_bytes()) }
+
+fn classes<T: Hash + Clone + Storable>(values: &[]T) {
+    mut keys := map.Map<T,i32>::new()
+    for i in 0..values.len {
+        mut first := i
+        for j in 0..i {
+            if values[i] == values[j] {
+                assert(values[i].hash() == values[j].hash())
+                first = j
+                break
+            }
+        }
+        if first == i { keys.put(values[i].clone(),i) }
+        assert(keys.at(values[i]) == first)
+        print(f"K {first}")
+    }
+}
+
+fn inspect<T: Display>(value: &T) {
+    span := rich.Span::from_display(&value)
+    line := rich.Line::from_display(&value)
+    doc := rich.Text::from_display(&value)
+    shown := value.str()
+    print(f"V {hex(shown.as_str())} {hex(span.content())} {line.spans().len} {doc.height()}")
+    for part in line.spans() { print(f"L {hex(part.content())}") }
+    for row in doc.lines() { print(f"T {row.spans().len} {hex(row.to_string().as_str())}") }
+}
+
+fn text_values() {
+    mut spans: []rich.Span = []
+    mut lines: []rich.Line = []
+    mut docs: []rich.Text = []
+    for s in ["","a","\r","\n","\r\n","a\nb","a\r\nb","ab","Å","A\u{30a}","🦊","👩🏽‍💻","\u{0}","界\n"] {
+        for style in [tui.plain(),tui.Style::reset(),tui.ink(.Cyan).underline_rgb(0x030405)] {
+            span := rich.Span::styled(s.clone(),style)
+            mut edited := rich.Span::raw("old")
+            edited.set_style(style)
+            edited.set_content(s.clone())
+            spans.push(move edited)
+            spans.push(span.clone())
+            first := rich.Line::new([span.clone()])
+            mut dirty := first.clone()
+            dirty.span_mut(0).set_content(s.clone())
+            for line in [first.clone(),move dirty,rich.Line::raw(s.clone()),first.clone().align(.Left),
+                rich.Line::new([rich.Span::raw(""),span.clone()]),first.clone().styled(style)] {
+                print(f"R {hex(line.to_string().as_str())} {hex(line.clone().into_string().as_str())}")
+                lines.push(line.clone())
+                doc := rich.Text::new([line.clone()])
+                mut changed := doc.clone()
+                changed.line_mut(0).set_alignment(line.get_alignment())
+                docs.push(move changed)
+                docs.push(doc.clone())
+                docs.push(doc.clone().align(.Right))
+                docs.push(doc.styled(style))
+            }
+            inspect(&span)
+        }
+        inspect(&rich.Text::raw(s.clone()))
+    }
+    for (a,b) in [("\r","\n"),("A\r","\nB"),("x\n","\r"),("","\r\n")] {
+        line := rich.Line::new([rich.Span::raw(a.clone()),rich.Span::raw(b.clone())])
+        print(f"R {hex(line.to_string().as_str())} {hex(line.clone().into_string().as_str())}")
+        inspect(&line)
+    }
+    inspect(&rich.Text::default())
+    classes(&spans)
+    classes(&lines)
+    classes(&docs)
+    inspect(&Gate { id:42 })
+    integer := -17
+    inspect(&integer)
+}
+
+fn collection_keys() {
+    mut items: []list.Item = []
+    mut cells: []table.Cell = [table.Cell::default()]
+    mut rows: []table.Row = [table.Row::default()]
+    for word in ["", "北", "e\u{301}"] {
+        for style in [tui.plain(),tui.Style::reset(),tui.ink(.Blue)] {
+            item := list.Item::raw(word.clone())
+            mut styled := item.clone()
+            styled.style = style
+            items.push(move item)
+            items.push(move styled)
+            for span in [0,1,2] {
+                mut cell := table.Cell::raw(word.clone()).spanning(u16(span))
+                cell.style = style
+                cells.push(cell.clone())
+                row := table.Row::new([move cell])
+                rows.push(row.clone())
+                mut padded := row.clone()
+                padded.top_margin = 1
+                rows.push(move padded)
+                mut bottom := row.clone()
+                bottom.bottom_margin = 1
+                rows.push(move bottom)
+                mut tall := row.clone()
+                tall.height = 2
+                rows.push(move tall)
+                mut painted := move row
+                painted.style = style
+                rows.push(move painted)
+            }
+        }
+    }
+    classes(&items); classes(&cells); classes(&rows)
+}
+
+fn masked_values() {
+    mut keys: []rich.Masked = [rich.Masked::default()]
+    for value in ["","\n","a\r\nb","🚦b","e\u{301}","👩🏽‍💻🇸🇪","Åa東b","a\u{0}"] {
+        for mask in [`*`,`●`,`界`,`🦊`,`\u{301}`,`\r`,`\n`,`\u{0}`] {
+            field := rich.Masked::new(value.clone(),mask)
+            keys.push(field.clone())
+            keys.push(field.clone())
+            print(f"M {i32(field.mask_char())} {hex(field.source())} {hex(field.value().as_str())}")
+            inspect(&field)
+            for width in [1,5,11] {
+                a := tui.Rect::new(3,2,15,7)
+                mut frame := styled_grid.seed(a,true)
+                area := tui.Rect::new(4,3,width,2)
+                rich.Paragraph::from(field.clone()).render(&mut frame,area)
+                items := list.List::from([field.clone()])
+                items.render(&mut frame,tui.Rect::new(4,5,width,2))
+                mut grid := table.Table::new([table.Row::from([field.clone()])],[.Fill(1)])
+                grid.render(&mut frame,tui.Rect::new(4,7,width,1))
+                print(json.to_string(&frame).unwrap())
+            }
+        }
+    }
+    units := ["a","ö","界","🦊"]
+    for n in [0,1,2,3,7,8,9,15,16,17,31,32,33,127,128,129,1023,1024,1025] {
+        mut source: []u8 = []
+        for i in 0..n { bytes.append_utf8(&mut source,units[i%4]) }
+        text := bytes.decode(&source).unwrap()
+        for mask in [`*`,`ö`,`界`,`🦊`] {
+            print(f"P {n} {hex(rich.masked(text,mask).as_str())}")
+        }
+    }
+    classes(&keys)
+}
+
+pub fn live(f: &mut tui.Frame, phase: &mut i32) {
+    area := f.area()
+    gate := Gate { id:if phase == 0 { 42 } else { 17 } }
+    label := rich.Text::from_display(&gate)
+    items := list.List::from([move label])
+    items.render(&mut f,tui.Rect::new(area.x,area.y,area.w,2))
+    value := rich.Masked::new("雨🚦e\u{301}",if phase == 0 { `*` } else { `+` })
+    mut cell := table.Cell::from(move value)
+    cell.style = tui.ink(.Indexed(81))
+    mut grid := table.Table::new([table.Row::new([move cell])],[.Fill(1)])
+    grid.render(&mut f,tui.Rect::new(area.x,area.y+2,area.w,1))
+}
+
+fn main() { text_values(); collection_keys(); masked_values() }

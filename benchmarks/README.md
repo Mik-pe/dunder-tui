@@ -1,5 +1,9 @@
 # Rendering mot Ratatui 0.30.2
 
+## Formatera och slå upp etiketter
+
+Provet formaterar eller maskerar 128 etiketter och slår upp redigerbara textvärden i en hashtabell. [Tider, allokeringar och resident minne](text-labels.md)
+
 ## Minne för text i listor och tabeller
 
 På macOS ARM64 sjönk allokeringsanropen för att bygga 4 096 tabellrader från 329 255 till 224 079 med Dunder 0.12.1. [Uppbyggnad, bildtid och högsta RSS mot Ratatui](text-storage.md)

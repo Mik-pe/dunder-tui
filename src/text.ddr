@@ -44,11 +44,32 @@ pub enum Wrap { Clip, Preserve, Trim }
 pub enum WideWrap { NextLine, Overhang }
 
 pub fn masked(value: string, mask: rune) -> string {
-    symbol := mask.str()
-    mut out: []u8 = []
-    for b in value.bytes() { if b.bit_and(192) != 128 { bytes.append_utf8(&mut out, symbol) } }
-    bytes.decode(&out).unwrap()
+    mut count := 0
+    for i in 0..value.len { if value[i].bit_and(192) != 128 { count += 1 } }
+    mut piece := mask.str()
+    mut result := ""
+    while count > 0 {
+        if count.bit_and(1) != 0 { result = result + piece }
+        count /= 2
+        if count > 0 { piece = piece + piece }
+    }
+    move result
 }
+
+@derive(Eq, Hash)
+pub opaque struct Masked { source: string, mask: rune }
+
+impl Default for Masked { fn default() -> Self { Masked::new("",rune(0)) } }
+impl Display for Masked { fn str(&self) -> string { self.value() } }
+
+impl Masked {
+    pub fn new(move value: string, mask: rune) -> Self { Self { source:move value, mask:mask } }
+    pub fn mask_char(&self) -> rune { self.mask }
+    pub fn source(&self) -> &str from self { self.source.as_str() }
+    pub fn value(&self) -> string { masked(self.source,self.mask) }
+}
+
+fn style_hash(colors: i64, attributes: i64) -> u64 { hashing.combine(colors.hash(),attributes.hash()) }
 
 fn store_style<T>(node: &mut T, style: &tui.Style) {
     node.colors = style.packed_colors()
@@ -100,6 +121,18 @@ impl Iterator for SpanGraphemes {
     }
 }
 
+impl Eq for Span {
+    fn eq(&self, other: &Self) -> bool {
+        self.colors == other.colors && self.attributes == other.attributes && self.content() == other.content()
+    }
+}
+impl Hash for Span {
+    fn hash(&self) -> u64 {
+        hashing.combine(style_hash(self.colors,self.attributes),self.glyphs.source_string().hash())
+    }
+}
+impl Display for Span { fn str(&self) -> string { self.to_string() } }
+
 impl Default for Span { fn default() -> Self { Span::raw("") } }
 
 impl tui.BufferText for Span {
@@ -110,6 +143,7 @@ impl tui.BufferText for Span {
 }
 
 impl Span {
+    pub fn from_display<T: Display>(value: &T) -> Self { Self::raw(value.str()) }
     pub fn raw(move value: string) -> Self { Self { glyphs: tui.GlyphRun::new(move value), colors:0, attributes:0 } }
     pub fn styled(move value: string, style: tui.Style) -> Self { Self { glyphs: tui.GlyphRun::new(move value), colors: style.packed_colors(), attributes: style.packed_attributes() } }
     pub fn width(&self) -> i32 { self.glyphs.text_width() }
@@ -139,10 +173,19 @@ impl Span {
     pub fn patch_style(&mut self, style: tui.Style) { self.set_style(self.get_style().patch(style)) }
     pub fn reset_style(&mut self) { self.set_style(tui.Style::reset()) }
     fn append_content(&self, out: &mut []u8) {
-        mut rows := strings.lines(self.content())
-        while rows.advance() { bytes.extend(&mut out, rows.current().as_bytes()) }
+        source := self.content()
+        mut start := 0
+        for i in 0..source.len {
+            if source[i] != 10 { continue }
+            end := if i > start && source[i-1] == 13 { i-1 } else { i }
+            if end > start { bytes.extend_range(&mut out, source.as_bytes(),start,end) }
+            start = i+1
+        }
+        if start == 0 { bytes.append_utf8(&mut out,self.glyphs.source_string()) }
+        else if start < source.len { bytes.extend_range(&mut out,source.as_bytes(),start,source.len) }
     }
     pub fn to_string(&self) -> string {
+        if !views.contains(self.content(),"\n") { return self.glyphs.source_string().clone() }
         mut out: []u8 = []
         self.append_content(&mut out)
         bytes.decode(&out).unwrap()
@@ -195,9 +238,24 @@ impl Iterator for LineGraphemes {
     }
 }
 
+impl Eq for Line {
+    fn eq(&self, other: &Self) -> bool {
+        self.colors == other.colors && self.attributes == other.attributes &&
+            self.alignment == other.alignment && self.spans == other.spans
+    }
+}
+impl Hash for Line {
+    fn hash(&self) -> u64 {
+        header := hashing.combine(style_hash(self.colors,self.attributes),self.alignment.hash())
+        hashing.combine(header,self.spans.hash())
+    }
+}
+impl Display for Line { fn str(&self) -> string { self.to_string() } }
+
 impl Default for Line { fn default() -> Self { Line::new([]) } }
 
 impl Line {
+    pub fn from_display<T: Display>(value: &T) -> Self { Self::raw(value.str()) }
     pub fn repeat(move span: Span, count: i32) -> Self {
         Line::new(repetition.collect(move span,count))
     }
@@ -263,7 +321,14 @@ impl Line {
     fn append_content(&self, out: &mut []u8) {
         for span in &self.spans { span.append_content(&mut out) }
     }
+    pub fn into_string(move self) -> string {
+        if self.spans.len == 1 { return self.spans[0].glyphs.source_string().clone() }
+        mut out: []u8 = []
+        for span in &self.spans { bytes.append_utf8(&mut out,span.glyphs.source_string()) }
+        bytes.decode(&out).unwrap()
+    }
     pub fn to_string(&self) -> string {
+        if self.spans.len == 1 { return self.spans[0].to_string() }
         mut out: []u8 = []
         self.append_content(&mut out)
         bytes.decode(&out).unwrap()
@@ -323,6 +388,7 @@ pub opaque struct Text { lines: []Line, columns: i32, colors: i64, attributes: i
 
 pub trait IntoText { fn into_text(move self) -> Text }
 
+impl IntoText for Masked { fn into_text(move self) -> Text { Text::raw(self.value()) } }
 impl IntoText for string { fn into_text(move self) -> Text { Text::raw(move self) } }
 impl IntoText for Span { fn into_text(move self) -> Text { Text::new([Line::new([move self])]) } }
 impl IntoText for Line { fn into_text(move self) -> Text { Text::new([move self]) } }
@@ -335,9 +401,24 @@ fn lines_width(lines: &[]Line) -> i32 {
     columns
 }
 
+impl Eq for Text {
+    fn eq(&self, other: &Self) -> bool {
+        self.colors == other.colors && self.attributes == other.attributes &&
+            self.alignment == other.alignment && self.lines == other.lines
+    }
+}
+impl Hash for Text {
+    fn hash(&self) -> u64 {
+        header := hashing.combine(style_hash(self.colors,self.attributes),self.alignment.hash())
+        hashing.combine(header,self.lines.hash())
+    }
+}
+impl Display for Text { fn str(&self) -> string { self.to_string() } }
+
 impl Default for Text { fn default() -> Self { Text::new([]) } }
 
 impl Text {
+    pub fn from_display<T: Display>(value: &T) -> Self { Self::raw(value.str()) }
     pub fn repeat(move line: Line, count: i32) -> Self {
         Text::new(repetition.collect(move line,count))
     }
@@ -415,6 +496,7 @@ impl Text {
     pub fn patch_style(&mut self, style: tui.Style) { self.set_style(self.get_style().patch(style)) }
     pub fn reset_style(&mut self) { self.set_style(tui.Style::reset()) }
     pub fn to_string(&self) -> string {
+        if self.lines.len == 1 { return self.lines[0].to_string() }
         mut out: []u8 = []
         for i in 0..self.lines.len {
             if i > 0 { out.push(10) }

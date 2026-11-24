@@ -2270,3 +2270,20 @@ impl tui.Backend for BufferedOutput {
         assert(saved.lines()[0].spans()[0].get_style() == style)
     }
 }
+
+@test fn rich_text_keys_survive_round_trip_edits_and_preserve_span_boundaries() {
+    mut doc := rich.Text::new([rich.Line::new([rich.Span::styled("a\r\nb",tui.ink(.Cyan))])]).align(.Right)
+    mut keys := map.Map<rich.Text,i32>::new()
+    keys.put(doc.clone(),27)
+    doc.line_mut(0).span_mut(0).set_content("ab")
+    assert(doc.str() == "ab" && !keys.contains(doc))
+    doc.line_mut(0).span_mut(0).set_content("a\r\nb")
+    assert(keys.at(doc) == 27)
+    assert(doc.lines()[0].clone().into_string() == "a\r\nb")
+    assert(rich.Text::from_display(&doc) == rich.Text::raw("ab"))
+    doc.line_mut(0).push_span(rich.Span::default())
+    assert(!keys.contains(doc))
+    field := rich.Masked::new("東\r\n🦊",`●`)
+    assert(field.str() == "●●●●" && field.source() == "東\r\n🦊")
+    assert(rich.Masked::default().mask_char() == rune(0))
+}
