@@ -18,6 +18,9 @@ fn seeded(a: Rect) -> Buffer {
                 .on_blue()
                 .bold()
                 .underlined()
+                .dim()
+                .slow_blink()
+                .hidden()
                 .underline_color(Color::Indexed(81))
         } else {
             Style::new()
@@ -25,6 +28,8 @@ fn seeded(a: Rect) -> Buffer {
                 .bg(Color::Indexed(13))
                 .italic()
                 .reversed()
+                .rapid_blink()
+                .crossed_out()
         };
         Fill::new(".")
             .style(style)

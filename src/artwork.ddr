@@ -1,6 +1,16 @@
 import .tui
 import std.cmp as cmp
 
+const TINY: [rune; 30] = [
+    `▛`, `▚`, `▗`, `▀`, `▖`, `▜`, `▘`, `▞`, `▚`, `▝`, `▛`, `▐`, ` `, `▌`, `▌`,
+    `▛`, `▚`, `▐`, `▀`, `▌`, `▐`, ` `, `▛`, `▜`, ` `, `▌`, `▝`, `▄`, `▘`, `▌`,
+]
+
+const SMALL: [rune; 54] = [
+    `█`, `▀`, `▀`, `▄`, ` `, `▄`, `▀`, `▀`, `▄`, `▝`, `▜`, `▛`, `▘`, `▄`, `▀`, `▀`, `▄`, `▝`, `▜`, `▛`, `▘`, `█`, ` `, ` `, `█`, ` `, `█`,
+    `█`, `▀`, `▀`, `▄`, ` `, `█`, `▀`, `▀`, `█`, ` `, `▐`, `▌`, ` `, `█`, `▀`, `▀`, `█`, ` `, `▐`, `▌`, ` `, `▀`, `▄`, `▄`, `▀`, ` `, `█`,
+]
+
 pub enum LogoSize { Tiny, Small }
 pub struct RatatuiLogo { size: LogoSize }
 impl Default for RatatuiLogo {
@@ -14,13 +24,19 @@ impl RatatuiLogo {
     pub fn render(&self, frame: &mut tui.Frame, bounds: tui.Rect) {
         area := bounds.intersection(frame.area())
         if area.is_empty() { return }
-        for y in 0..cmp.min<i32>(2, area.h) {
-            row := match self.size {
-                .Tiny => if y == 0 { "▛▚▗▀▖▜▘▞▚▝▛▐ ▌▌" } else { "▛▚▐▀▌▐ ▛▜ ▌▝▄▘▌" },
-                .Small => if y == 0 { "█▀▀▄ ▄▀▀▄▝▜▛▘▄▀▀▄▝▜▛▘█  █ █" } else { "█▀▀▄ █▀▀█ ▐▌ █▀▀█ ▐▌ ▀▄▄▀ █" },
-            }
-            frame.split_wide_cell(area.x, area.y + y)
-            frame.text(tui.Rect { x: area.x, y: area.y+y, w: area.w, h: 1 }, row, tui.plain())
+        match self.size {
+            .Tiny => draw_logo(&mut frame, area, &TINY[..], 15),
+            .Small => draw_logo(&mut frame, area, &SMALL[..], 27),
+        }
+    }
+}
+
+fn draw_logo(frame: &mut tui.Frame, area: tui.Rect, symbols: &[]rune, width: i32) {
+    style := tui.plain()
+    for y in 0..cmp.min<i32>(2, area.h) {
+        frame.split_wide_cell(area.x, area.y+y)
+        for x in 0..cmp.min<i32>(width, area.w) {
+            frame.styled_rune(area.x+x, area.y+y, area.right(), symbols[y*width+x], &style)
         }
     }
 }

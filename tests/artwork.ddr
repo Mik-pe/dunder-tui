@@ -6,8 +6,8 @@ import std.bytes as bytes
 fn seeded(a: tui.Rect) -> tui.Frame {
     mut frame := tui.Frame::at(a)
     for y in a.y..a.bottom() {
-        style := if (y-a.y)%2 == 0 { tui.ink(.Cyan).background(.Blue).bold().underlined().underline_index(81) }
-            else { tui.ink(.Rgb(21,42,63)).background(.Indexed(13)).italic().with(.Reversed) }
+        style := if (y-a.y)%2 == 0 { tui.ink(.Cyan).background(.Blue).bold().underlined().dim().with(.SlowBlink).with(.Hidden).underline_index(81) }
+            else { tui.ink(.Rgb(21,42,63)).background(.Indexed(13)).italic().with(.Reversed).with(.RapidBlink).with(.CrossedOut) }
         frame.fill(tui.Rect{x:a.x,y:y,w:a.w,h:1}, `.`, style)
         for col in [1,12,20] {
             _ := frame.set_cell(a.x+col,y,if col == 12 { "❤️" } else { "界" },tui.ink(.Green))
@@ -55,7 +55,10 @@ fn compare(frame: &tui.Frame, prior: &tui.Frame) {
             bg := s.get_background().unwrap().str()
             ul := s.get_underline_color().unwrap().str()
             attr := (if s.has(.Bold) { 1 } else { 0 }) + (if s.has(.Italic) { 4 } else { 0 }) +
-                (if s.has(.Underlined) { 8 } else { 0 }) + (if s.has(.Reversed) { 64 } else { 0 })
+                (if s.has(.Dim) { 2 } else { 0 }) + (if s.has(.Underlined) { 8 } else { 0 }) +
+                (if s.has(.SlowBlink) { 16 } else { 0 }) + (if s.has(.RapidBlink) { 32 } else { 0 }) +
+                (if s.has(.Reversed) { 64 } else { 0 }) + (if s.has(.Hidden) { 128 } else { 0 }) +
+                (if s.has(.CrossedOut) { 256 } else { 0 })
             opt := match cell.diff_option { .None => 0, .Skip => -1, .AlwaysUpdate => -2, .ForcedWidth(w) => w, }
             bytes.append_utf8(&mut row, f"{cell.symbol}:{fg}/{bg}/{ul}/{attr}/{opt}|")
         }
